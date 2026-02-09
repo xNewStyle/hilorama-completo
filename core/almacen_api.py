@@ -1,4 +1,5 @@
-from database.db import get_conn
+from database.connection import get_conn
+
 
 STOCK_MINIMO = 50
 

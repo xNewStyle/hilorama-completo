@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from database.db import get_conn
+from database.connection import get_conn
 from clientes import obtener_cliente_por_id
 from tkinter import messagebox
 

@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
-from database.db import get_conn
+from database.connection import get_conn
 import os
 
 # ================= CONFIG =================
@@ -66,7 +66,15 @@ def refrescar_tabla(filtro=None):
                 tag = "ok" if p["estado"] == "OK" else "bajo"
                 tabla.insert(
                     "", "end",
-                    values=("", "", p["color"], p["codigo"], p["stock"], p["estado"]),
+                    values=(
+                        p["marca"],
+                        p["hilo"],
+                        p["color"],
+                        p["codigo"],
+                        p["stock"],
+                        p["codigo_barras"],
+                        p["estado"]
+                    ),
                     tags=(tag,)
                 )
 
@@ -158,12 +166,14 @@ def eliminar_tono():
 
     refrescar_tabla()
 
-def editar_stock_producto(event):
+def editar_producto(event):
     item = tabla.focus()
     if not item:
         return
 
     valores = tabla.item(item, "values")
+
+    # Solo permitir editar filas reales (no marca/hilo)
     if not valores[3]:
         return
 
@@ -171,23 +181,43 @@ def editar_stock_producto(event):
     if pwd != PASSWORD:
         return
 
-    nuevo = simpledialog.askinteger("Stock", "Nuevo stock:")
-    if nuevo is None:
-        return
+    opcion = simpledialog.askstring(
+        "Editar",
+        "¿Qué deseas editar?\n\n1 = Stock\n2 = Código de barras"
+    )
 
-    estado = "OK" if nuevo >= STOCK_MINIMO else "RESURTIR"
+    if opcion == "1":
+        nuevo_stock = simpledialog.askinteger("Stock", "Nuevo stock:")
+        if nuevo_stock is None:
+            return
 
-    conn = get_conn()
-    conn.execute("""
-    UPDATE productos
-    SET stock=?, estado=?
-    WHERE marca=? AND hilo=? AND codigo=?
-    """,(nuevo,estado,valores[0], valores[1], valores[3]))
-    conn.commit()
-    conn.close()
+        estado = "OK" if nuevo_stock >= STOCK_MINIMO else "RESURTIR"
 
+        conn = get_conn()
+        conn.execute("""
+            UPDATE productos
+            SET stock=?, estado=?
+            WHERE marca=? AND hilo=? AND codigo=?
+        """,(nuevo_stock,estado,valores[0],valores[1],valores[3]))
+        conn.commit()
+        conn.close()
+
+    elif opcion == "2":
+        nuevo_barras = simpledialog.askstring("Código de barras", "Nuevo código:")
+        if not nuevo_barras:
+            return
+
+        conn = get_conn()
+        conn.execute("""
+            UPDATE productos
+            SET codigo_barras=?
+            WHERE marca=? AND hilo=? AND codigo=?
+        """,(nuevo_barras,valores[0],valores[1],valores[3]))
+        conn.commit()
+        conn.close()
 
     refrescar_tabla()
+
 
 def editar_precios_marca():
     marca = combo_marca.get()
@@ -317,11 +347,6 @@ if __name__ == "__main__":
     entry_vol = tk.Entry(frame_form, width=10)
     entry_vol.grid(row=1, column=6, padx=5)
 
-
-    tk.Label(frame_form, text="").grid(row=0, column=7)
-    entry_vol = tk.Entry(frame_form, width=8)
-    
-
     
     tk.Button(frame_form, text="Agregar", command=agregar_producto).grid(row=1, column=8)
     tk.Button(frame_form, text="Eliminar tono", command=eliminar_tono).grid(row=1, column=9)
@@ -340,7 +365,8 @@ if __name__ == "__main__":
         show="headings"
     )
     tabla.pack(fill="both", expand=True, padx=10, pady=5)
-    tabla.bind("<Double-1>", editar_stock_producto)
+    tabla.bind("<Double-1>", editar_producto)
+
 
     for c in ("Marca", "Hilo", "Color", "Código", "Stock","Codigo_Barras", "Estado"):
         tabla.heading(c, text=c)
