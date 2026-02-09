@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { API_URL } from "./config";
 
-const API = "https://hilorama-backend.onrender.com";
+
+
 
 const motivoColor = {
   NO_PERTENECE: "#DC2626",
@@ -19,7 +21,7 @@ export default function AdminApp({ token }) {
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${API}/errores-scan`, {
+    fetch(`${API_URL}/errores-scan`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())

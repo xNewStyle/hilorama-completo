@@ -1,8 +1,9 @@
 import { useState } from "react";
 import AppEmpacador from "./AppEmpacador";
 import AdminApp from "./AdminApp";
+import { API_URL } from "./config";
 
-const API = "https://hilorama-backend.onrender.com";
+
 
 export default function App() {
   /* ======================
@@ -44,7 +45,7 @@ export default function App() {
     setMensaje("Validando credenciales...");
 
     try {
-      const res = await fetch(`${API}/login`, {
+      const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario, password }),

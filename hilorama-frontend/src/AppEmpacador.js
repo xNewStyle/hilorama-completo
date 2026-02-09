@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { API_URL } from "./config";
+
 
 const beepOk = () => {
   const audio = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
@@ -9,8 +11,6 @@ const beepError = () => {
   const audio = new Audio("https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg");
   audio.play();
 };
-
-const API = "https://hilorama-backend.onrender.com";
 
 const coloresEstado = {
   EN_PROCESO: "#FACC15",
@@ -87,7 +87,7 @@ function App() {
      LOGIN
   ====================== */
   const login = async () => {
-    const res = await fetch(`${API}/login`, {
+    const res = await fetch(`${API_URL}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ usuario, password }),
@@ -103,7 +103,7 @@ function App() {
     setMensaje(`Bienvenido ${data.nombre}`);
   };
   const actualizarProgreso = async (id) => {
-    const res = await fetch(`${API}/notas/${id}/progreso`, {
+    const res = await fetch(`${API_URL}/notas/${id}/progreso`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -112,7 +112,7 @@ function App() {
   };
   const enviarScan = async (codigo) => {
     const res = await fetch(
-      `${API}/notas/${notaActiva.id}/scan`,
+      `${API_URL}/notas/${notaActiva.id}/scan`,
       {
         method: "POST",
         headers: {
@@ -156,7 +156,7 @@ function App() {
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${API}/notas-pagadas`, {
+    fetch(`${API_URL}/notas-pagadas`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -177,7 +177,7 @@ function App() {
   useEffect(() => {
     if (!notaActiva) return;
 
-    fetch(`${API}/notas/${notaActiva.id}/progreso`, {
+    fetch(`${API_URL}/notas/${notaActiva.id}/progreso`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -189,7 +189,7 @@ function App() {
   ====================== */
   const ajustar = async (codigo, cantidad) => {
     const res = await fetch(
-      `${API}/notas/${notaActiva.id}/producto/ajustar`,
+      `${API_URL}/notas/${notaActiva.id}/producto/ajustar`,
       {
         method: "POST",
         headers: {
@@ -228,7 +228,7 @@ function App() {
     if (!window.confirm("¿Reiniciar toda la nota?")) return;
 
     const res = await fetch(
-      `${API}/notas/${notaActiva.id}/reset`,
+      `${API_URL}/notas/${notaActiva.id}/reset`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
