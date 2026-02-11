@@ -33,7 +33,7 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
     conn.execute("""
         INSERT INTO notas
         (id, cliente_id, cliente_nombre, fecha, estado, total, envio, pedido)
-        VALUES (?,?,?,?,?,?,?,?)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
         nota_id,
         cliente["id"],
@@ -49,7 +49,7 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
         conn.execute("""
             INSERT INTO items
             (nota_id, codigo, cantidad, precio)
-            VALUES (?,?,?,?)
+            VALUES (%s,%s,%s,%s)
         """, (
             nota_id,
             p["codigo"],
@@ -86,7 +86,7 @@ def obtener_cotizacion(id_nota):
     conn = get_conn()
 
     nota = conn.execute(
-        "SELECT * FROM notas WHERE id=?",
+        "SELECT * FROM notas WHERE id=%s",
         (id_nota,)
     ).fetchone()
 
@@ -97,7 +97,7 @@ def obtener_cotizacion(id_nota):
     items = conn.execute("""
         SELECT codigo, cantidad, precio
         FROM items
-        WHERE nota_id=?
+        WHERE nota_id=%s
     """, (id_nota,)).fetchall()
 
     conn.close()
@@ -127,8 +127,8 @@ def obtener_cotizacion(id_nota):
 def eliminar_cotizacion(id_nota):
     conn = get_conn()
 
-    conn.execute("DELETE FROM items WHERE nota_id=?", (id_nota,))
-    conn.execute("DELETE FROM notas WHERE id=?", (id_nota,))
+    conn.execute("DELETE FROM items WHERE nota_id=%s", (id_nota,))
+    conn.execute("DELETE FROM notas WHERE id=%s", (id_nota,))
 
     conn.commit()
     conn.close()
@@ -245,11 +245,11 @@ def convertir_cotizacion_a_venta(id_nota, items_finales, cliente, envio=None):
     conn.execute("""
         UPDATE notas
         SET estado='VENTA_PENDIENTE',
-            cliente_id=?,
-            cliente_nombre=?,
-            envio=?,
-            total=?
-        WHERE id=?
+            cliente_id=%s,
+            cliente_nombre=%s,
+            envio=%s,
+            total=%s
+        WHERE id=%s
     """, (
         cliente["id"],
         cliente["nombre"],
@@ -258,12 +258,12 @@ def convertir_cotizacion_a_venta(id_nota, items_finales, cliente, envio=None):
         id_nota
     ))
 
-    conn.execute("DELETE FROM items WHERE nota_id=?", (id_nota,))
+    conn.execute("DELETE FROM items WHERE nota_id=%s", (id_nota,))
 
     for p in items_finales:
         conn.execute("""
             INSERT INTO items(nota_id,codigo,cantidad,precio)
-            VALUES (?,?,?,?)
+            VALUES (%s,%s,%s,%s)
         """,(id_nota,p["codigo"],p["cantidad"],p["precio"]))
 
     conn.commit()
@@ -278,18 +278,18 @@ def actualizar_cotizacion(id_nota, nuevos_items):
 
     total = sum(p["cantidad"] * p["precio"] for p in nuevos_items)
 
-    conn.execute("DELETE FROM items WHERE nota_id=?", (id_nota,))
+    conn.execute("DELETE FROM items WHERE nota_id=%s", (id_nota,))
 
     for p in nuevos_items:
         conn.execute("""
             INSERT INTO items(nota_id,codigo,cantidad,precio)
-            VALUES (?,?,?,?)
+            VALUES (%s,%s,%s,%s)
         """,(id_nota,p["codigo"],p["cantidad"],p["precio"]))
 
     conn.execute("""
         UPDATE notas
-        SET total=?
-        WHERE id=?
+        SET total=%s
+        WHERE id=%s
     """,(total,id_nota))
 
     conn.commit()
@@ -300,8 +300,8 @@ def actualizar_cotizacion(id_nota, nuevos_items):
 def eliminar_nota(id_nota):
     conn = get_conn()
 
-    conn.execute("DELETE FROM items WHERE nota_id=?", (id_nota,))
-    conn.execute("DELETE FROM notas WHERE id=?", (id_nota,))
+    conn.execute("DELETE FROM items WHERE nota_id=%s", (id_nota,))
+    conn.execute("DELETE FROM notas WHERE id=%s", (id_nota,))
 
     conn.commit()
     conn.close()
@@ -314,13 +314,13 @@ def guardar_nota_actualizada(nota_actualizada):
 
     conn.execute("""
         UPDATE notas
-        SET cliente_id=?,
-            cliente_nombre=?,
-            estado=?,
-            total=?,
-            envio=?,
-            comprobante=?      -- 6
-        WHERE id=?            -- 7
+        SET cliente_id=%s,
+            cliente_nombre=%s,
+            estado=%s,
+            total=%s,
+            envio=%s,
+            comprobante=%s      -- 6
+        WHERE id=%s            -- 7
     """, (
         nota_actualizada["cliente_id"],
         nota_actualizada["cliente_nombre"],
@@ -344,7 +344,7 @@ def buscar_nota_por_texto(texto):
 
     row = conn.execute("""
         SELECT * FROM notas
-        WHERE LOWER(id)=?
+        WHERE LOWER(id)=%s
     """,(texto,)).fetchone()
 
     conn.close()

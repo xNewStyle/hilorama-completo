@@ -18,7 +18,7 @@ def obtener_marcas():
 def obtener_hilos(marca):
     conn = get_conn()
     rows = conn.execute(
-        "SELECT DISTINCT hilo FROM productos WHERE marca=? ORDER BY hilo",
+        "SELECT DISTINCT hilo FROM productos WHERE marca=%s ORDER BY hilo",
         (marca,)
     ).fetchall()
     conn.close()
@@ -32,11 +32,11 @@ def obtener_productos(marca=None, hilo=None):
     params = []
 
     if marca:
-        query += " AND marca=?"
+        query += " AND marca=%s"
         params.append(marca)
 
     if hilo:
-        query += " AND hilo=?"
+        query += " AND hilo=%s"
         params.append(hilo)
 
     rows = conn.execute(query, params).fetchall()
@@ -48,7 +48,7 @@ def obtener_productos(marca=None, hilo=None):
 def obtener_stock(codigo):
     conn = get_conn()
     row = conn.execute(
-        "SELECT stock FROM productos WHERE codigo=?",
+        "SELECT stock FROM productos WHERE codigo=%s",
         (codigo,)
     ).fetchone()
     conn.close()
@@ -63,7 +63,7 @@ def obtener_precio_venta(marca):
     conn = get_conn()
 
     row = conn.execute(
-        "SELECT venta FROM precios WHERE marca=?",
+        "SELECT venta FROM precios WHERE marca=%s",
         (marca,)
     ).fetchone()
 
@@ -80,8 +80,8 @@ def descontar_stock(marca, hilo, codigo, cantidad):
     conn.execute(
         """
         UPDATE productos
-        SET stock = stock - ?
-        WHERE marca=? AND hilo=? AND codigo=?
+        SET stock = stock - %s
+        WHERE marca=%s AND hilo=%s AND codigo=%s
         """,
         (cantidad, marca, hilo, codigo)
     )
@@ -98,8 +98,8 @@ def aplicar_venta(items):
         conn.execute(
             """
             UPDATE productos
-            SET stock = stock - ?
-            WHERE marca=? AND hilo=? AND codigo=?
+            SET stock = stock - %s
+            WHERE marca=%s AND hilo=%s AND codigo=%s
             """,
             (p["cantidad"], p["marca"], p["hilo"], p["codigo"])
         )
@@ -114,7 +114,7 @@ def obtener_producto_por_codigo(codigo):
     row = conn.execute(
         """
         SELECT * FROM productos
-        WHERE codigo=? OR codigo_barras=?
+        WHERE codigo=%s OR codigo_barras=%s
         """,
         (codigo, codigo)
     ).fetchone()
@@ -136,7 +136,7 @@ def obtener_precio_distribuidor(marca):
     conn = get_conn()
 
     row = conn.execute(
-        "SELECT distribuidor FROM precios WHERE marca=?",
+        "SELECT distribuidor FROM precios WHERE marca=%s",
         (marca,)
     ).fetchone()
 
@@ -147,7 +147,7 @@ def obtener_producto_por_codigo_barras(codigo_barras):
     conn = get_conn()
 
     row = conn.execute(
-        "SELECT * FROM productos WHERE codigo_barras=?",
+        "SELECT * FROM productos WHERE codigo_barras=%s",
         (codigo_barras,)
     ).fetchone()
 

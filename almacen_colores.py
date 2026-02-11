@@ -119,7 +119,7 @@ def agregar_producto():
 
     existe = conn.execute("""
     SELECT 1 FROM productos
-    WHERE marca=? AND hilo=? AND color=? AND codigo=?
+    WHERE marca=%s AND hilo=%s AND color=%s AND codigo=%s
     """,(marca,hilo,color,codigo)).fetchone()
 
     if existe:
@@ -132,7 +132,7 @@ def agregar_producto():
     conn.execute("""
    INSERT INTO productos
    (marca,hilo,color,codigo,codigo_barras,stock,estado,volumetrico)
-   VALUES (?,?,?,?,?,?,?,?)
+   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
 
     """,(marca,hilo,color,codigo,codigo_barras,stock,estado,volumetrico))
 
@@ -158,7 +158,7 @@ def eliminar_tono():
 
     conn = get_conn()
     conn.execute(
-        "DELETE FROM productos WHERE color=? AND codigo=?",
+        "DELETE FROM productos WHERE color=%s AND codigo=%s",
         (valores[2], valores[3])
     )
     conn.commit()
@@ -183,7 +183,7 @@ def editar_producto(event):
 
     opcion = simpledialog.askstring(
         "Editar",
-        "¿Qué deseas editar?\n\n1 = Stock\n2 = Código de barras"
+        "¿Qué deseas editar%s\n\n1 = Stock\n2 = Código de barras"
     )
 
     if opcion == "1":
@@ -196,8 +196,8 @@ def editar_producto(event):
         conn = get_conn()
         conn.execute("""
             UPDATE productos
-            SET stock=?, estado=?
-            WHERE marca=? AND hilo=? AND codigo=?
+            SET stock=%s, estado=%s
+            WHERE marca=%s AND hilo=%s AND codigo=%s
         """,(nuevo_stock,estado,valores[0],valores[1],valores[3]))
         conn.commit()
         conn.close()
@@ -210,8 +210,8 @@ def editar_producto(event):
         conn = get_conn()
         conn.execute("""
             UPDATE productos
-            SET codigo_barras=?
-            WHERE marca=? AND hilo=? AND codigo=?
+            SET codigo_barras=%s
+            WHERE marca=%s AND hilo=%s AND codigo=%s
         """,(nuevo_barras,valores[0],valores[1],valores[3]))
         conn.commit()
         conn.close()
@@ -238,7 +238,7 @@ def editar_precios_marca():
 
     conn.execute("""
     INSERT INTO precios(marca, distribuidor, venta)
-    VALUES (?,?,?)
+    VALUES (%s,%s,%s)
     ON CONFLICT(marca)
     DO UPDATE SET
         distribuidor=excluded.distribuidor,
@@ -281,8 +281,8 @@ def asignar_volumetrico_hilo():
 
     cur = conn.execute("""
     UPDATE productos
-    SET volumetrico=?
-    WHERE marca=? AND hilo=?
+    SET volumetrico=%s
+    WHERE marca=%s AND hilo=%s
     """,(vol,marca,hilo))
 
     conn.commit()
@@ -395,7 +395,7 @@ def obtener_stock(marca,hilo,codigo):
     conn = get_conn()
     r = conn.execute("""
         SELECT stock FROM productos
-        WHERE marca=? AND hilo=? AND codigo=?
+        WHERE marca=%s AND hilo=%s AND codigo=%s
     """,(marca,hilo,codigo)).fetchone()
     conn.close()
     return r["stock"] if r else 0
@@ -410,8 +410,8 @@ def actualizar_stock(marca,hilo,codigo,nuevo_stock):
 
     conn.execute("""
     UPDATE productos
-    SET stock=?, estado=?
-    WHERE marca=? AND hilo=? AND codigo=?
+    SET stock=%s, estado=%s
+    WHERE marca=%s AND hilo=%s AND codigo=%s
     """,(nuevo_stock,estado,marca,hilo,codigo))
 
     conn.commit()
@@ -427,8 +427,8 @@ def descontar_stock(marca,hilo,codigo,cantidad):
 
     conn.execute("""
     UPDATE productos
-    SET stock = stock - ?
-    WHERE marca=? AND hilo=? AND codigo=?
+    SET stock = stock - %s
+    WHERE marca=%s AND hilo=%s AND codigo=%s
     """,(cantidad,marca,hilo,codigo))
 
     conn.commit()
@@ -441,7 +441,7 @@ def descontar_stock(marca,hilo,codigo,cantidad):
 def obtener_precio_venta(marca):
     conn = get_conn()
     r = conn.execute(
-        "SELECT venta FROM precios WHERE marca=?",
+        "SELECT venta FROM precios WHERE marca=%s",
         (marca,)
     ).fetchone()
     conn.close()
@@ -451,7 +451,7 @@ def obtener_precio_venta(marca):
 def obtener_precio_distribuidor(marca):
     conn = get_conn()
     r = conn.execute(
-        "SELECT distribuidor FROM precios WHERE marca=?",
+        "SELECT distribuidor FROM precios WHERE marca=%s",
         (marca,)
     ).fetchone()
     conn.close()
@@ -461,7 +461,7 @@ def es_stock_bajo(marca,hilo,codigo):
     conn = get_conn()
     r = conn.execute("""
         SELECT stock FROM productos
-        WHERE marca=? AND hilo=? AND codigo=?
+        WHERE marca=%s AND hilo=%s AND codigo=%s
     """,(marca,hilo,codigo)).fetchone()
     conn.close()
 
@@ -474,7 +474,7 @@ def obtener_producto_por_codigo_barras(codigo_barras):
     conn = get_conn()
     r = conn.execute("""
         SELECT * FROM productos
-        WHERE codigo_barras=?
+        WHERE codigo_barras=%s
     """,(codigo_barras,)).fetchone()
     conn.close()
     return r

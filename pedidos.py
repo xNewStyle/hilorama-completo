@@ -32,7 +32,7 @@ def crear_pedido(numero, desde, hasta):
     try:
         conn.execute("""
             INSERT INTO pedidos(numero, desde, hasta)
-            VALUES (?,?,?)
+            VALUES (%s,%s,%s)
         """, (numero, desde, hasta))
 
         conn.commit()
@@ -60,7 +60,7 @@ def obtener_pedido(numero):
     r = conn.execute("""
         SELECT numero, desde, hasta
         FROM pedidos
-        WHERE numero=?
+        WHERE numero=%s
     """, (numero,)).fetchone()
 
     conn.close()

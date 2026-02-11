@@ -17,10 +17,9 @@ def obtener_o_crear_cliente(nombre):
 
     row = conn.execute("""
         SELECT * FROM clientes
-        WHERE LOWER(nombre)=?
-    """,(nombre_norm,)).fetchone()
+        WHERE LOWER(nombre) = %s
+    """, (nombre_norm,)).fetchone()
 
-    # 🔥 FIX → convertir direccion JSON a dict
     if row:
         c = dict(row)
         c["direccion"] = json.loads(c["direccion"])
@@ -34,27 +33,32 @@ def obtener_o_crear_cliente(nombre):
         "colonia": "",
         "codigo_postal": "",
         "estado": "",
+        "municipio": "",
         "referencia": ""
     }
 
     cur = conn.execute("""
-        INSERT INTO clientes(nombre, telefono, direccion)
-        VALUES (?,?,?)
-    """,(nombre.strip(), "", json.dumps(direccion_vacia)))
+        INSERT INTO clientes (nombre, telefono, direccion)
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (
+        nombre.strip(),
+        "",
+        json.dumps(direccion_vacia)
+    ))
+
+    nuevo_id = cur.fetchone()["id"]
 
     conn.commit()
+    conn.close()
 
-    nuevo_id = cur.lastrowid
-
-    nuevo = {
+    return {
         "id": nuevo_id,
         "nombre": nombre.strip(),
         "telefono": "",
         "direccion": direccion_vacia
     }
 
-    conn.close()
-    return nuevo
 
 
 def listar_clientes():
@@ -76,7 +80,7 @@ def obtener_cliente_por_id(id_cliente):
     conn = get_conn()
 
     r = conn.execute(
-        "SELECT * FROM clientes WHERE id=?",
+        "SELECT * FROM clientes WHERE id=%s",
         (id_cliente,)
     ).fetchone()
 
@@ -95,10 +99,10 @@ def guardar_cliente(cliente):
 
     conn.execute("""
         UPDATE clientes
-        SET nombre=?,
-            telefono=?,
-            direccion=?
-        WHERE id=?
+        SET nombre=%s,
+            telefono=%s,
+            direccion=%s
+        WHERE id=%s
     """,(
         cliente["nombre"],
         cliente["telefono"],

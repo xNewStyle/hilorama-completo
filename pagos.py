@@ -9,7 +9,7 @@ def registrar_pago(id_nota, imagen_path):
 
     conn.execute("""
         INSERT INTO pagos(nota_id, comprobante)
-        VALUES (?,?)
+        VALUES (%s,%s)
     """,(id_nota, imagen_path))
 
     conn.commit()
@@ -23,7 +23,7 @@ def listar_pagos(id_nota):
 
     rows = conn.execute("""
         SELECT * FROM pagos
-        WHERE nota_id=?
+        WHERE nota_id=%s
         ORDER BY fecha DESC
     """,(id_nota,)).fetchall()
 
@@ -39,7 +39,7 @@ def ultimo_pago(id_nota):
 
     row = conn.execute("""
         SELECT * FROM pagos
-        WHERE nota_id=?
+        WHERE nota_id=%s
         ORDER BY fecha DESC
         LIMIT 1
     """,(id_nota,)).fetchone()
@@ -55,7 +55,7 @@ def eliminar_pago(id_pago):
     conn = get_conn()
 
     conn.execute(
-        "DELETE FROM pagos WHERE id=?",
+        "DELETE FROM pagos WHERE id=%s",
         (id_pago,)
     )
 

@@ -131,7 +131,531 @@ def cargar_contexto():
 
 from clientes import listar_clientes
 
+def abrir_panel_asignacion():
 
+    if not pedir_password():
+        return
+
+    from database.connection import get_conn
+    from empacadores import listar_empacadores_activos
+
+    conn = get_conn()
+
+    notas = conn.execute("""
+        SELECT 
+            n.id,
+            n.cliente_nombre,
+            n.pedido,
+            n.fecha_asignacion,
+            n.estado,
+            e.nombre AS empacador_actual,
+            c.telefono,
+
+            COALESCE(SUM(i.empacadas),0) AS empacadas,
+            COALESCE(SUM(i.cantidad),0) AS requeridas
+
+        FROM notas n
+        LEFT JOIN empacadores e ON e.id = n.empacador_id
+        LEFT JOIN clientes c ON c.id = n.cliente_id
+        LEFT JOIN items i ON i.nota_id = n.id
+
+        WHERE n.estado != 'ARCHIVADA'
+        AND (
+            n.estado NOT IN ('COMPLETA')
+            OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
+        )
+
+        GROUP BY n.id, e.nombre, c.telefono
+        ORDER BY n.fecha_asignacion DESC NULLS LAST
+
+
+
+
+   
+    """).fetchall()
+
+    conn.close()
+
+    win = ctk.CTkToplevel(root)
+    win.title("Asignar notas a empacador")
+    win.geometry("1200x800")
+    win.grab_set()
+
+    # ================= FILTRO AVANZADO =================
+    frame_filtro = ctk.CTkFrame(win, fg_color="transparent")
+    frame_filtro.pack(fill="x", padx=15, pady=10)
+    frame_stats = ctk.CTkFrame(win)
+    frame_stats.pack(fill="x", padx=20, pady=10)
+
+    total = len(notas)
+    sin_asignar = len([n for n in notas if not n["empacador_actual"]])
+    asignadas = total - sin_asignar
+
+    lbl_total = ctk.CTkLabel(frame_stats, font=("Segoe UI", 13, "bold"))
+    lbl_total.pack(side="left", padx=10)
+
+    lbl_sin_asignar = ctk.CTkLabel(frame_stats, font=("Segoe UI", 13, "bold"))
+    lbl_sin_asignar.pack(side="left", padx=10)
+
+    lbl_asignadas = ctk.CTkLabel(frame_stats, font=("Segoe UI", 13, "bold"))
+    lbl_asignadas.pack(side="left", padx=10)
+
+    def actualizar_stats(data):
+        total = len(data)
+        sin_asignar = len([n for n in data if not n["empacador_actual"]])
+        asignadas = total - sin_asignar
+
+        lbl_total.configure(text=f"📦 Total: {total}")
+        lbl_sin_asignar.configure(text=f"🟡 Sin asignar: {sin_asignar}")
+        lbl_asignadas.configure(text=f"🟢 Asignadas: {asignadas}")  
+    
+    def auto_refresh():
+        if not win.winfo_exists():
+            return
+
+        nuevas_notas = recargar_datos()
+
+        conn = get_conn()
+
+        for n in nuevas_notas:
+            if n["requeridas"] > 0:
+
+                if n["empacadas"] >= n["requeridas"]:
+                    conn.execute("""
+                        UPDATE notas
+                        SET estado='COMPLETA'
+                        WHERE id=%s AND estado!='COMPLETA'
+                    """, (n["id"],))
+
+                elif n["empacadas"] > 0:
+                    conn.execute("""
+                        UPDATE notas
+                        SET estado='EN_PROCESO'
+                        WHERE id=%s AND estado!='EN_PROCESO'
+                    """, (n["id"],))
+
+
+        conn.commit()
+        conn.close()
+
+        notas.clear()
+        notas.extend(nuevas_notas)
+
+        aplicar_filtros()
+        actualizar_stats(notas)
+
+        win.after(5000, auto_refresh)
+
+
+    actualizar_stats(notas)
+
+    solo_sin_asignar_var = tk.BooleanVar()
+
+    def aplicar_filtros(*args):
+        texto = filtro_texto.get().lower()
+        tipo = filtro_tipo.get()
+        solo_libres = solo_sin_asignar_var.get()
+
+        resultado = notas
+
+        # 🔎 FILTRO POR TEXTO
+        if texto:
+            if tipo == "cliente":
+                resultado = [
+                    n for n in resultado
+                    if texto in (n["cliente_nombre"] or "").lower()
+                ]
+
+            elif tipo == "pedido":
+                resultado = [
+                    n for n in resultado
+                    if texto in str(n["pedido"]).lower()
+                ]
+
+            elif tipo == "nota_id":
+                resultado = [
+                    n for n in resultado
+                    if texto in str(n["id"]).lower()
+                ]
+
+            elif tipo == "telefono":
+                resultado = [
+                    n for n in resultado
+                   if texto in str(n.get("telefono", "")).lower()
+                ]
+
+        # 📦 FILTRO SOLO SIN ASIGNAR
+        if solo_libres:
+            resultado = [
+                n for n in resultado
+                if not n["empacador_actual"]
+            ]
+
+        cargar_tabla(resultado)
+
+    chk_sin_asignar = ctk.CTkCheckBox(
+        win,
+        text="Mostrar solo notas sin empacador",
+        variable=solo_sin_asignar_var,
+        command=lambda: aplicar_filtros()
+    )
+    chk_sin_asignar.pack(anchor="w", padx=20, pady=(0, 5))
+
+
+    filtro_tipo = tk.StringVar(value="cliente")
+    
+    combo_filtro = ctk.CTkComboBox(
+        frame_filtro,
+        values=["cliente", "telefono", "pedido", "nota_id"],
+        variable=filtro_tipo,
+        width=150
+    )
+    combo_filtro.pack(side="left", padx=5)
+
+    filtro_texto = tk.StringVar()
+
+    entry = ctk.CTkEntry(
+        frame_filtro,
+        placeholder_text="Buscar...",
+        textvariable=filtro_texto
+    )
+    entry.pack(side="left", fill="x", expand=True, padx=5)
+
+    filtro_texto.trace_add("write", aplicar_filtros)
+    combo_filtro.configure(command=lambda _: aplicar_filtros())
+ 
+
+    # ================= TABLA =================
+    cols = ("ID", "Cliente", "Pedido", "Progreso", "Estado", "Empacador")
+
+
+
+    tabla = ttk.Treeview(
+        win,
+        columns=cols,
+        show="headings",
+        selectmode="extended"
+    )
+
+    for c in cols:
+        tabla.heading(c, text=c)
+        tabla.column(c, anchor="center")
+    # ================= CONTADOR SELECCIÓN =================
+    lbl_contador = ctk.CTkLabel(
+        win,
+        text="📦 0 notas seleccionadas",
+        font=("Segoe UI", 13, "bold")
+    )
+    lbl_contador.pack(pady=(0, 5))
+
+    tabla.pack(fill="both", expand=True, padx=15, pady=10)
+
+    # 🎨 COLORES
+    tabla.tag_configure("PAGADA", background="#FEF3C7")
+    tabla.tag_configure("EN_PROCESO", background="#DBEAFE")
+    tabla.tag_configure("INCOMPLETA", background="#FEE2E2")
+    tabla.tag_configure("COMPLETA", background="#DCFCE7")
+    tabla.tag_configure("SIN_ASIGNAR", background="#F3F4F6")
+
+   
+    def cargar_tabla(data):
+        tabla.delete(*tabla.get_children())
+
+        for n in data:
+
+            # calcular progreso
+            empacadas = n["empacadas"]
+            requeridas = n["requeridas"]
+
+
+            if requeridas > 0:
+                porcentaje = int((empacadas / requeridas) * 100)
+            else:
+                porcentaje = 0
+
+            progreso = f"{empacadas} / {requeridas} ({porcentaje}%)"
+
+            if porcentaje == 100:
+                tag_estado = "COMPLETA"
+            elif porcentaje > 0:
+                tag_estado = "EN_PROCESO"
+            elif not n["empacador_actual"]:
+                tag_estado = "SIN_ASIGNAR"            
+            else:
+                tag_estado = n["estado"]
+
+            tabla.insert(
+                "",
+                "end",
+                values=(
+                    n["id"],
+                    n["cliente_nombre"],
+                    n["pedido"],
+                    progreso,
+                    "COMPLETA" if porcentaje == 100 else
+                    "EN_PROCESO" if porcentaje > 0 else
+                    n["estado"],
+
+                    n["empacador_actual"] if n["empacador_actual"] else "Sin asignar"
+                ),
+                tags=(tag_estado,)
+            )
+
+    cargar_tabla(notas)
+   
+    def recargar_datos():
+        conn = get_conn()
+       
+        nuevas_notas = conn.execute("""
+            SELECT 
+                n.id,
+                n.cliente_nombre,
+                n.pedido,
+                n.fecha_asignacion,
+                n.estado,
+                e.nombre AS empacador_actual,
+                c.telefono,
+
+                COALESCE(SUM(i.empacadas),0) AS empacadas,
+                COALESCE(SUM(i.cantidad),0) AS requeridas
+
+            FROM notas n
+            LEFT JOIN empacadores e ON e.id = n.empacador_id
+            LEFT JOIN clientes c ON c.id = n.cliente_id
+            LEFT JOIN items i ON i.nota_id = n.id
+
+            WHERE n.estado != 'ARCHIVADA'
+            AND (
+                n.estado NOT IN ('COMPLETA')
+                OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
+            )
+
+            GROUP BY n.id, e.nombre, c.telefono
+            ORDER BY n.fecha_asignacion DESC NULLS LAST
+
+
+        """).fetchall()
+
+        conn.close()
+
+        return nuevas_notas
+
+        
+    def actualizar_contador(event=None):
+        seleccionadas = tabla.selection()
+        cantidad = len(seleccionadas)
+
+        if cantidad == 0:
+            texto = "📦 0 notas seleccionadas"
+        elif cantidad == 1:
+            texto = "📦 1 nota seleccionada"
+        else:
+            texto = f"📦 {cantidad} notas seleccionadas"
+
+        lbl_contador.configure(text=texto)
+
+    tabla.bind("<<TreeviewSelect>>", actualizar_contador)
+
+    # ================= FILTRO DINÁMICO =================
+
+
+
+    # ================= EMPACADORES =================
+    empacadores = listar_empacadores_activos()
+    nombres_emp = [e["nombre"] for e in empacadores]
+
+    combo = ctk.CTkComboBox(
+        win,
+        values=nombres_emp
+    )
+    combo.pack(pady=10)
+
+    if nombres_emp:
+        combo.set(nombres_emp[0])
+
+    # ================= ASIGNAR =================
+    def asignar():
+        seleccion = tabla.selection()
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona al menos una nota")
+            return
+
+        nombre_emp = combo.get()
+
+        emp = next(
+            (e for e in empacadores if e["nombre"] == nombre_emp),
+            None
+        )
+
+        if not emp:
+            messagebox.showerror("Error", "Empacador inválido")
+            return
+
+        conn = get_conn()
+
+        for item in seleccion:
+            valores = tabla.item(item)["values"]
+            nota_id = valores[0]
+
+            conn.execute("""
+                UPDATE notas
+                SET empacador_id=%s,
+                    fecha_asignacion=NOW(),
+                    estado='EN_PROCESO'
+                WHERE id=%s
+            """, (emp["id"], nota_id))
+
+        conn.commit()
+        conn.close()
+
+        # 🔄 RECARGAR
+        nuevas_notas = recargar_datos()
+        notas.clear()
+        notas.extend(nuevas_notas)
+
+        aplicar_filtros()
+        actualizar_stats(notas)
+
+        tabla.selection_remove(*tabla.selection())
+        actualizar_contador()
+
+        mostrar_toast("✅ Notas asignadas correctamente")
+        
+    def mostrar_toast(mensaje, color="#16A34A"):
+
+        toast = ctk.CTkToplevel(root)
+        toast.overrideredirect(True)
+        toast.attributes("-topmost", True)
+
+        ancho = 320
+        alto = 60
+
+        x = root.winfo_x() + root.winfo_width() - ancho - 20
+        y = root.winfo_y() + 40
+
+        toast.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+        frame = ctk.CTkFrame(
+            toast,
+            fg_color=color,
+            corner_radius=15
+        )
+        frame.pack(fill="both", expand=True)
+
+        ctk.CTkLabel(
+            frame,
+            text=mensaje,
+            font=("Segoe UI", 13, "bold"),
+            text_color="white"
+        ).pack(expand=True)
+
+        toast.after(2500, toast.destroy)
+
+        
+
+
+    def desasignar():
+        seleccion = tabla.selection()
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona al menos una nota")
+            return
+
+        if not messagebox.askyesno(
+            "Confirmar",
+            "¿Desasignar empacador de las notas seleccionadas?"
+        ):
+            return
+
+        conn = get_conn()
+
+        for item in seleccion:
+            valores = tabla.item(item)["values"]
+            nota_id = valores[0]
+
+            conn.execute("""
+                UPDATE notas
+                SET empacador_id = NULL
+                WHERE id = %s
+            """,(nota_id,))
+
+        conn.commit()
+        conn.close()
+
+        # 🔄 RECARGAR
+        nuevas_notas = recargar_datos()
+        notas.clear()
+        notas.extend(nuevas_notas)
+
+        aplicar_filtros()
+        actualizar_stats(notas)
+
+        tabla.selection_remove(*tabla.selection())
+        actualizar_contador()
+    
+        mostrar_toast("🔄 Notas desasignadas", "#DC2626")
+
+
+    # ================= BOTONES ACCIÓN =================
+    frame_botones = ctk.CTkFrame(win, fg_color="transparent")
+    frame_botones.pack(fill="x", padx=20, pady=15)
+
+    frame_botones.grid_columnconfigure((0,1,2,3), weight=1)
+    btn_asignar = ctk.CTkButton(
+        frame_botones,
+        text="🚀 Asignar",
+        height=45,
+        corner_radius=12,
+        fg_color="#16A34A",
+        hover_color="#15803D",
+        font=("Segoe UI", 14, "bold"),
+        command=asignar
+    )
+    btn_asignar.grid(row=0, column=0, padx=10, sticky="ew")
+    btn_desasignar = ctk.CTkButton(
+        frame_botones,
+        text="🔄 Desasignar",
+        height=45,
+        corner_radius=12,
+        fg_color="#DC2626",
+        hover_color="#B91C1C",
+        font=("Segoe UI", 14, "bold"),
+        command=desasignar
+    )
+    btn_desasignar.grid(row=0, column=1, padx=10, sticky="ew")
+
+    def recargar_manual():
+        nuevas_notas = recargar_datos()
+        notas.clear()
+        notas.extend(nuevas_notas)
+        aplicar_filtros()
+        actualizar_stats(notas)
+
+    btn_recargar = ctk.CTkButton(
+        frame_botones,
+        text="🔄 Actualizar",
+        height=45,
+        corner_radius=12,
+        fg_color="#2563EB",
+        hover_color="#1D4ED8",
+        font=("Segoe UI", 14, "bold"),
+        command=recargar_manual
+    )
+    btn_recargar.grid(row=0, column=2, padx=10, sticky="ew")
+    btn_cerrar = ctk.CTkButton(
+        frame_botones,
+        text="✖ Cerrar",
+        height=45,
+        corner_radius=12,
+        fg_color="#6B7280",
+        hover_color="#4B5563",
+        font=("Segoe UI", 14, "bold"),
+        command=win.destroy
+    )
+    btn_cerrar.grid(row=0, column=3, padx=10, sticky="ew")
+
+    auto_refresh()
+
+  
 
 
 # =====================================================
@@ -921,6 +1445,113 @@ def nuevo_pedido():
 
     tk.Button(win, text="Guardar", command=guardar).pack(pady=10)
 
+def abrir_dashboard():
+
+    from admin_metricas import obtener_metricas_empacadores
+
+    datos = obtener_metricas_empacadores()
+
+    win = ctk.CTkToplevel(root)
+    win.title("Dashboard de Empacadores")
+    win.geometry("900x500")
+
+    cols = (
+        "Empacador",
+        "Total",
+        "Completas",
+        "Incompletas",
+        "Errores",
+        "Tiempo Prom (min)"
+    )
+
+    tabla = ttk.Treeview(
+        win,
+        columns=cols,
+        show="headings"
+    )
+
+    for c in cols:
+        tabla.heading(c, text=c)
+        tabla.column(c, anchor="center")
+
+    tabla.pack(fill="both", expand=True, padx=20, pady=20)
+
+    for row in datos:
+        tabla.insert(
+            "",
+            "end",
+            values=(
+                row["nombre"],
+                row["total_notas"],
+                row["completas"],
+                row["incompletas"],
+                row["errores"],
+                round(row["tiempo_promedio_min"] or 0, 1)
+            )
+        )
+
+def abrir_panel_errores():
+
+    from admin_errores import obtener_errores
+
+    datos = obtener_errores()
+
+    win = ctk.CTkToplevel(root)
+    win.title("Errores de Escaneo")
+    win.geometry("1000x500")
+
+    cols = ("Fecha", "Empacador", "Nota", "Código", "Motivo")
+
+    tabla = ttk.Treeview(
+        win,
+        columns=cols,
+        show="headings"
+    )
+
+    for c in cols:
+        tabla.heading(c, text=c)
+        tabla.column(c, anchor="center")
+
+    tabla.pack(fill="both", expand=True, padx=20, pady=20)
+
+    for row in datos:
+        tabla.insert(
+            "",
+            "end",
+            values=(
+                row["fecha"],
+                row["nombre"],
+                row["nota_id"],
+                row["codigo"],
+                row["motivo"]
+            )
+        )
+        
+def obtener_ranking():
+
+    from database.connection import get_conn
+
+    conn = get_conn()
+
+    rows = conn.execute("""
+        SELECT 
+            e.nombre,
+            COUNT(n.id) AS completadas
+        FROM empacadores e
+        JOIN notas n 
+            ON n.empacador_id = e.id
+        WHERE n.estado = 'COMPLETA'
+        GROUP BY e.nombre
+        ORDER BY completadas DESC
+        LIMIT 3
+    """).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+
 # ================= WHATSAPP =================
 frame_wa = tk.LabelFrame(card_whatsapp, text="WhatsApp")
 frame_wa.pack(fill="both", expand=True)
@@ -1258,6 +1889,11 @@ card_pedido.bind("<Button-1>", lambda e: configurar_pedido())
 lbl_pedido_valor.bind("<Button-1>", lambda e: configurar_pedido())
 
 
+frame_admin = ctk.CTkFrame(
+    frame_top_btns,
+    fg_color="transparent"
+)
+frame_admin.pack(side="left", padx=10)
 
 
 
@@ -1291,102 +1927,44 @@ btn_ver = ctk.CTkButton(
 btn_ver.pack(fill="x", padx=20, pady=(0, 20))
 
 
-# ================= FUNCIONES CARRITO =================
-def pedir_password():
-    pwd = simpledialog.askstring(
-        "Autorización",
-        "Ingresa la contraseña:",
-        show="*"
-    )
-    return pwd == PASSWORD
+icon_asignar_path = os.path.join(BASE_DIR, "asignar.png")
 
-def eliminar_producto_carrito():
-    seleccion = tabla_carrito.selection()
+icon_asignar = ctk.CTkImage(
+    Image.open(icon_asignar_path),
+    size=(36, 36)
+)
 
-    if not seleccion:
-        messagebox.showinfo("Selecciona", "Selecciona productos primero")
-        return
+ctk.CTkButton(
+    frame_total,
+    text="",
+    image=icon_asignar,
+    width=55,
+    height=55,
+    fg_color="#F3F4F6",
+    hover_color="#E5E7EB",
+    corner_radius=15,
+    command=abrir_panel_asignacion
+).pack(pady=(0, 20))
 
-    if not pedir_password():
-        return
+ctk.CTkButton(
+    frame_admin,
+    text="📊 Dashboard",
+    height=36,
+    corner_radius=12,
+    fg_color="#7C3AED",
+    hover_color="#6D28D9",
+    command=abrir_dashboard
+).pack(side="left", padx=5)
 
-    # 🔥 obtener códigos como STRING
-    codigos = []
-    for item in seleccion:
-        valores = tabla_carrito.item(item)["values"]
-        codigos.append(str(valores[2]))
-
-    global carrito
-
-    carrito = [
-        p for p in carrito
-        if str(p["codigo"]) not in codigos
-    ]
-
-    refrescar_carrito()
-
-
-    
-
-def editar_cantidad_multiple():
-    seleccion = tabla_carrito.selection()
-
-    if not seleccion:
-        messagebox.showinfo("Selecciona", "Selecciona productos primero")
-        return
-
-    nueva = simpledialog.askinteger(
-        "Cantidad",
-        "Nueva cantidad para todos:",
-        minvalue=1
-    )
-
-    if nueva is None:
-        return
-
-    # 🔥 FORZAR STRING
-    codigos = []
-    for item in seleccion:
-        valores = tabla_carrito.item(item)["values"]
-        codigos.append(str(valores[2]))
-
-    for p in carrito:
-        if str(p["codigo"]) in codigos:
-            p["cantidad"] = nueva
-
-    refrescar_carrito()
-
-
-
-def editar_precio_multiple():
-    seleccion = tabla_carrito.selection()
-
-    if not seleccion:
-        messagebox.showinfo("Selecciona", "Selecciona productos primero")
-        return
-
-    if not pedir_password():
-        return
-
-    nuevo = simpledialog.askfloat(
-        "Precio",
-        "Nuevo precio para todos:"
-    )
-
-    if nuevo is None:
-        return
-
-    codigos = []
-    for item in seleccion:
-        valores = tabla_carrito.item(item)["values"]
-        codigos.append(str(valores[2]))
-
-    for p in carrito:
-        if str(p["codigo"]) in codigos:
-            p["precio"] = nuevo
-
-    refrescar_carrito()
-
+ctk.CTkButton(
+    frame_admin,
+    text="⚠ Errores",
+    height=36,
+    corner_radius=12,
+    fg_color="#EF4444",
+    hover_color="#DC2626",
+    command=abrir_panel_errores
+).pack(side="left", padx=5)
 
 
 
@@ -1445,7 +2023,6 @@ def refrescar_carrito():
 
     actualizar_total_con_envio()
 
-
 # ================= INICIO =================
 
 
@@ -1491,6 +2068,8 @@ def main():
         agregar_al_carrito,
         refrescar_carrito
     )
+
+
 
     root.mainloop()
 
