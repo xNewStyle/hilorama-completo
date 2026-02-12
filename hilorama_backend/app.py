@@ -647,30 +647,25 @@ def generar_link_paqueteria(paqueteria, guia):
 def seguimiento(nota_id):
 
     conn = get_conn()
-    cur = conn.cursor()
 
-    cur.execute("""
+    row = conn.execute("""
         SELECT id, cliente_nombre, estado, paqueteria, guia
         FROM notas
         WHERE id = %s
-    """, (nota_id,))
-
-    row = cur.fetchone()
+    """, (nota_id,)).fetchone()
 
     if not row:
-        cur.close()
         conn.close()
         return "Nota no encontrada", 404
 
     nota = {
-        "id": row[0],
-        "cliente_nombre": row[1],
-        "estado": row[2],
-        "paqueteria": row[3],
-        "guia": row[4],
+        "id": row["id"],
+        "cliente_nombre": row["cliente_nombre"],
+        "estado": row["estado"],
+        "paqueteria": row["paqueteria"],
+        "guia": row["guia"],
     }
 
-    cur.close()
     conn.close()
 
     progreso_map = {
