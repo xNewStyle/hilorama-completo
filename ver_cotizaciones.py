@@ -17,17 +17,67 @@ from envios_config import calcular_envio, cargar_envios
 from ventas_logic import calcular_volumetrico_total
 from generar_pdf_venta_premium import generar_pdf_venta_premium
 import customtkinter as ctk
+from parser_whatsapp import extraer_pedidos
+from core.almacen_api import obtener_todos_los_productos, obtener_producto_por_codigo, obtener_precio_venta
 
 
 PASSWORD = "12587987521"
-def pedir_password(win):
-    pwd = simpledialog.askstring(
-        "Autorización",
-        "Ingresa la contraseña:",
-        parent=win,
-        show="*"
+def pedir_password(parent=None):
+    if parent is None:
+        parent = root
+    resultado = {"ok": False}
+
+    modal = ctk.CTkToplevel(parent)
+    modal.title("Autorización")
+    modal.geometry("350x200")
+    modal.grab_set()
+    modal.resizable(False, False)
+
+    modal.configure(fg_color="#F3F4F6")
+
+    frame = ctk.CTkFrame(modal, corner_radius=15)
+    frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+    ctk.CTkLabel(
+        frame,
+        text="🔐 Autorización requerida",
+        font=("Segoe UI", 15, "bold")
+    ).pack(pady=(10, 5))
+
+    pwd_var = tk.StringVar()
+
+    entry = ctk.CTkEntry(
+        frame,
+        textvariable=pwd_var,
+        show="•",
+        placeholder_text="Ingresa contraseña",
+        height=35
     )
-    return pwd == PASSWORD
+    entry.pack(fill="x", padx=10, pady=10)
+    entry.focus()
+
+    def confirmar():
+        if pwd_var.get() == PASSWORD:
+            resultado["ok"] = True
+            modal.destroy()
+        else:
+            messagebox.showerror(
+                "Error",
+                "Contraseña incorrecta",
+                parent=modal
+            )
+
+    ctk.CTkButton(
+        frame,
+        text="Confirmar",
+        fg_color="#1976D2",
+        hover_color="#1565C0",
+        command=confirmar
+    ).pack(pady=10)
+
+    modal.wait_window()
+
+    return resultado["ok"]
 
 def eliminar_venta_desde_lista(tree, win):
 
@@ -1094,6 +1144,99 @@ def abrir_visor(root):
         # =====================================================
         frame = ctk.CTkFrame(ed)
         frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # ==========================
+        # 🔵 PARSER WHATSAPP
+        # ==========================
+
+        frame_parser = ctk.CTkFrame(frame)
+        frame_parser.pack(fill="x", pady=(0,10))
+
+        texto_parser = tk.StringVar()
+
+        entry_parser = ctk.CTkEntry(
+            frame_parser,
+            textvariable=texto_parser,
+            placeholder_text="Pegar pedido aquí...",
+            height=40
+        ) 
+        entry_parser.pack(side="left", fill="x", expand=True, padx=(0,8))
+
+        def agregar_producto():
+            texto = texto_parser.get().strip()
+            if not texto:
+                return
+
+            productos = obtener_todos_los_productos()
+            resultado = extraer_pedidos(texto, productos)
+
+            if resultado["errores"]:
+                messagebox.showerror(
+                    "Error",
+                    f"No existen: {', '.join(resultado['errores'])}",
+                    parent=ed
+                )
+                return
+
+            for p in resultado["pedidos"]:
+
+                prod = obtener_producto_por_codigo(p["codigo"])
+                if not prod:
+                    messagebox.showerror(
+                        "Error",
+                        f"No existe el producto {p['codigo']}",
+                        parent=ed
+                    )
+                    continue
+
+                precio = obtener_precio_venta(prod["marca"])
+                if not precio:
+                    messagebox.showerror(
+                        "Error",
+                        f"No hay precio configurado para la marca {prod['marca']}",
+                        parent=ed
+                    )
+                    continue
+
+                cantidad = p["cantidad"]
+                subtotal = cantidad * precio
+ 
+                # 🔥 Si ya existe en tabla → sumar cantidad
+                existe = None
+                for item in tree_ed.get_children():
+                    vals = tree_ed.item(item)["values"]
+                    if str(vals[0]) == str(p["codigo"]):
+                        existe = item
+                        break
+
+                if existe:
+                    vals = list(tree_ed.item(existe)["values"])
+                    nueva_cantidad = int(vals[1]) + cantidad
+                    nuevo_subtotal = nueva_cantidad * float(vals[2])
+
+                    tree_ed.item(existe, values=(
+                        vals[0],
+                        nueva_cantidad,
+                        vals[2],
+                        nuevo_subtotal
+                    ))
+                else:
+                    tree_ed.insert("", "end", values=(
+                        p["codigo"],
+                        cantidad,
+                        precio,
+                        subtotal
+                    ))
+
+            texto_parser.set("")
+            recalcular()
+
+
+        ctk.CTkButton(
+            frame_parser,
+            text="+ Agregar",
+            width=110,
+           command=agregar_producto
+        ).pack(side="right")
 
         cols = ("Código", "Cantidad", "Precio", "Subtotal")
 
@@ -1224,22 +1367,72 @@ def abrir_visor(root):
         # 🔵 GUARDAR CAMBIOS
         # =====================================================
         def guardar():
+
+            # 🔵 1. Guardar estado original
+            originales = {
+                item["codigo"]: item["cantidad"]
+                for item in nota["items"]
+            }
+
+            # 🔵 2. Construir nuevos items
             nuevos = []
+            actuales = {}
 
             for i in tree_ed.get_children():
-                c, q, p, _ = tree_ed.item(i, "values")
+                codigo, cantidad, precio, _ = tree_ed.item(i, "values")
+
+                cantidad = int(cantidad)
+
                 nuevos.append({
-                    "codigo": c,
-                    "cantidad": int(q),
-                    "precio": float(p)
+                    "codigo": codigo,
+                    "cantidad": cantidad,
+                    "precio": float(precio)
                 })
 
-            nota["items"] = nuevos
+                actuales[codigo] = cantidad
 
+            # 🔵 3. Comparar diferencias
+            todos_codigos = set(originales.keys()) | set(actuales.keys())
+
+            for codigo in todos_codigos:
+
+                cantidad_original = originales.get(codigo, 0)
+                cantidad_nueva = actuales.get(codigo, 0)
+
+                diferencia = cantidad_nueva - cantidad_original
+
+                if diferencia == 0:
+                    continue
+
+                prod = obtener_producto_por_codigo(codigo)
+                if not prod:
+                    continue
+
+                # 🔴 AUMENTÓ → descontar
+                if diferencia > 0:
+                    descontar_stock(
+                        prod["marca"],
+                        prod["hilo"],
+                        prod["codigo"],
+                        diferencia
+                    )
+
+                # 🟢 BAJÓ → devolver
+                if diferencia < 0:
+                    descontar_stock(
+                        prod["marca"],
+                        prod["hilo"],
+                        prod["codigo"],
+                        diferencia   # negativo = devuelve
+                    )
+
+            # 🔵 4. Guardar cambios en BD
+            nota["items"] = nuevos
             guardar_nota_actualizada(nota)
 
             ed.destroy()
             cargar_notas()
+
 
 
         # =====================================================
@@ -1335,6 +1528,99 @@ def editar_cotizacion(win, tree):
         text="Productos",
         font=("Segoe UI", 18, "bold")
     ).pack(anchor="w", padx=20, pady=(15, 5))
+
+    # ================= BUSCADOR PRODUCTOS =================
+    frame_buscar = ctk.CTkFrame(card_tabla, fg_color="transparent")
+    frame_buscar.pack(fill="x", padx=20, pady=(0, 10))
+
+    buscar_codigo_var = tk.StringVar()
+
+    entry_buscar = ctk.CTkEntry(
+        frame_buscar,
+        textvariable=buscar_codigo_var,
+        placeholder_text="Código producto...",
+        height=36
+    )
+    entry_buscar.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+
+    def agregar_producto():
+        texto = buscar_codigo_var.get().strip()
+
+        if not texto:
+            return
+
+        # 🔥 obtener todos los productos del sistema
+        from core.almacen_api import obtener_todos_los_productos
+        productos = obtener_todos_los_productos()
+
+        resultado = extraer_pedidos(texto, productos)
+ 
+        if resultado["errores"]:
+            messagebox.showerror(
+                "Error",
+                f"No existe el producto {resultado['errores'][0]}",
+                parent=ed
+            )
+            return
+
+        for item in resultado["pedidos"]:
+            codigo = item["codigo"]
+            cantidad = item["cantidad"]
+
+            prod = next((p for p in productos if str(p["codigo"]).strip() == codigo), None)
+
+            if not prod:
+                continue
+
+            # verificar si ya existe en tabla
+            existe = False
+
+            for i in tree_ed.get_children():
+                vals = tree_ed.item(i, "values")
+
+                if str(vals[0]) == codigo:
+                    nueva_cant = int(vals[1]) + cantidad
+                    precio = float(vals[2])
+
+                    tree_ed.item(i, values=(
+                        codigo,
+                        nueva_cant,
+                        precio,
+                        nueva_cant * precio
+                    ))
+
+                    existe = True
+                    break
+
+            if not existe:
+                precio = prod.get("precio", 0)
+
+                tree_ed.insert(
+                    "",
+                    "end",
+                    values=(
+                        codigo,
+                        cantidad,
+                        precio,
+                        cantidad * precio
+                    )
+                )
+
+        recalcular_total()
+        buscar_codigo_var.set("")
+
+
+
+    ctk.CTkButton(
+        frame_buscar,
+        text="➕ Agregar",
+        width=120,
+        command=agregar_producto
+    ).pack(side="right")
+
+    entry_buscar.bind("<Return>", lambda e: agregar_producto())
+
 
 
     frame_tabla = tk.Frame(card_tabla)
@@ -1936,13 +2222,14 @@ def seleccionar_envio(root, volumetrico):
             return
 
         resultado.update({
-            "paqueteria": "MANUAL",
-            "precio": round(precio, 2),
-            "volumetrico": 0,
-            "manual": True
+            "paqueteria": paq_var.get(),   # ✅ mantener paquetería elegida
+            "precio": round(precio, 2),    # ✅ solo cambiar precio
+            "volumetrico": volumetrico,
+            "manual": True                 # opcional para control interno
         })
 
         win.destroy()
+
 
 
     ctk.CTkButton(

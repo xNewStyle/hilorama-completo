@@ -6,6 +6,19 @@ STOCK_MINIMO = 50
 
 # ================= CONSULTAS =================
 
+def obtener_todos_los_productos():
+    conn = get_conn()
+
+    productos = conn.execute("""
+        SELECT codigo, marca, hilo
+        FROM productos
+    """).fetchall()
+
+    conn.close()
+
+    return productos
+
+
 def obtener_marcas():
     conn = get_conn()
     rows = conn.execute(

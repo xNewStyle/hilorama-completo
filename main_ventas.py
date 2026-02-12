@@ -28,6 +28,7 @@ import calendar
 from datetime import datetime
 from pedido_estado import guardar_pedido
 from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido
+
 # ================= CONFIG =================
 PASSWORD = "12587987521"
 
@@ -594,7 +595,7 @@ def abrir_panel_asignacion():
     
         mostrar_toast("🔄 Notas desasignadas", "#DC2626")
 
-
+    
     # ================= BOTONES ACCIÓN =================
     frame_botones = ctk.CTkFrame(win, fg_color="transparent")
     frame_botones.pack(fill="x", padx=20, pady=15)
@@ -656,6 +657,230 @@ def abrir_panel_asignacion():
     auto_refresh()
 
   
+def abrir_panel_envios():
+
+    if not pedir_password():
+        return
+
+    from database.connection import get_conn
+
+    conn = get_conn()
+    estado_filtro = tk.StringVar(value="COMPLETAS")
+
+
+
+    conn.close()
+
+    win = ctk.CTkToplevel(root)
+    win.title("Gestión de Envíos")
+    win.geometry("1200x750")
+    win.grab_set()
+
+
+    def cargar_datos():
+        conn = get_conn()
+
+        estado = estado_filtro.get()
+
+        where_extra = ""
+
+        if estado == "COMPLETAS":
+            where_extra = "WHERE n.estado = 'COMPLETA'"
+        elif estado == "EN_PROCESO":
+            where_extra = "WHERE n.estado = 'EN_PROCESO'"
+        elif estado == "INCOMPLETAS":
+            where_extra = "WHERE n.estado = 'INCOMPLETA'"
+        elif estado == "TODAS_PAGADAS":
+            where_extra = "WHERE n.estado = 'PAGADA'"
+        else:
+            where_extra = ""
+
+        notas_db = conn.execute(f"""
+            SELECT 
+                n.id,
+                n.cliente_nombre,
+                n.pedido,
+                n.estado,
+                n.paqueteria,
+                n.guia,
+                n.fecha,
+                c.telefono
+            FROM notas n
+            LEFT JOIN clientes c ON c.id = n.cliente_id
+            {where_extra}
+            ORDER BY n.fecha DESC
+        """).fetchall()
+
+        conn.close()
+
+        return notas_db
+
+    # ================= FILTROS =================
+    frame_filtro = ctk.CTkFrame(win)
+    frame_filtro.pack(fill="x", padx=20, pady=15)
+
+    filtro_tipo = tk.StringVar(value="nota")
+
+    combo_filtro = ctk.CTkComboBox(
+        frame_filtro,
+        values=["nota", "cliente", "telefono", "pedido"],
+        variable=filtro_tipo,
+        width=150
+    )
+    combo_filtro.pack(side="left", padx=5)
+    combo_estado = ctk.CTkComboBox(
+        win,
+        values=["COMPLETAS"],
+        variable=estado_filtro,
+        width=180
+    )
+    combo_estado.pack(pady=5)
+    def desbloquear_avanzado():
+        if not pedir_password():
+            return
+    
+        combo_estado.configure(
+            values=["COMPLETAS", "EN_PROCESO", "INCOMPLETAS", "TODAS_PAGADAS"]
+        )
+
+    ctk.CTkButton(
+        win,
+        text="🔐 Ver estados avanzados",
+        command=desbloquear_avanzado
+    ).pack(pady=5)
+    def cambiar_estado(_=None):
+        nuevas = cargar_datos()
+        cargar_tabla(nuevas)
+
+    combo_estado.configure(command=cambiar_estado)
+
+
+    filtro_texto = tk.StringVar()
+
+    entry_buscar = ctk.CTkEntry(
+        frame_filtro,
+        textvariable=filtro_texto,
+        placeholder_text="Buscar..."
+    )
+    entry_buscar.pack(side="left", fill="x", expand=True, padx=5)
+
+    # ================= TABLA =================
+    cols = (
+        "ID",
+        "Cliente",
+        "Pedido",
+        "Teléfono",
+        "Paquetería",
+        "Guía"
+    )
+
+    tabla = ttk.Treeview(
+        win,
+        columns=cols,
+        show="headings",
+        selectmode="extended"
+    )
+
+    for c in cols:
+        tabla.heading(c, text=c)
+        tabla.column(c, anchor="center")
+
+    tabla.pack(fill="both", expand=True, padx=20, pady=15)
+
+    tabla.tag_configure("SIN_GUIA", background="#F3F4F6")
+    tabla.tag_configure("CON_GUIA", background="#DBEAFE")
+
+    def cargar_tabla(data):
+        tabla.delete(*tabla.get_children())
+
+        for n in data:
+            tag = "CON_GUIA" if n["guia"] else "SIN_GUIA"
+
+            tabla.insert(
+                "",
+                "end",
+                values=(
+                    n["id"],
+                    n["cliente_nombre"],
+                    n["pedido"],
+                    n["telefono"],
+                    n["paqueteria"] or "No definida",
+                    n["guia"] or "Sin guía"
+                ),
+                tags=(tag,)
+            )
+
+
+    notas = cargar_datos()
+    cargar_tabla(notas)
+     # ================= FILTRO DINÁMICO =================
+    def aplicar_filtro(*args):
+        texto = filtro_texto.get().lower()
+        tipo = filtro_tipo.get()
+
+        datos_actuales = cargar_datos()
+        resultado = datos_actuales
+
+        if texto:
+            if tipo == "cliente":
+                resultado = [n for n in resultado if texto in (n["cliente_nombre"] or "").lower()]
+            elif tipo == "nota":
+                resultado = [n for n in resultado if texto in str(n["id"]).lower()]
+            elif tipo == "pedido":
+                resultado = [n for n in resultado if texto in str(n["pedido"]).lower()]
+            elif tipo == "telefono":
+                resultado = [n for n in resultado if texto in str(n["telefono"] or "").lower()]
+
+        cargar_tabla(resultado)
+
+    filtro_texto.trace_add("write", aplicar_filtro)
+    combo_filtro.configure(command=lambda _: aplicar_filtro())
+
+
+    # ================= ASIGNAR GUÍA =================
+    def asignar_guia():
+        seleccion = tabla.selection()
+
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona una nota")
+            return
+
+        item = tabla.item(seleccion[0])["values"]
+        nota_id = item[0]
+
+        guia = simpledialog.askstring(
+            "Asignar guía",
+            "Número de guía:"
+        )
+
+        if not guia:
+            return
+
+        conn = get_conn()
+
+        conn.execute("""
+            UPDATE notas
+            SET guia=%s
+            WHERE id=%s
+        """, (guia, nota_id))
+
+        conn.commit()
+        conn.close()
+
+        messagebox.showinfo("OK", "Guía asignada")
+
+        win.destroy()
+        abrir_panel_envios()
+
+    ctk.CTkButton(
+        win,
+        text="➕ Asignar guía",
+        height=45,
+        fg_color="#16A34A",
+        hover_color="#15803D",
+        font=("Segoe UI", 14, "bold"),
+        command=asignar_guia
+    ).pack(pady=15)
 
 
 # =====================================================
@@ -679,54 +904,131 @@ def clientes_completos(clientes):
 
 
 
-def cambiar_pedido():
-    from pedidos import listar_pedidos
+def elegir_pedido():
 
-    if not pedir_password():
-        return
-
-    pedidos = listar_pedidos()
-
-    if not pedidos:
-        messagebox.showinfo("Vacío", "No hay pedidos guardados")
-        return
+    from database.connection import get_conn
 
     win = ctk.CTkToplevel(root)
-    win.title("Cambiar pedido")
-    win.geometry("360x400")
+    win.title("Seleccionar pedido")
+    win.geometry("800x500")
     win.grab_set()
 
-    lista = tk.Listbox(win, font=("Segoe UI", 12))
-    lista.pack(fill="both", expand=True, padx=15, pady=15)
+    # ================= FILTROS =================
+    frame_filtros = ctk.CTkFrame(win)
+    frame_filtros.pack(fill="x", padx=20, pady=15)
 
-    for p in pedidos:
-        texto = f"Pedido #{p['numero']}   {p['desde']} → {p['hasta']}"
-        lista.insert("end", texto)
+    filtro_numero = tk.StringVar()
+    filtro_fecha = tk.StringVar()
 
-    def seleccionar():
-        global pedido_actual, fecha_desde, fecha_hasta
+    entry_num = ctk.CTkEntry(
+        frame_filtros,
+        textvariable=filtro_numero,
+        placeholder_text="Número de pedido..."
+    )
+    entry_num.pack(side="left", fill="x", expand=True, padx=5)
 
-        if not lista.curselection():
+    entry_fecha = ctk.CTkEntry(
+        frame_filtros,
+        textvariable=filtro_fecha,
+        placeholder_text="Fecha (YYYY-MM-DD)..."
+    )
+    entry_fecha.pack(side="left", fill="x", expand=True, padx=5)
+
+    # ================= TABLA =================
+    cols = ("Pedido", "Desde", "Hasta")
+
+
+    tabla = ttk.Treeview(win, columns=cols, show="headings")
+
+    for c in cols:
+        tabla.heading(c, text=c)
+        tabla.column(c, anchor="center")
+
+    tabla.pack(fill="both", expand=True, padx=20, pady=10)
+
+    def cargar_datos():
+        conn = get_conn()
+
+        pedidos = conn.execute("""
+            SELECT numero, desde, hasta
+            FROM pedidos
+            ORDER BY desde DESC
+        """).fetchall()
+
+
+        conn.close()
+        return pedidos
+
+    pedidos_db = cargar_datos()
+
+    def cargar_tabla(data):
+        tabla.delete(*tabla.get_children())
+
+        for p in data:
+            tabla.insert(
+                "",
+                "end",
+                values=(
+                    p["numero"],
+                    p["desde"],
+                    p["hasta"]
+                )
+            )
+
+
+
+    cargar_tabla(pedidos_db)
+
+    # ================= FILTRO DINÁMICO =================
+    def aplicar_filtro(*args):
+
+        num = filtro_numero.get().lower()
+        fecha = filtro_fecha.get().lower()
+
+        resultado = pedidos_db
+
+        if num:
+            resultado = [
+                p for p in resultado
+                if num in str(p["numero"]).lower()
+            ]
+
+        if fecha:
+            resultado = [
+                p for p in resultado
+                if fecha in str(p["desde"]).lower()
+                or fecha in str(p["hasta"]).lower()
+            ]
+
+        cargar_tabla(resultado)
+
+
+    filtro_numero.trace_add("write", aplicar_filtro)
+    filtro_fecha.trace_add("write", aplicar_filtro)
+
+    # ================= SELECCIONAR =================
+    def confirmar():
+        sel = tabla.focus()
+        if not sel:
             return
 
-        idx = lista.curselection()[0]
-        pedido = pedidos[idx]
+        valores = tabla.item(sel)["values"]
 
-        pedido_actual = pedido["numero"]
-        fecha_desde = pedido["desde"]
-        fecha_hasta = pedido["hasta"]
+        numero_pedido = valores[0]
 
-        lbl_pedido_valor.configure(
-            text=f"Pedido #{pedido_actual}\n{fecha_desde} → {fecha_hasta}"
-        )
+        # 👉 aquí actualizas tu variable global o label
+        pedido_actual.set(numero_pedido)
 
         win.destroy()
 
     ctk.CTkButton(
         win,
-        text="Usar este pedido",
-        command=seleccionar
+        text="Seleccionar pedido",
+        height=40,
+        fg_color="#1976D2",
+        command=confirmar
     ).pack(pady=10)
+
 
 
 
@@ -1314,13 +1616,63 @@ def configurar_envio_carrito():
 
     actualizar_total_con_envio()
 
-def pedir_password():
-    pwd = simpledialog.askstring(
-        "Autorización",
-        "Ingresa la contraseña:",
-        show="*"
+def pedir_password(parent=None):
+    if parent is None:
+        parent = root
+    resultado = {"ok": False}
+
+    modal = ctk.CTkToplevel(parent)
+    modal.title("Autorización")
+    modal.geometry("350x200")
+    modal.grab_set()
+    modal.resizable(False, False)
+
+    modal.configure(fg_color="#F3F4F6")
+
+    frame = ctk.CTkFrame(modal, corner_radius=15)
+    frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+    ctk.CTkLabel(
+        frame,
+        text="🔐 Autorización requerida",
+        font=("Segoe UI", 15, "bold")
+    ).pack(pady=(10, 5))
+
+    pwd_var = tk.StringVar()
+
+    entry = ctk.CTkEntry(
+        frame,
+        textvariable=pwd_var,
+        show="•",
+        placeholder_text="Ingresa contraseña",
+        height=35
     )
-    return pwd == PASSWORD
+    entry.pack(fill="x", padx=10, pady=10)
+    entry.focus()
+
+    def confirmar():
+        if pwd_var.get() == PASSWORD:
+            resultado["ok"] = True
+            modal.destroy()
+        else:
+            messagebox.showerror(
+                "Error",
+                "Contraseña incorrecta",
+                parent=modal
+            )
+
+    ctk.CTkButton(
+        frame,
+        text="Confirmar",
+        fg_color="#1976D2",
+        hover_color="#1565C0",
+        command=confirmar
+    ).pack(pady=10)
+
+    modal.wait_window()
+
+    return resultado["ok"]
+
 
 def eliminar_producto_carrito():
     seleccion = tabla_carrito.selection()
@@ -1880,7 +2232,7 @@ ctk.CTkButton(
     text_color="#1976D2",
     hover_color="#E3F2FD",
     corner_radius=10,
-    command=cambiar_pedido
+    command=elegir_pedido
 ).pack(anchor="w", padx=18, pady=(0,14))
 
 
@@ -1945,6 +2297,16 @@ ctk.CTkButton(
     corner_radius=15,
     command=abrir_panel_asignacion
 ).pack(pady=(0, 20))
+ctk.CTkButton(
+    frame_total,
+    text="🚚 Gestión de Envíos",
+    fg_color="#0EA5E9",
+    hover_color="#0284C7",
+    height=50,
+    corner_radius=14,
+    font=("Segoe UI", 15, "bold"),
+    command=abrir_panel_envios
+).pack(fill="x", padx=20, pady=(0, 20))
 
 ctk.CTkButton(
     frame_admin,

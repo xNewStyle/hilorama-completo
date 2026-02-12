@@ -630,3 +630,31 @@ def archivar_expiradas():
 # =========================
 if __name__ == "__main__":
     app.run()
+
+from flask import render_template
+import psycopg2
+import os
+
+def get_conn():
+    return psycopg2.connect(os.environ["DATABASE_URL"])
+
+
+@app.route("/seguimiento/<nota_id>")
+def seguimiento(nota_id):
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, cliente_nombre, estado, paqueteria, guia
+        FROM notas
+        WHERE id=%s
+    """, (nota_id,))
+
+    nota = cur.fetchone()
+    conn.close()
+
+    if not nota:
+        return "Pedido no encontrado"
+
+    return render_template("seguimiento.html", nota=nota)
