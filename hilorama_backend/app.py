@@ -642,31 +642,42 @@ def get_conn():
 @app.route("/seguimiento/<nota_id>")
 def seguimiento(nota_id):
 
-    conn = get_conn()
-    nota = conn.execute("""
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    cur = conn.cursor()
+
+    cur.execute("""
         SELECT id, cliente_nombre, estado, paqueteria, guia
         FROM notas
         WHERE id = %s
-    """, (nota_id,)).fetchone()
+    """, (nota_id,))
+
+    row = cur.fetchone()
+
+    if not row:
+        return "Nota no encontrada", 404
+
+    nota = {
+        "id": row[0],
+        "cliente_nombre": row[1],
+        "estado": row[2],
+        "paqueteria": row[3],
+        "guia": row[4],
+    }
+
+    cur.close()
     conn.close()
 
-    if not nota:
-        return "Pedido no encontrado", 404
+    # 🎯 calcular estado visual
+    estado_visual = nota["estado"]
 
-    # ===== ESTADO AUTOMÁTICO =====
-    if nota["estado"] != "PAGADA":
-        estado_visual = "Pendiente de pago"
-        progreso = 25
+    progreso_map = {
+        "PAGADA": 25,
+        "EN_PROCESO": 50,
+        "ENVIADO": 75,
+        "ENTREGADO": 100
+    }
 
-    elif not nota["guia"]:
-        estado_visual = "Preparando envío"
-        progreso = 50
-
-    else:
-        estado_visual = "En tránsito"
-        progreso = 75
-
-    # Si tú agregas luego campo entregado → será 100
+    progreso = progreso_map.get(nota["estado"], 10)
 
     return render_template(
         "seguimiento.html",
@@ -674,4 +685,3 @@ def seguimiento(nota_id):
         estado_visual=estado_visual,
         progreso=progreso
     )
-
