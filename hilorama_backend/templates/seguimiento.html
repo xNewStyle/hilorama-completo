@@ -35,8 +35,11 @@
 
         .progreso {
             height: 100%;
-            background: #1E7F5C;
+            background: #1976D2;
+            width: 0%;
+            transition: width 1s ease;
         }
+
 
         .guia {
             margin-top: 20px;
@@ -47,6 +50,39 @@
             color: #1976D2;
             font-weight: bold;
         }
+        .timeline {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        .step {
+            flex: 1;
+            opacity: 0.4;
+        }
+
+        .step.active {
+            font-weight: bold;
+            color: #1B5E20;
+            opacity: 1;
+        }
+        .step {
+            flex: 1;
+            position: relative;
+        }
+
+        .step::before {
+            content: "●";
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+        .step.active::before {
+            color: #1B5E20;
+        }
+
 
     </style>
 </head>
@@ -59,8 +95,15 @@
     <div class="estado">{{ estado_visual }}</div>
 
     <div class="barra">
-        <div class="progreso" style="width: {{ progreso }}%;"></div>
+        <div class="progreso" data-width="{{ progreso }}"></div>
     </div>
+    <div class="timeline">
+        <div class="step {{ 'active' if progreso >= 25 else '' }}">Pagado</div>
+        <div class="step {{ 'active' if progreso >= 50 else '' }}">Preparando</div>
+        <div class="step {{ 'active' if progreso >= 75 else '' }}">Enviado</div>
+        <div class="step {{ 'active' if progreso >= 100 else '' }}">Entregado</div>
+    </div>
+
 
     {% if nota.guia %}
         <div class="guia">
@@ -71,6 +114,31 @@
         </div>
     {% endif %}
 </div>
+<script>
+    const barra = document.querySelector(".progreso");
+    const estado = "{{ estado_visual }}";
+
+    if (barra) {
+        const progreso = barra.getAttribute("data-width") || 0;
+
+        // Cambiar color según estado
+        if (estado.includes("PENDIENTE")) {
+            barra.style.background = "#F59E0B";
+        } else if (estado.includes("PROCESO")) {
+            barra.style.background = "#1976D2";
+        } else if (estado.includes("ENVIADO")) {
+            barra.style.background = "#7C3AED";
+        } else if (estado.includes("ENTREGADO") || estado.includes("PAGADA")) {
+            barra.style.background = "#1B5E20";
+        }
+
+        setTimeout(() => {
+            barra.style.width = progreso + "%";
+        }, 200);
+    }
+</script>
+
+
 
 </body>
 </html>

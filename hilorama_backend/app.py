@@ -643,19 +643,35 @@ def get_conn():
 def seguimiento(nota_id):
 
     conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
+    nota = conn.execute("""
         SELECT id, cliente_nombre, estado, paqueteria, guia
         FROM notas
-        WHERE id=%s
-    """, (nota_id,))
-
-    nota = cur.fetchone()
+        WHERE id = %s
+    """, (nota_id,)).fetchone()
     conn.close()
 
     if not nota:
-        return "Pedido no encontrado"
+        return "Pedido no encontrado", 404
 
-    return render_template("seguimiento.html", nota=nota)
+    # ===== ESTADO AUTOMÁTICO =====
+    if nota["estado"] != "PAGADA":
+        estado_visual = "Pendiente de pago"
+        progreso = 25
+
+    elif not nota["guia"]:
+        estado_visual = "Preparando envío"
+        progreso = 50
+
+    else:
+        estado_visual = "En tránsito"
+        progreso = 75
+
+    # Si tú agregas luego campo entregado → será 100
+
+    return render_template(
+        "seguimiento.html",
+        nota=nota,
+        estado_visual=estado_visual,
+        progreso=progreso
+    )
 
