@@ -1029,6 +1029,141 @@ def elegir_pedido():
         command=confirmar
     ).pack(pady=10)
 
+def eliminar_pedido_opciones():
+
+    global pedido_actual
+
+    if not pedido_actual:
+        messagebox.showwarning("Sin pedido", "No hay pedido activo")
+        return
+
+    if not pedir_password():
+        return
+
+    win = ctk.CTkToplevel(root)
+    win.title("Eliminar Pedido")
+    win.geometry("420x280")
+    win.grab_set()
+
+    ctk.CTkLabel(
+        win,
+        text=f"Pedido #{pedido_actual}",
+        font=("Segoe UI", 18, "bold")
+    ).pack(pady=(20,10))
+
+    ctk.CTkLabel(
+        win,
+        text="¿Qué deseas hacer?",
+        font=("Segoe UI", 13)
+    ).pack(pady=(0,20))
+
+    def eliminar_total():
+        if not messagebox.askyesno(
+            "Confirmar",
+            "⚠️ Se eliminarán TODAS las notas del pedido.\n\n¿Continuar?"
+        ):
+            return
+
+        from database.connection import get_conn
+        conn = get_conn()
+
+        # borrar errores
+        conn.execute("""
+            DELETE FROM errores_scan
+            WHERE nota_id IN (
+                SELECT id FROM notas WHERE pedido=%s
+            )
+        """, (pedido_actual,))
+
+        # borrar items
+        conn.execute("""
+            DELETE FROM items
+            WHERE nota_id IN (
+                SELECT id FROM notas WHERE pedido=%s
+            )
+        """, (pedido_actual,))
+
+        # borrar notas
+        conn.execute("""
+            DELETE FROM notas WHERE pedido=%s
+        """, (pedido_actual,))
+
+        # borrar pedido historial
+        conn.execute("""
+            DELETE FROM pedidos WHERE numero=%s
+        """, (pedido_actual,))
+
+        conn.commit()
+        conn.close()
+
+        # limpiar pedido activo
+        from pedido_estado import guardar_pedido
+        guardar_pedido(None)
+
+        pedido_actual = None
+        lbl_pedido_valor.configure(text="📦 Configurar pedido")
+        lbl_pedido_fecha.configure(text="")
+
+        win.destroy()
+        messagebox.showinfo("Eliminado", "Pedido eliminado correctamente")
+
+    def mover_notas():
+        nuevo = simpledialog.askinteger(
+            "Mover notas",
+            "Mover notas al pedido número:"
+        )
+
+        if not nuevo:
+            return
+
+        from database.connection import get_conn
+        conn = get_conn()
+
+        conn.execute("""
+            UPDATE notas
+            SET pedido=%s
+            WHERE pedido=%s
+        """, (nuevo, pedido_actual))
+
+        conn.execute("""
+            DELETE FROM pedidos WHERE numero=%s
+        """, (pedido_actual,))
+
+        conn.commit()
+        conn.close()
+
+        pedido_actual = nuevo
+        lbl_pedido_valor.configure(text=f"Pedido #{nuevo}")
+
+        win.destroy()
+        messagebox.showinfo("Movido", "Notas movidas correctamente")
+
+    ctk.CTkButton(
+        win,
+        text="🗑 Eliminar pedido con todas las notas",
+        fg_color="#DC2626",
+        hover_color="#B91C1C",
+        height=45,
+        command=eliminar_total
+    ).pack(fill="x", padx=30, pady=8)
+
+    ctk.CTkButton(
+        win,
+        text="🔁 Mover notas a otro pedido",
+        fg_color="#2563EB",
+        hover_color="#1D4ED8",
+        height=45,
+        command=mover_notas
+    ).pack(fill="x", padx=30, pady=8)
+
+    ctk.CTkButton(
+        win,
+        text="Cancelar",
+        fg_color="#6B7280",
+        hover_color="#4B5563",
+        height=40,
+        command=win.destroy
+    ).pack(fill="x", padx=30, pady=(15,0))
 
 
 
@@ -2235,6 +2370,16 @@ ctk.CTkButton(
     command=elegir_pedido
 ).pack(anchor="w", padx=18, pady=(0,14))
 
+ctk.CTkButton(
+    card_pedido,
+    text="🗑 Eliminar pedido",
+    height=30,
+    fg_color="#FEE2E2",
+    text_color="#B91C1C",
+    hover_color="#FECACA",
+    corner_radius=10,
+    command=eliminar_pedido_opciones
+).pack(anchor="w", padx=18, pady=(0,14))
 
 # ---- click en la tarjeta = configurar ----
 card_pedido.bind("<Button-1>", lambda e: configurar_pedido())
