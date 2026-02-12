@@ -2,8 +2,7 @@
 from core.almacen_api import obtener_producto_por_codigo_barras
 
 from flask_cors import CORS
-from flask import Flask, request, jsonify
-
+from flask import Flask, request, jsonify, render_template
 
 
 
@@ -106,6 +105,8 @@ def registrar_error(nota_id, codigo, empacador_id, motivo):
 
     conn.commit()
     conn.close()
+
+
 
 
 @app.route("/")
@@ -624,25 +625,28 @@ def archivar_expiradas():
 
     return jsonify({"ok": True})
 
+def generar_link_paqueteria(paqueteria, guia):
 
-# =========================
-# MAIN
-# =========================
-if __name__ == "__main__":
-    app.run()
+    if not paqueteria or not guia:
+        return "#"
 
-from flask import render_template
-import psycopg2
-import os
+    paqueteria = paqueteria.upper()
 
-def get_conn():
-    return psycopg2.connect(os.environ["DATABASE_URL"])
+    if paqueteria == "DHL":
+        return f"https://www.dhl.com/mx-es/home/tracking.html?tracking-id={guia}"
 
+    if paqueteria == "FEDEX":
+        return f"https://www.fedex.com/apps/fedextrack/?tracknumbers={guia}"
+
+    if paqueteria == "ESTAFETA":
+        return f"https://www.estafeta.com/Herramientas/Rastreo?trackingNumber={guia}"
+
+    return "#"
 
 @app.route("/seguimiento/<nota_id>")
 def seguimiento(nota_id):
 
-    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -654,6 +658,8 @@ def seguimiento(nota_id):
     row = cur.fetchone()
 
     if not row:
+        cur.close()
+        conn.close()
         return "Nota no encontrada", 404
 
     nota = {
@@ -667,9 +673,6 @@ def seguimiento(nota_id):
     cur.close()
     conn.close()
 
-    # 🎯 calcular estado visual
-    estado_visual = nota["estado"]
-
     progreso_map = {
         "PAGADA": 25,
         "EN_PROCESO": 50,
@@ -682,6 +685,21 @@ def seguimiento(nota_id):
     return render_template(
         "seguimiento.html",
         nota=nota,
-        estado_visual=estado_visual,
+        estado_visual=nota["estado"],
         progreso=progreso
     )
+
+
+# =========================
+# MAIN
+# =========================
+app.jinja_env.globals.update(
+    generar_link_paqueteria=generar_link_paqueteria
+)
+
+
+
+
+if __name__ == "__main__":
+    app.run()
+

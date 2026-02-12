@@ -1406,7 +1406,13 @@ def abrir_visor(root):
 
                 prod = obtener_producto_por_codigo(codigo)
                 if not prod:
-                    continue
+                    messagebox.showerror(
+                        "Error crítico",
+                        f"El producto {codigo} no existe en almacén",
+                        parent=ed
+                    )
+                    return
+
 
                 # 🔴 AUMENTÓ → descontar
                 if diferencia > 0:
