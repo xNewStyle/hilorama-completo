@@ -57,17 +57,20 @@ def refrescar_tabla(filtro=None):
         datos.setdefault(p["marca"], {}).setdefault(p["hilo"], []).append(p)
 
     for marca in sorted(datos):
-        tabla.insert("", "end", values=(marca, "", "", "", "", ""), tags=("marca",))
+        marca_id = tabla.insert("", "end", text=marca, tags=("marca",))
+
 
         for hilo in sorted(datos[marca]):
-            tabla.insert("", "end", values=("", hilo, "", "", "", ""), tags=("hilo",))
+            hilo_id = tabla.insert(marca_id, "end", text=hilo, tags=("hilo",))
+
 
             for p in datos[marca][hilo]:
                 tag = "ok" if p["estado"] == "OK" else "bajo"
                 tabla.insert(
-                    "", "end",
+                    hilo_id,
+                    "end",
+                    text="",
                     values=(
-                        p["marca"],
                         p["hilo"],
                         p["color"],
                         p["codigo"],
@@ -77,6 +80,7 @@ def refrescar_tabla(filtro=None):
                     ),
                     tags=(tag,)
                 )
+
 
     calcular_ganancia_total()
 
@@ -171,10 +175,16 @@ def editar_producto(event):
     if not item:
         return
 
-    valores = tabla.item(item, "values")
+    item_data = tabla.item(item)
 
-    # Solo permitir editar filas reales (no marca/hilo)
-    if not valores[3]:
+    # Si no tiene values, es marca o hilo
+    if not item_data["values"]:
+        return
+
+    valores = item_data["values"]
+
+    # Seguridad extra
+    if len(valores) < 4:
         return
 
     pwd = simpledialog.askstring("Contraseña", "Contraseña:", show="*")
@@ -183,8 +193,21 @@ def editar_producto(event):
 
     opcion = simpledialog.askstring(
         "Editar",
-        "¿Qué deseas editar%s\n\n1 = Stock\n2 = Código de barras"
+        "¿Qué deseas editar?\n\n1 = Stock\n2 = Código de barras"
     )
+
+    # valores ahora son:
+    # [Hilo, Color, Código, Stock, Codigo_Barras, Estado]
+
+    hilo = valores[0]
+    color = valores[1]
+    codigo = valores[2]
+    stock_actual = valores[3]
+
+    # Marca ahora está en el padre
+    parent_hilo = tabla.parent(item)
+    parent_marca = tabla.parent(parent_hilo)
+    marca = tabla.item(parent_marca)["text"]
 
     if opcion == "1":
         nuevo_stock = simpledialog.askinteger("Stock", "Nuevo stock:")
@@ -198,7 +221,7 @@ def editar_producto(event):
             UPDATE productos
             SET stock=%s, estado=%s
             WHERE marca=%s AND hilo=%s AND codigo=%s
-        """,(nuevo_stock,estado,valores[0],valores[1],valores[3]))
+        """,(nuevo_stock,estado,marca,hilo,codigo))
         conn.commit()
         conn.close()
 
@@ -212,11 +235,12 @@ def editar_producto(event):
             UPDATE productos
             SET codigo_barras=%s
             WHERE marca=%s AND hilo=%s AND codigo=%s
-        """,(nuevo_barras,valores[0],valores[1],valores[3]))
+        """,(nuevo_barras,marca,hilo,codigo))
         conn.commit()
         conn.close()
 
     refrescar_tabla()
+
 
 
 def editar_precios_marca():
@@ -359,17 +383,58 @@ if __name__ == "__main__":
 
 
     # Tabla
-    tabla = ttk.Treeview(
+    # Fondo general moderno
+    root.configure(bg="#F4F6F9")
+
+    # ===== CARD CONTENEDOR =====
+    card_tabla = tk.Frame(
         root,
-        columns=("Marca", "Hilo", "Color", "Código", "Stock","Codigo_Barras", "Estado"),
-        show="headings"
+        bg="white",
+        bd=0,
+        highlightthickness=0
     )
-    tabla.pack(fill="both", expand=True, padx=10, pady=5)
+    card_tabla.pack(fill="both", expand=True, padx=20, pady=15)
+
+    # ===== ESTILO MODERNO =====
+    style = ttk.Style()
+    style.theme_use("default")
+
+    style.configure(
+        "Treeview",
+        background="white",
+        foreground="black",
+        rowheight=32,
+        fieldbackground="white",
+        borderwidth=0,
+        font=("Segoe UI", 11)
+    )
+
+    style.configure(
+        "Treeview.Heading",
+        font=("Segoe UI", 11, "bold"),
+        background="#E3EAF2",
+        foreground="#333"
+    )
+
+    style.map(
+        "Treeview",
+        background=[("selected", "#DCEBFF")]
+    )
+
+    # ===== TABLA =====
+    tabla = ttk.Treeview(
+        card_tabla,
+        columns=("Hilo", "Color", "Código", "Stock","Codigo_Barras", "Estado"),
+        show="tree headings"
+    )
+
+    tabla.heading("#0", text="Marca")
+    tabla.column("#0", width=160, anchor="w")
+
+
+    tabla.pack(fill="both", expand=True, padx=15, pady=15)
     tabla.bind("<Double-1>", editar_producto)
 
-
-    for c in ("Marca", "Hilo", "Color", "Código", "Stock","Codigo_Barras", "Estado"):
-        tabla.heading(c, text=c)
 
     tabla.tag_configure("marca", background="#BBDEFB", font=("Segoe UI", 10, "bold"))
     tabla.tag_configure("hilo", background="#E3F2FD", font=("Segoe UI", 9, "bold"))
