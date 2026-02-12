@@ -1,56 +1,75 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Seguimiento Hilorama</title>
-<style>
-body {
-    font-family: Arial;
-    background:#F3F4F6;
-    text-align:center;
-}
-.card {
-    background:white;
-    padding:40px;
-    margin:80px auto;
-    width:420px;
-    border-radius:16px;
-    box-shadow:0 10px 30px rgba(0,0,0,0.1);
-}
-.estado {
-    font-size:20px;
-    font-weight:bold;
-    color:#2E7D32;
-}
-.btn {
-    display:inline-block;
-    padding:12px 20px;
-    background:#1976D2;
-    color:white;
-    border-radius:10px;
-    text-decoration:none;
-    margin-top:15px;
-}
-</style>
+    <title>Seguimiento de Pedido</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f3f4f6;
+            text-align: center;
+        }
+
+        .card {
+            width: 500px;
+            margin: 60px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .estado {
+            font-size: 22px;
+            font-weight: bold;
+            color: #1B5E20;
+            margin: 15px 0;
+        }
+
+        .barra {
+            width: 100%;
+            height: 20px;
+            background: #e5e7eb;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progreso {
+            height: 100%;
+            background: #1E7F5C;
+        }
+
+        .guia {
+            margin-top: 20px;
+        }
+
+        a {
+            text-decoration: none;
+            color: #1976D2;
+            font-weight: bold;
+        }
+
+    </style>
 </head>
 <body>
 
 <div class="card">
-<h2>Pedido #{{ nota[0] }}</h2>
+    <h2>Pedido #{{ nota.id }}</h2>
+    <p>Cliente: {{ nota.cliente_nombre }}</p>
 
-<p><b>Cliente:</b> {{ nota[1] }}</p>
-<p class="estado">{{ nota[2] }}</p>
+    <div class="estado">{{ estado_visual }}</div>
 
-<p><b>Paquetería:</b> {{ nota[3] or "Pendiente" }}</p>
-<p><b>Guía:</b> {{ nota[4] or "Sin guía asignada" }}</p>
+    <div class="barra">
+        <div class="progreso" style="width: {{ progreso }}%;"></div>
+    </div>
 
-{% if nota[4] %}
-<a class="btn" target="_blank"
-   href="https://www.correosdemexico.gob.mx/SSLServicios/SeguimientoEnvio/Seguimiento.aspx?numero={{ nota[4] }}">
-   Rastrear paquete
-</a>
-{% endif %}
-
+    {% if nota.guia %}
+        <div class="guia">
+            Guía:
+            <a href="{{ generar_link_paqueteria(nota.paqueteria, nota.guia) }}" target="_blank">
+                {{ nota.guia }}
+            </a>
+        </div>
+    {% endif %}
 </div>
 
 </body>

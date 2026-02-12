@@ -658,3 +658,4 @@ def seguimiento(nota_id):
         return "Pedido no encontrado"
 
     return render_template("seguimiento.html", nota=nota)
+

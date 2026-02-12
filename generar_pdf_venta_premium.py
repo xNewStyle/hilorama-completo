@@ -58,6 +58,7 @@ from reportlab.lib.units import cm
 
 def draw_boton_status_elegante(
     c,
+    nota_id,
     texto="VER ESTATUS DE MI PAQUETE",
     x_cm=6,
     y_cm=4,
@@ -66,51 +67,36 @@ def draw_boton_status_elegante(
     color_fondo="#1E7F5C",
     color_texto=colors.white
 ):
-    """
-    Botón elegante tipo premium
-    movible y estético
-    """
 
     x = x_cm * cm
     y = y_cm * cm
     w = w_cm * cm
     h = h_cm * cm
 
-    # ================= SOMBRA (fake) =================
+    # ================= SOMBRA =================
     c.setFillColor(colors.HexColor("#000000"))
     c.setFillAlpha(0.15)
-    c.roundRect(
-        x + 0.1*cm,
-        y - 0.1*cm,
-        w,
-        h,
-        10,
-        fill=1,
-        stroke=0
-    )
+    c.roundRect(x + 0.1*cm, y - 0.1*cm, w, h, 10, fill=1, stroke=0)
     c.setFillAlpha(1)
 
     # ================= BOTÓN =================
     c.setFillColor(colors.HexColor(color_fondo))
-    c.roundRect(
-        x,
-        y,
-        w,
-        h,
-        12,
-        fill=1,
-        stroke=0
-    )
+    c.roundRect(x, y, w, h, 12, fill=1, stroke=0)
 
     # ================= TEXTO =================
     c.setFillColor(color_texto)
     c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(x + w/2, y + h/2 - 4, texto)
 
-    c.drawCentredString(
-        x + w/2,
-        y + h/2 - 4,
-        texto
+    # ================= LINK REAL =================
+    link_url = f"https://hilorama-completo.onrender.com/seguimiento/{nota_id}"
+
+    c.linkURL(
+        link_url,
+        (x, y, x + w, y + h),
+        relative=0
     )
+
 
 
 
@@ -333,11 +319,13 @@ def dibujar_premium(canvas, doc):
     # 🔹 botón (puede ser texto o PNG)
     draw_boton_status_elegante(
         canvas,
+        nota["id"],   # 👈 PASAMOS ID
         texto="VER ESTATUS DE MI PAQUETE",
         x_cm=6,
         y_cm=3,
         w_cm=10
     )
+
 
     draw_bloque_cliente_compacto(
         canvas,
