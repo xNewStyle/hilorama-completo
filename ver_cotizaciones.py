@@ -1435,10 +1435,14 @@ def abrir_visor(root):
             envio_precio = nota.get("envio", {}).get("precio", 0)
             total += envio_precio
 
-            nota["items"] = nuevos
             nota["total"] = round(total, 2)
 
+            # 🔥 1. Actualizar items en tabla items
+            actualizar_cotizacion(nota["id"], nuevos)
+
+            # 🔥 2. Actualizar datos generales (total, envio, comprobante, etc)
             guardar_nota_actualizada(nota)
+
 
 
             ed.destroy()
