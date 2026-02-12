@@ -311,31 +311,35 @@ def eliminar_nota(id_nota):
 
 def guardar_nota_actualizada(nota_actualizada):
     conn = get_conn()
+    cur = conn.cursor()
 
-    conn.execute("""
+    cur.execute("""
         UPDATE notas
         SET cliente_id=%s,
             cliente_nombre=%s,
             estado=%s,
             total=%s,
+            items=%s,
             envio=%s,
-            comprobante=%s      -- 6
-        WHERE id=%s            -- 7
+            comprobante=%s
+        WHERE id=%s
     """, (
         nota_actualizada["cliente_id"],
         nota_actualizada["cliente_nombre"],
         nota_actualizada["estado"],
         nota_actualizada["total"],
-        json.dumps(nota_actualizada.get("envio")),
+        json.dumps(nota_actualizada.get("items", [])),
+        json.dumps(nota_actualizada.get("envio", {})),
         nota_actualizada.get("comprobante"),
         nota_actualizada["id"]
     ))
 
     conn.commit()
+    cur.close()
     conn.close()
 
-
     return True
+
 
 def buscar_nota_por_texto(texto):
     conn = get_conn()

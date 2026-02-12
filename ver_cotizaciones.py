@@ -1426,9 +1426,20 @@ def abrir_visor(root):
                         diferencia   # negativo = devuelve
                     )
 
-            # 🔵 4. Guardar cambios en BD
+            
+            # 🔵 4. Recalcular total real
+            total = 0
+            for item in nuevos:
+                total += item["cantidad"] * item["precio"]
+
+            envio_precio = nota.get("envio", {}).get("precio", 0)
+            total += envio_precio
+
             nota["items"] = nuevos
+            nota["total"] = round(total, 2)
+
             guardar_nota_actualizada(nota)
+
 
             ed.destroy()
             cargar_notas()
