@@ -1074,7 +1074,7 @@ def eliminar_pedido_opciones():
             WHERE nota_id IN (
                 SELECT id FROM notas WHERE pedido=%s
             )
-        """, (pedido_actual,))
+        """, (str(pedido_actual),))
 
         # borrar items
         conn.execute("""
@@ -1082,17 +1082,17 @@ def eliminar_pedido_opciones():
             WHERE nota_id IN (
                 SELECT id FROM notas WHERE pedido=%s
             )
-        """, (pedido_actual,))
+        """, (str(pedido_actual),))
 
         # borrar notas
         conn.execute("""
             DELETE FROM notas WHERE pedido=%s
-        """, (pedido_actual,))
+        """, (str(pedido_actual),))
 
         # borrar pedido historial
         conn.execute("""
             DELETE FROM pedidos WHERE numero=%s
-        """, (pedido_actual,))
+        """, (str(pedido_actual),))
 
         conn.commit()
         conn.close()
