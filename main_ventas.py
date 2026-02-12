@@ -1058,6 +1058,7 @@ def eliminar_pedido_opciones():
     ).pack(pady=(0,20))
 
     def eliminar_total():
+        global pedido_actual
         if not messagebox.askyesno(
             "Confirmar",
             "⚠️ Se eliminarán TODAS las notas del pedido.\n\n¿Continuar?"
