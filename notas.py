@@ -6,7 +6,6 @@ from database.connection import get_conn
 from clientes import obtener_cliente_por_id
 from tkinter import messagebox
 
-
 # ================= ID =================
 
 def generar_id():
@@ -27,9 +26,9 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
     conn = get_conn()
 
     nota_id = generar_id()
-    fecha = datetime.now().strftime("%d-%m-%Y %H:%M")
+    
     total = sum(p["cantidad"] * p["precio"] for p in carrito)
-
+    fecha = datetime.now()
     conn.execute("""
         INSERT INTO notas
         (id, cliente_id, cliente_nombre, fecha, estado, total, envio, pedido)
@@ -39,6 +38,7 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
         cliente["id"],
         cliente["nombre"],
         fecha,
+        datetime.now(),
         "COTIZACION",
         total,
         json.dumps(envio) if envio else None,
