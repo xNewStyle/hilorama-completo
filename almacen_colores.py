@@ -154,21 +154,45 @@ def eliminar_tono():
     if not item:
         return
 
+    item_data = tabla.item(item)
+
+    # Si no tiene values es marca o hilo
+    if not item_data["values"]:
+        return
+
     pwd = simpledialog.askstring("Contraseña", "Contraseña:", show="*")
     if pwd != PASSWORD:
         return
 
-    valores = tabla.item(item, "values")
+    valores = item_data["values"]
+
+    hilo = valores[0]
+    color = valores[1]
+    codigo = str(valores[2])
+
+    # Obtener marca desde el padre
+    parent_hilo = tabla.parent(item)
+    parent_marca = tabla.parent(parent_hilo)
+    marca = tabla.item(parent_marca)["text"]
 
     conn = get_conn()
-    conn.execute(
-        "DELETE FROM productos WHERE color=%s AND codigo=%s",
-        (valores[2], valores[3])
-    )
+
+    cur = conn.execute("""
+        DELETE FROM productos
+        WHERE marca=%s AND hilo=%s AND codigo=%s
+    """, (marca, hilo, codigo))
+
     conn.commit()
+    eliminados = cur.rowcount
     conn.close()
 
+    if eliminados == 0:
+        messagebox.showwarning("Aviso", "No se eliminó ningún registro")
+    else:
+        messagebox.showinfo("Correcto", "Producto eliminado correctamente")
+
     refrescar_tabla()
+
 
 def editar_producto(event):
     item = tabla.focus()
