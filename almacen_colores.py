@@ -156,7 +156,6 @@ def eliminar_tono():
 
     item_data = tabla.item(item)
 
-    # Si no tiene values es marca o hilo
     if not item_data["values"]:
         return
 
@@ -167,31 +166,26 @@ def eliminar_tono():
     valores = item_data["values"]
 
     hilo = valores[0]
-    color = valores[1]
     codigo = str(valores[2])
 
-    # Obtener marca desde el padre
     parent_hilo = tabla.parent(item)
     parent_marca = tabla.parent(parent_hilo)
     marca = tabla.item(parent_marca)["text"]
 
     conn = get_conn()
 
-    cur = conn.execute("""
+    conn.execute("""
         DELETE FROM productos
         WHERE marca=%s AND hilo=%s AND codigo=%s
     """, (marca, hilo, codigo))
 
     conn.commit()
-    eliminados = cur.rowcount
     conn.close()
 
-    if eliminados == 0:
-        messagebox.showwarning("Aviso", "No se eliminó ningún registro")
-    else:
-        messagebox.showinfo("Correcto", "Producto eliminado correctamente")
+    messagebox.showinfo("Correcto", "Producto eliminado")
 
     refrescar_tabla()
+
 
 
 def editar_producto(event):
