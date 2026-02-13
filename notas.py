@@ -29,6 +29,7 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
     
     total = sum(p["cantidad"] * p["precio"] for p in carrito)
     fecha = datetime.now()
+
     conn.execute("""
         INSERT INTO notas
         (id, cliente_id, cliente_nombre, fecha, estado, total, envio, pedido)
@@ -38,8 +39,7 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
         cliente["id"],
         cliente["nombre"],
         fecha,
-        datetime.now(),
-        "COTIZACION",
+        "COTIZACION",   # ✅ estado correcto
         total,
         json.dumps(envio) if envio else None,
         pedido
@@ -61,6 +61,7 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
     conn.close()
 
     return obtener_cotizacion(nota_id)
+
 
 
 # ================= LISTAR =================
