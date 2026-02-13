@@ -201,7 +201,7 @@ def editar_producto(event):
 
     hilo = valores[0]
     color = valores[1]
-    codigo = valores[2]
+    codigo = str(valores[2])
     stock_actual = valores[3]
 
     # Marca ahora está en el padre
