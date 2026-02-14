@@ -20,23 +20,16 @@ def marcas_existentes():
     return sorted([r["marca"] for r in rows])
 
 
-def calcular_ganancia_total():
-    conn = get_conn()
-
-    rows = conn.execute("""
-    SELECT p.stock, pr.venta, pr.distribuidor
-    FROM productos p
-    LEFT JOIN precios pr ON pr.marca = p.marca
-    """).fetchall()
-
-    conn.close()
-
+def calcular_ganancia_total(productos):
     total = 0
-    for r in rows:
+    for r in productos:
         if r["venta"] and r["distribuidor"]:
             total += (r["venta"] - r["distribuidor"]) * r["stock"]
 
-    lbl_ganancia.config(text=f"Ganancia estimada total: ${total:.2f}")
+    lbl_ganancia.config(
+        text=f"Ganancia estimada total: ${total:.2f}"
+    )
+
 
 
 # ================= TABLA =================
@@ -44,7 +37,22 @@ def refrescar_tabla(filtro=None):
     tabla.delete(*tabla.get_children())
 
     conn = get_conn()
-    productos = conn.execute("SELECT * FROM productos").fetchall()
+    productos = conn.execute("""
+        SELECT 
+            p.marca,
+            p.hilo,
+            p.color,
+            p.codigo,
+            p.stock,
+            p.codigo_barras,
+            p.estado,
+            pr.venta,
+            pr.distribuidor
+        FROM productos p
+        LEFT JOIN precios pr 
+            ON pr.marca = p.marca
+        """).fetchall()
+
     conn.close()
 
     datos = {}
@@ -82,7 +90,8 @@ def refrescar_tabla(filtro=None):
                 )
 
 
-    calcular_ganancia_total()
+    calcular_ganancia_total(productos)
+
 
 
 # ================= ACCIONES =================
