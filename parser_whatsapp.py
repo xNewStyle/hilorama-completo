@@ -319,11 +319,21 @@ def extraer_pedidos(texto, productos):
             if codigo in codigos_validos:
                pedidos[codigo] = pedidos.get(codigo, 0) + cantidad
                continue
+        # ================= 🆕 FORMATO: 2- #06 =================
+        m = re.search(r"\b(\d+)\s*[-–—]+\s*#\s*(\d+)\b", linea)
+        if m:
+            cantidad = int(m.group(1))
+            codigo = m.group(2).lstrip("0") or "0"
+
+            if codigo in codigos_validos:
+                pedidos[codigo] = pedidos.get(codigo, 0) + cantidad
+                codigos_detectados.add(codigo)
+                codigos_con_cantidad_explicita.add(codigo)
+                continue
 
         # ================= 8️⃣ FORMATO LISTA =================
         # 1- 62 | 1 – 310 | 1 -- 55
-        m = re.search(r"\b(\d+)\s*[-–—]+\s*(\d+)\b", linea)
-
+        m = re.search(r"\b(\d+)\s*[-–—]+\s*#?\s*(\d+)\b", linea)
         if m:
             cantidad = int(m.group(1))
             codigo = m.group(2).lstrip("0") or "0"
