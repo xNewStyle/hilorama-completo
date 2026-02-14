@@ -152,14 +152,32 @@ def extraer_pedidos(texto, productos):
         nums_linea = re.findall(r"\d+", linea)
 
         if len(nums_linea) == 2:
-           codigo = nums_linea[0].lstrip("0") or "0"
-           cantidad = int(nums_linea[1])
+            a = nums_linea[0].lstrip("0") or "0"
+            b = nums_linea[1].lstrip("0") or "0"
 
-           if codigo in codigos_validos:
-              pedidos[codigo] = pedidos.get(codigo, 0) + cantidad
-              codigos_detectados.add(codigo)
-              codigos_con_cantidad_explicita.add(codigo)
-              detecto_formato = True
+            a_es_codigo = a in codigos_validos
+            b_es_codigo = b in codigos_validos
+
+         # Caso normal: codigo cantidad
+            if a_es_codigo and not b_es_codigo:
+                pedidos[a] = pedidos.get(a, 0) + int(b)
+                codigos_detectados.add(a)
+                codigos_con_cantidad_explicita.add(a)
+                continue
+  
+          # Caso invertido: cantidad codigo
+            if b_es_codigo and not a_es_codigo:
+                pedidos[b] = pedidos.get(b, 0) + int(a)
+                codigos_detectados.add(b)
+                codigos_con_cantidad_explicita.add(b)
+                continue
+
+
+            if codigo in codigos_validos:
+                pedidos[codigo] = pedidos.get(codigo, 0) + cantidad
+                codigos_detectados.add(codigo)
+                codigos_con_cantidad_explicita.add(codigo)
+                detecto_formato = True
 
                 
 
