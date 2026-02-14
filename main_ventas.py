@@ -40,6 +40,8 @@ cliente_actual = None
 pedido_actual = None
 fecha_desde = None
 fecha_hasta = None
+productos_cache = []
+
 # ================= TK ROOT =================
 root = TkinterDnD.Tk()
 # ===== CONTENEDOR PRINCIPAL 2 COLUMNAS =====
@@ -112,6 +114,8 @@ def analizar_whatsapp():
     print(lista_pedidos)
 
 def actualizar_hilos(event=None):
+    global productos_cache
+
     marca = marca_var.get()
     hilos = obtener_hilos(marca)
 
@@ -119,6 +123,13 @@ def actualizar_hilos(event=None):
 
     if hilos:
         hilo_var.set(hilos[0])
+
+    # 🔥 Cargar productos UNA sola vez
+    productos_cache = obtener_productos(
+        marca_var.get(),
+        hilo_var.get()
+    )
+
 
 
 def cargar_contexto():
@@ -1529,10 +1540,8 @@ def actualizar_sugerencias(*args):
         lista_sugerencias.place_forget()
         return
 
-    productos = obtener_productos(
-        marca_var.get(),
-        hilo_var.get()
-    )
+    productos = productos_cache
+
 
     encontrados = []
 
@@ -1611,10 +1620,8 @@ def procesar_imagen(ruta_imagen):
 
         texto = texto.replace("O", "0").replace("l", "1").replace("I", "1")
 
-        productos = obtener_productos(
-            marca_var.get(),
-            hilo_var.get()
-        )
+        productos = productos_cache
+
 
         if not productos:
             messagebox.showwarning(
@@ -2480,10 +2487,8 @@ def agregar_al_carrito(pedido):
     codigo = pedido["codigo"]
     cantidad = pedido["cantidad"]
 
-    productos = obtener_productos(
-        marca_var.get(),
-        hilo_var.get()
-    )
+    productos = productos_cache
+
 
     for p in productos:
         if p["codigo"] == codigo:
