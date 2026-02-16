@@ -30,20 +30,27 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
     total = sum(p["cantidad"] * p["precio"] for p in carrito)
     fecha = datetime.now()
 
+    paqueteria = None
+
+    if envio:
+        paqueteria = envio.get("tipo") or envio.get("paqueteria")
+
     conn.execute("""
         INSERT INTO notas
-        (id, cliente_id, cliente_nombre, fecha, estado, total, envio, pedido)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        (id, cliente_id, cliente_nombre, fecha, estado, total, envio, pedido, paqueteria)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
         nota_id,
         cliente["id"],
         cliente["nombre"],
         fecha,
-        "COTIZACION",   # ✅ estado correcto
+        "COTIZACION",
         total,
         json.dumps(envio) if envio else None,
-        pedido
+        pedido,
+        paqueteria
     ))
+
 
     for p in carrito:
         conn.execute("""
@@ -243,21 +250,28 @@ def convertir_cotizacion_a_venta(id_nota, items_finales, cliente, envio=None):
 
     total = sum(p["cantidad"] * p["precio"] for p in items_finales)
 
+    paqueteria = None
+    if envio:
+        paqueteria = envio.get("tipo") or envio.get("paqueteria")
+
     conn.execute("""
         UPDATE notas
         SET estado='VENTA_PENDIENTE',
             cliente_id=%s,
             cliente_nombre=%s,
             envio=%s,
-            total=%s
+            total=%s,
+            paqueteria=%s
         WHERE id=%s
     """, (
         cliente["id"],
         cliente["nombre"],
         json.dumps(envio) if envio else None,
         total,
+        paqueteria,
         id_nota
     ))
+
 
     conn.execute("DELETE FROM items WHERE nota_id=%s", (id_nota,))
 
@@ -313,6 +327,12 @@ def eliminar_nota(id_nota):
 def guardar_nota_actualizada(nota_actualizada):
     conn = get_conn()
 
+    envio_data = nota_actualizada.get("envio", {})
+    paqueteria = None
+
+    if envio_data:
+        paqueteria = envio_data.get("tipo") or envio_data.get("paqueteria")
+
     conn.execute("""
         UPDATE notas
         SET cliente_id=%s,
@@ -320,15 +340,17 @@ def guardar_nota_actualizada(nota_actualizada):
             estado=%s,
             total=%s,
             envio=%s,
-            comprobante=%s
+            comprobante=%s,
+            paqueteria=%s
         WHERE id=%s
     """, (
         nota_actualizada["cliente_id"],
         nota_actualizada["cliente_nombre"],
         nota_actualizada["estado"],
         nota_actualizada["total"],
-        json.dumps(nota_actualizada.get("envio", {})),
+        json.dumps(envio_data),
         nota_actualizada.get("comprobante"),
+        paqueteria,
         nota_actualizada["id"]
     ))
 
@@ -336,6 +358,7 @@ def guardar_nota_actualizada(nota_actualizada):
     conn.close()
 
     return True
+
 
 
 

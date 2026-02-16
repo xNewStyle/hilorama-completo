@@ -144,30 +144,6 @@ def cargar_contexto():
 
 from clientes import listar_clientes
 
-def formatear_direccion(cliente, nota):
-
-    dir = cliente["direccion"]
-
-    calle_completa = dir.get("calle", "")
-
-    if dir.get("numero_exterior"):
-        calle_completa += f" {dir['numero_exterior']}"
-
-    if dir.get("numero_interior"):
-        calle_completa += f" Int {dir['numero_interior']}"
-
-    if dir.get("referencia"):
-        calle_completa += f" Ref: {dir['referencia']}"
-
-    return {
-        "nombre": cliente["nombre"],
-        "telefono": cliente.get("telefono", ""),
-        "calle": calle_completa,
-        "colonia": dir.get("colonia", ""),
-        "cp": dir.get("codigo_postal", ""),
-        "ciudad": dir.get("ciudad", "")
-    }
-
 
 
 def imprimir_destinatario(nota):
@@ -186,10 +162,12 @@ def imprimir_destinatario(nota):
         messagebox.showerror("Error", "No se encontró el cliente")
         return
 
+    # 🔥 ENVÍA EL CLIENTE COMPLETO TAL CUAL
     etiqueta_destinatario(
-        formatear_direccion(cliente, nota),
+        cliente,
         nota["id"]
     )
+
 
 def obtener_mis_datos():
     return {
