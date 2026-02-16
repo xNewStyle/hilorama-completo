@@ -28,6 +28,7 @@ import calendar
 from datetime import datetime
 from pedido_estado import guardar_pedido
 from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido
+from impresion_etiquetas import etiqueta_remitente, etiqueta_destinatario
 
 # ================= CONFIG =================
 PASSWORD = "12587987521"
@@ -142,6 +143,108 @@ def cargar_contexto():
         actualizar_hilos()
 
 from clientes import listar_clientes
+
+def formatear_direccion(cliente, nota):
+
+    dir = cliente["direccion"]
+
+    calle_completa = dir.get("calle", "")
+
+    if dir.get("numero_exterior"):
+        calle_completa += f" {dir['numero_exterior']}"
+
+    if dir.get("numero_interior"):
+        calle_completa += f" Int {dir['numero_interior']}"
+
+    if dir.get("referencia"):
+        calle_completa += f" Ref: {dir['referencia']}"
+
+    return {
+        "nombre": cliente["nombre"],
+        "telefono": cliente.get("telefono", ""),
+        "calle": calle_completa,
+        "colonia": dir.get("colonia", ""),
+        "cp": dir.get("codigo_postal", ""),
+        "ciudad": dir.get("ciudad", "")
+    }
+
+
+
+def imprimir_destinatario(nota):
+
+    from clientes import obtener_cliente_por_id
+
+    cliente_id = nota.get("cliente_id")
+
+    if not cliente_id:
+        messagebox.showerror("Error", "La nota no tiene cliente asignado")
+        return
+
+    cliente = obtener_cliente_por_id(cliente_id)
+
+    if not cliente:
+        messagebox.showerror("Error", "No se encontró el cliente")
+        return
+
+    etiqueta_destinatario(
+        formatear_direccion(cliente, nota),
+        nota["id"]
+    )
+
+def obtener_mis_datos():
+    return {
+        "nombre": "HILORAMA",
+        "calle": "Cocula 246",
+        "colonia": "Benito Juarez, Estado de Mexico",
+        "cp": "5700",
+        "ciudad": "Nezahualcoyotl"
+    }
+
+
+def imprimir_remitente(nota):
+
+    remitente = obtener_mis_datos()
+
+    etiqueta_remitente(remitente, nota["id"])
+
+
+def imprimir_ambas(nota):
+
+    imprimir_remitente(nota)
+    imprimir_destinatario(nota)
+
+def abrir_opciones_impresion(nota):
+
+    win = ctk.CTkToplevel(root)
+    win.title("Imprimir etiquetas")
+    win.geometry("400x300")
+    win.grab_set()
+
+    ctk.CTkLabel(
+        win,
+        text=f"Nota {nota['id']}",
+        font=("Segoe UI", 16, "bold")
+    ).pack(pady=20)
+
+    ctk.CTkButton(
+        win,
+        text="📦 Solo Destinatario",
+        command=lambda: imprimir_destinatario(nota)
+    ).pack(fill="x", padx=40, pady=5)
+
+    ctk.CTkButton(
+        win,
+        text="🏷 Solo Remitente",
+        command=lambda: imprimir_remitente(nota)
+    ).pack(fill="x", padx=40, pady=5)
+
+    ctk.CTkButton(
+        win,
+        text="🖨 Ambas etiquetas",
+        fg_color="#16A34A",
+        command=lambda: imprimir_ambas(nota)
+    ).pack(fill="x", padx=40, pady=10)
+
 
 def abrir_panel_asignacion():
 
@@ -824,6 +927,23 @@ def abrir_panel_envios():
 
     notas = cargar_datos()
     cargar_tabla(notas)
+
+    def imprimir_seleccion():
+
+        seleccion = tabla.selection()
+
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona una nota")
+            return
+
+        item = tabla.item(seleccion[0])["values"]
+        nota_id = item[0]
+
+        from notas import obtener_cotizacion
+        nota = obtener_cotizacion(nota_id)
+
+        abrir_opciones_impresion(nota)
+
      # ================= FILTRO DINÁMICO =================
     def aplicar_filtro(*args):
         texto = filtro_texto.get().lower()
@@ -892,6 +1012,14 @@ def abrir_panel_envios():
         font=("Segoe UI", 14, "bold"),
         command=asignar_guia
     ).pack(pady=15)
+    ctk.CTkButton(
+        win,
+        text="🖨 Imprimir etiquetas",
+        height=45,
+        fg_color="#16A34A",
+        font=("Segoe UI", 14, "bold"),
+        command=imprimir_seleccion
+    ).pack(pady=10)
 
 
 # =====================================================

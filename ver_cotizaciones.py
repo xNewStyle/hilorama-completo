@@ -1049,12 +1049,21 @@ def abrir_visor(root):
         for item in nota["items"]:
             prod = obtener_producto_por_codigo(item["codigo"])
 
+            if not prod:
+                messagebox.showerror(
+                    "Error crítico",
+                    f"El producto {item['codigo']} no existe en almacén.",
+                    parent=win
+                )
+                return
+
             descontar_stock(
                 prod["marca"],
                 prod["hilo"],
                 prod["codigo"],
                 item["cantidad"]
             )
+
 
 
     # =========================
