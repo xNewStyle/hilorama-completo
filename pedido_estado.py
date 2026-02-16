@@ -56,13 +56,21 @@ def cargar_pedido():
     if not os.path.exists(ARCHIVO):
         return None
 
-    with open(ARCHIVO, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(ARCHIVO, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-    if not data:
+        if not data or not isinstance(data, dict):
+            return None
+
+        if "numero" not in data:
+            return None
+
+        return data
+
+    except:
         return None
 
-    return data
 
 
 
