@@ -162,11 +162,13 @@ def imprimir_destinatario(nota):
         messagebox.showerror("Error", "No se encontró el cliente")
         return
 
-    # 🔥 ENVÍA EL CLIENTE COMPLETO TAL CUAL
+    # 🔥 AQUÍ ESTÁ LA CORRECCIÓN
     etiqueta_destinatario(
         cliente,
-        nota["id"]
+        nota["id"],
+        envio=nota.get("envio")  # ← ESTO FALTABA
     )
+
 
 
 def obtener_mis_datos():
