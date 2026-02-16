@@ -42,8 +42,14 @@ def parse_fecha(texto):
 # 🔵 GUARDAR / CARGAR
 # =====================================================
 def guardar_pedido(pedido):
+    if pedido is None:
+        if os.path.exists(ARCHIVO):
+            os.remove(ARCHIVO)
+        return
+
     with open(ARCHIVO, "w", encoding="utf-8") as f:
         json.dump(pedido, f)
+
 
 
 def cargar_pedido():
@@ -51,7 +57,13 @@ def cargar_pedido():
         return None
 
     with open(ARCHIVO, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+
+    if not data:
+        return None
+
+    return data
+
 
 
 # =====================================================
