@@ -23,11 +23,16 @@ def listar_pedidos():
 # ===============================
 # 🔵 CREAR
 # ===============================
+from datetime import datetime
+
 def crear_pedido(numero, desde, hasta):
 
     conn = get_conn()
 
-    # 🔎 VALIDAR EXISTENCIA EXPLÍCITA
+    # 🔥 convertir a objeto date real
+    desde_date = datetime.strptime(desde, "%d/%m/%Y").date()
+    hasta_date = datetime.strptime(hasta, "%d/%m/%Y").date()
+
     existente = conn.execute("""
         SELECT numero
         FROM pedidos
@@ -38,19 +43,12 @@ def crear_pedido(numero, desde, hasta):
         conn.close()
         raise ValueError("Pedido duplicado")
 
-    try:
-        conn.execute("""
-            INSERT INTO pedidos(numero, desde, hasta)
-            VALUES (%s,%s,%s)
-        """, (numero, desde, hasta))
+    conn.execute("""
+        INSERT INTO pedidos(numero, desde, hasta)
+        VALUES (%s,%s,%s)
+    """, (numero, desde_date, hasta_date))
 
-        conn.commit()
-
-    except Exception as e:
-        conn.rollback()
-        conn.close()
-        raise e  # 🔥 ahora sí lanza el error real
-
+    conn.commit()
     conn.close()
 
     return {
@@ -58,6 +56,7 @@ def crear_pedido(numero, desde, hasta):
         "desde": desde,
         "hasta": hasta
     }
+
 
 
 # ===============================
