@@ -57,9 +57,13 @@ def pedido_vencido(pedido):
         return False
 
     hoy = datetime.now().date()
-    fin = datetime.strptime(pedido["hasta"], "%d/%m/%Y").date()
+    fin = pedido["hasta"]
+
+    if isinstance(fin, str):
+        fin = datetime.strptime(fin, "%d/%m/%Y").date()
 
     return hoy > fin
+
 
 
 def pedido_por_vencer(pedido):
@@ -67,6 +71,9 @@ def pedido_por_vencer(pedido):
         return False
 
     hoy = datetime.now().date()
-    fin = datetime.strptime(pedido["hasta"], "%d/%m/%Y").date()
+    fin = pedido["hasta"]
+
+    if isinstance(fin, str):
+        fin = datetime.strptime(fin, "%d/%m/%Y").date()
 
     return (fin - hoy).days == 1
