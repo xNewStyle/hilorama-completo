@@ -1794,7 +1794,11 @@ def guardar_cotizacion():
 
     # ================= USAR CLIENTE SELECCIONADO =================
     if cliente_actual:
-        cliente = cliente_actual
+        from clientes import obtener_cliente_por_id
+
+        cliente = obtener_cliente_por_id(cliente_actual["id"])
+        cliente_actual = cliente  # 🔥 actualizar referencia
+
 
     else:
         # crear nuevo solo si no hay seleccionado
@@ -2412,6 +2416,19 @@ icon_edit = ctk.CTkImage(
     size=(20, 20)
 )
 
+def editar_y_refrescar():
+    global cliente_actual
+
+    if not cliente_actual:
+        abrir_clientes(root)
+        return
+
+    editar_cliente_por_id(cliente_actual["id"], root)
+
+    # 🔥 RECARGAR DESDE BD
+    from clientes import obtener_cliente_por_id
+    cliente_actual = obtener_cliente_por_id(cliente_actual["id"])
+
 btn_editar_cliente = ctk.CTkButton(
     frame_cliente_btns,
     text="",
@@ -2421,13 +2438,9 @@ btn_editar_cliente = ctk.CTkButton(
     fg_color="#E3F2FD",
     hover_color="#BBDEFB",
     corner_radius=12,
-    command=lambda: (
-        editar_cliente_por_id(cliente_actual["id"], root)
-        if cliente_actual else abrir_clientes(root)
-    )
-
-  # 🔥 abre tu editor real
+    command=editar_y_refrescar
 )
+
 
 
 # 🔥 oculto al inicio
