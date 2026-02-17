@@ -27,8 +27,7 @@ import os
 from pedidos import crear_pedido, listar_pedidos
 import calendar
 from datetime import datetime
-from pedido_estado import guardar_pedido
-from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido
+from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido, activar_pedido
 from impresion_etiquetas import etiqueta_remitente, etiqueta_destinatario
 
 # ================= CONFIG =================
@@ -1137,7 +1136,10 @@ def elegir_pedido():
         numero_pedido = valores[0]
 
         # 👉 aquí actualizas tu variable global o label
-        pedido_actual.set(numero_pedido)
+        global pedido_actual
+        pedido_actual = numero_pedido
+        lbl_pedido_valor.configure(text=f"Pedido #{pedido_actual}")
+
 
         win.destroy()
 
@@ -1218,8 +1220,9 @@ def eliminar_pedido_opciones():
         conn.close()
 
         # limpiar pedido activo
-        from pedido_estado import guardar_pedido
-        guardar_pedido(None)
+        from pedido_estado import limpiar_pedido_activo
+        limpiar_pedido_activo()
+
 
         pedido_actual = None
         lbl_pedido_valor.configure(text="📦 Configurar pedido")
@@ -1519,25 +1522,16 @@ def configurar_pedido():
 
 
         try:
-              pedido_data = {
-                "numero": pedido_actual,
-                "desde": fecha_desde,
-                "hasta": fecha_hasta
-            }
-
-              # pedido activo
-              guardar_pedido(pedido_data)
-
-              # historial
-              from pedidos import crear_pedido
-              crear_pedido(pedido_actual, fecha_desde, fecha_hasta)
+            crear_pedido(pedido_actual, fecha_desde, fecha_hasta)
+            activar_pedido(pedido_actual)
 
         except ValueError:
             messagebox.showerror(
-                "Duplicado",
-                "❌ Ese número de pedido ya existe.\nUsa otro número."
+                 "Duplicado",
+                 "❌ Ese número de pedido ya existe.\nUsa otro número."
             )
             return
+
 
 
         lbl_pedido_valor.configure(

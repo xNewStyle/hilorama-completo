@@ -1,77 +1,52 @@
-import json
-import os
+from database.connection import get_conn
 from datetime import datetime
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ARCHIVO = os.path.join(BASE_DIR, "pedido_estado.json")
+# =====================================================
+# 🔵 ACTIVAR PEDIDO
+# =====================================================
+def activar_pedido(numero):
+    conn = get_conn()
 
+    # Desactivar todos
+    conn.execute("UPDATE pedidos SET activo = FALSE")
+
+    # Activar el seleccionado
+    conn.execute("""
+        UPDATE pedidos
+        SET activo = TRUE
+        WHERE numero = %s
+    """, (numero,))
+
+    conn.commit()
+    conn.close()
 
 
 # =====================================================
-# 🔵 PARSER ROBUSTO (soporta meses texto y números)
+# 🔵 OBTENER PEDIDO ACTIVO
 # =====================================================
-def parse_fecha(texto):
-    """
-    Soporta:
-    03/02/2026
-    3/2/2026
-    3/Febrero/2026
-    """
-
-    # intento normal dd/mm/yyyy
-    try:
-        return datetime.strptime(texto, "%d/%m/%Y").date()
-    except:
-        pass
-
-    # formato con nombre de mes
-    meses = {
-        "Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
-        "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12
-    }
-
-    d, m, y = texto.split("/")
-
-    if m in meses:
-        return datetime(int(y), meses[m], int(d)).date()
-
-    raise ValueError("Formato de fecha inválido")
-
-
-# =====================================================
-# 🔵 GUARDAR / CARGAR
-# =====================================================
-def guardar_pedido(pedido):
-    if pedido is None:
-        if os.path.exists(ARCHIVO):
-            os.remove(ARCHIVO)
-        return
-
-    with open(ARCHIVO, "w", encoding="utf-8") as f:
-        json.dump(pedido, f)
-
-
-
 def cargar_pedido():
-    if not os.path.exists(ARCHIVO):
-        return None
+    conn = get_conn()
 
-    try:
-        with open(ARCHIVO, "r", encoding="utf-8") as f:
-            data = json.load(f)
+    row = conn.execute("""
+        SELECT numero, desde, hasta
+        FROM pedidos
+        WHERE activo = TRUE
+        LIMIT 1
+    """).fetchone()
 
-        if not data or not isinstance(data, dict):
-            return None
+    conn.close()
 
-        if "numero" not in data:
-            return None
-
-        return data
-
-    except:
-        return None
+    return dict(row) if row else None
 
 
+# =====================================================
+# 🔵 DESACTIVAR PEDIDO
+# =====================================================
+def limpiar_pedido_activo():
+    conn = get_conn()
+    conn.execute("UPDATE pedidos SET activo = FALSE")
+    conn.commit()
+    conn.close()
 
 
 # =====================================================
@@ -82,7 +57,7 @@ def pedido_vencido(pedido):
         return False
 
     hoy = datetime.now().date()
-    fin = parse_fecha(pedido["hasta"])   # 🔥 CAMBIO CLAVE
+    fin = datetime.strptime(pedido["hasta"], "%d/%m/%Y").date()
 
     return hoy > fin
 
@@ -92,6 +67,6 @@ def pedido_por_vencer(pedido):
         return False
 
     hoy = datetime.now().date()
-    fin = parse_fecha(pedido["hasta"])   # 🔥 CAMBIO CLAVE
+    fin = datetime.strptime(pedido["hasta"], "%d/%m/%Y").date()
 
     return (fin - hoy).days == 1

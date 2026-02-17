@@ -1,13 +1,11 @@
-# pedidos.py (SQLite version)
+# pedidos.py
 
 from database.connection import get_conn
-
 
 
 # ===============================
 # 🔵 LISTAR
 # ===============================
-
 def listar_pedidos():
     conn = get_conn()
 
@@ -25,9 +23,20 @@ def listar_pedidos():
 # ===============================
 # 🔵 CREAR
 # ===============================
-
 def crear_pedido(numero, desde, hasta):
+
     conn = get_conn()
+
+    # 🔎 VALIDAR EXISTENCIA EXPLÍCITA
+    existente = conn.execute("""
+        SELECT numero
+        FROM pedidos
+        WHERE numero=%s
+    """, (numero,)).fetchone()
+
+    if existente:
+        conn.close()
+        raise ValueError("Pedido duplicado")
 
     try:
         conn.execute("""
@@ -37,9 +46,10 @@ def crear_pedido(numero, desde, hasta):
 
         conn.commit()
 
-    except:
+    except Exception as e:
+        conn.rollback()
         conn.close()
-        raise ValueError("Pedido duplicado")
+        raise e  # 🔥 ahora sí lanza el error real
 
     conn.close()
 
@@ -53,7 +63,6 @@ def crear_pedido(numero, desde, hasta):
 # ===============================
 # 🔵 OBTENER
 # ===============================
-
 def obtener_pedido(numero):
     conn = get_conn()
 
@@ -66,4 +75,3 @@ def obtener_pedido(numero):
     conn.close()
 
     return dict(r) if r else None
-
