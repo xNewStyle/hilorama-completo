@@ -139,14 +139,21 @@ function App() {
     setScanMensaje("✔ Producto agregado");
     setTimeout(() => setScanMensaje(""), 1500);
 
-    setNotaActiva({
-      
-      ...notaActiva,
+    setNotaActiva(prev => ({
+      ...prev,
       estado: data.estado_nota,
-      productos: notaActiva.productos.map((p) =>
+      productos: prev.productos.map((p) =>
         p.codigo === data.producto.codigo ? data.producto : p
       ),
-    });
+    }));
+    setNotas(prev =>
+      prev.map(n =>
+        n.id === notaActiva.id
+          ? { ...n, estado: data.estado_nota }
+          : n
+      )
+    );
+
     actualizarProgreso(notaActiva.id);  
   };   
   

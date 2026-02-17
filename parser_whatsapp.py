@@ -141,7 +141,8 @@ def extraer_pedidos(texto, productos):
             "sugerencias": {},
             "modo": "gama"
         }
-            
+
+        
     for linea in lineas:
         detecto_formato = False
         linea = linea.strip()
@@ -158,19 +159,39 @@ def extraer_pedidos(texto, productos):
             a_es_codigo = a in codigos_validos
             b_es_codigo = b in codigos_validos
 
-         # Caso normal: codigo cantidad
+            # Caso normal: codigo cantidad
             if a_es_codigo and not b_es_codigo:
                 pedidos[a] = pedidos.get(a, 0) + int(b)
                 codigos_detectados.add(a)
                 codigos_con_cantidad_explicita.add(a)
+                detecto_formato = True
                 continue
-  
-          # Caso invertido: cantidad codigo
+
+            # Caso invertido: cantidad codigo
             if b_es_codigo and not a_es_codigo:
                 pedidos[b] = pedidos.get(b, 0) + int(a)
                 codigos_detectados.add(b)
                 codigos_con_cantidad_explicita.add(b)
+                detecto_formato = True
                 continue
+
+            # 🔥 Si ambos son códigos válidos
+            if a_es_codigo and b_es_codigo:
+                # asumir que el MENOR es cantidad
+                if int(a) < int(b):
+                    codigo = b
+                    cantidad = int(a)
+                else:
+                    codigo = a
+                    cantidad = int(b)
+
+                pedidos[codigo] = pedidos.get(codigo, 0) + cantidad
+                codigos_detectados.add(codigo)
+                codigos_con_cantidad_explicita.add(codigo)
+                detecto_formato = True
+                continue
+
+
 
 
 
@@ -275,21 +296,26 @@ def extraer_pedidos(texto, productos):
             if a_es_codigo and not b_es_codigo:
                 pedidos[a] = pedidos.get(a, 0) + int(b)
                 codigos_detectados.add(a)
+                codigos_con_cantidad_explicita.add(a)
+                detecto_formato = True
                 continue
 
             if b_es_codigo and not a_es_codigo:
                 pedidos[b] = pedidos.get(b, 0) + int(a)
                 codigos_detectados.add(b)
+                codigos_con_cantidad_explicita.add(b)
+                detecto_formato = True
                 continue
 
-            # 🔥 ambos son códigos → usar el de mayor longitud (o el segundo)
             if a_es_codigo and b_es_codigo:
                 codigo = b if len(b) >= len(a) else a
                 cantidad = int(a) if codigo == b else int(b)
                 pedidos[codigo] = pedidos.get(codigo, 0) + cantidad
                 codigos_detectados.add(codigo)
                 codigos_con_cantidad_explicita.add(codigo)
+                detecto_formato = True
                 continue
+
 
         # ================= 🎯 TEXTO + #CODIGO + FLECHA + CANTIDAD =================
         # Ej: Rojo #56 —> 2 | Beige #310 -> 6
@@ -446,18 +472,7 @@ def extraer_pedidos(texto, productos):
                     pedidos[codigo] = pedidos.get(codigo, 0) + 1
                     codigos_detectados.add(codigo)
 
-                    
                 
-
-
-        # ================= 🟡 APLICAR GRUPOS =================
-        for cantidad, codigos in grupos_con_cantidad:
-           
-            for c in codigos:
-                if c in codigos_validos:
-                    pedidos[c] = cantidad
-                    detecto_formato = True
-
         # ================= 🟢 CÓDIGO SOLO EN LÍNEA =================
         m = re.fullmatch(r"\d+", linea)
         if m:
@@ -467,6 +482,14 @@ def extraer_pedidos(texto, productos):
                 codigos_detectados.add(codigo)
                 codigos_con_cantidad_explicita.add(codigo)
                 detecto_formato = True
+
+    # ================= 🟡 APLICAR GRUPOS (AL FINAL) =================
+    for cantidad, codigos in grupos_con_cantidad:
+        for c in codigos:
+            if c in codigos_validos:
+                pedidos[c] = cantidad
+   
+
         # ================= 🚨 ERRORES (solo códigos reales) =================
     for n in numeros_vistos:
         # ignorar cantidades comunes

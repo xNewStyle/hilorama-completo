@@ -125,11 +125,17 @@ def actualizar_hilos(event=None):
     if hilos:
         hilo_var.set(hilos[0])
 
-    # 🔥 Cargar productos UNA sola vez
+    actualizar_productos_cache()   # 👈 reemplaza la carga directa
+
+
+def actualizar_productos_cache(_=None):
+    global productos_cache
+
     productos_cache = obtener_productos(
         marca_var.get(),
         hilo_var.get()
     )
+
 
 
 
@@ -173,12 +179,20 @@ def imprimir_destinatario(nota):
 
 def obtener_mis_datos():
     return {
-        "nombre": "HILORAMA",
-        "calle": "Cocula 246",
-        "colonia": "Benito Juarez, Estado de Mexico",
-        "cp": "5700",
-        "ciudad": "Nezahualcoyotl"
+        "nombre": "JORGE ANGEL ORTIZ ANGUIANO",
+        "telefono": "55 4541 4186",
+        "direccion": {
+            "calle": "Cocula",
+            "numero_ext": "246",
+            "numero_int": "",
+            "colonia": "Benito Juárez",
+            "municipio": "Nezahualcóyotl",
+            "estado": "Estado de México",
+            "codigo_postal": "5700",
+            "referencia": "Lona Rosa"
+        }
     }
+
 
 
 def imprimir_remitente(nota):
@@ -188,10 +202,20 @@ def imprimir_remitente(nota):
     etiqueta_remitente(remitente, nota["id"])
 
 
+import time
+
 def imprimir_ambas(nota):
 
-    imprimir_remitente(nota)
-    imprimir_destinatario(nota)
+    etiqueta_remitente(nota["id"])
+    time.sleep(2)
+
+    etiqueta_destinatario(
+        nota["cliente"],
+        nota["id"],
+        nota.get("envio")
+    )
+
+
 
 def abrir_opciones_impresion(nota):
 
@@ -1581,10 +1605,11 @@ combo_hilo = ctk.CTkComboBox(
     variable=hilo_var,
     width=180,
     height=40,
-    
     corner_radius=10,
-    font=("Segoe UI", 13)
+    font=("Segoe UI", 13),
+    command=actualizar_productos_cache   # 👈 AQUÍ
 )
+
 combo_hilo.grid(row=0, column=1, padx=10, pady=12, sticky="ew")
 
 
