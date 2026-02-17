@@ -8,15 +8,22 @@ database_url = os.environ.get("DATABASE_URL")
 if not database_url:
     raise Exception("DATABASE_URL no configurado")
 
-# 🔥 Pool global
-pool = SimpleConnectionPool(
-    1,      # mínimo conexiones
-    10,     # máximo conexiones
-    database_url
-)
+_pool = None  # 🔥 pool lazy
+
+def get_pool():
+    global _pool
+    if _pool is None:
+        _pool = SimpleConnectionPool(
+            1,
+            10,
+            database_url
+        )
+    return _pool
+
 
 class PGConnection:
     def __init__(self):
+        pool = get_pool()  # 🔥 se crea solo cuando se usa
         self.conn = pool.getconn()
         self.cur = self.conn.cursor(cursor_factory=RealDictCursor)
 
@@ -33,11 +40,13 @@ class PGConnection:
     def commit(self):
         self.conn.commit()
 
+    def rollback(self):
+        self.conn.rollback()
+
     def close(self):
         self.cur.close()
-        pool.putconn(self.conn)  # 🔥 NO se cierra, se devuelve al pool
+        get_pool().putconn(self.conn)
+
 
 def get_conn():
     return PGConnection()
-
-
