@@ -1787,7 +1787,7 @@ def cargar_contexto():
 
 def guardar_cotizacion():
     global cliente_actual
-
+    
     if not carrito:
         messagebox.showwarning("Vacío", "El carrito está vacío")
         return

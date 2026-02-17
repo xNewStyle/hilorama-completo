@@ -173,11 +173,6 @@ def extraer_pedidos(texto, productos):
                 continue
 
 
-            if codigo in codigos_validos:
-                pedidos[codigo] = pedidos.get(codigo, 0) + cantidad
-                codigos_detectados.add(codigo)
-                codigos_con_cantidad_explicita.add(codigo)
-                detecto_formato = True
 
                 
 
