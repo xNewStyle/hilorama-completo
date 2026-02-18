@@ -208,23 +208,38 @@ function App() {
     );
 
     const data = await res.json();
+
     if (!res.ok) {
       alert(data.error);
       return;
     }
 
-    const nuevaNota = {
-      ...notaActiva,
+    // 🔥 USAR ESTADO FUNCIONAL
+    setNotaActiva(prev => ({
+      ...prev,
       estado: data.estado_nota,
-      productos: notaActiva.productos.map((p) =>
+      productos: prev.productos.map((p) =>
         p.codigo === data.producto.codigo ? data.producto : p
       ),
-    };
+    }));
 
-    setNotaActiva(nuevaNota);
-    setNotas(notas.map(n => n.id === nuevaNota.id ? nuevaNota : n));
+    setNotas(prev =>
+      prev.map(n =>
+        n.id === notaActiva.id
+          ? {
+              ...n,
+              estado: data.estado_nota,
+              productos: n.productos.map((p) =>
+                p.codigo === data.producto.codigo ? data.producto : p
+              ),
+            }
+          : n
+      )
+    );
+
     actualizarProgreso(notaActiva.id);
   };
+
 
 
   
