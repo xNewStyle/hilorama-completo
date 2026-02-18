@@ -336,11 +336,23 @@ def resetear_nota(nota_id):
         SET estado='EN_PROCESO'
         WHERE id=%s
     """,(nota_id,))
+    productos = conn.execute("""
+        SELECT codigo,
+               cantidad as pz_requeridas,
+               empacadas as pz_empacadas
+        FROM items
+        WHERE nota_id=%s
+    """,(nota_id,)).fetchall()
 
     conn.commit()
     conn.close()
 
-    return jsonify({"ok": True})
+    return jsonify({
+        "id": int(nota_id),
+        "estado": "EN_PROCESO",
+        "productos": productos
+    })
+
 
 @app.route("/notas/<nota_id>/scan", methods=["POST"])
 def escanear_producto(nota_id):
@@ -423,14 +435,23 @@ def escanear_producto(nota_id):
             WHERE id=%s
         """,(nuevo_estado, nota_id))
 
+    producto_actualizado = conn.execute("""
+        SELECT codigo,
+               cantidad as pz_requeridas,
+               empacadas as pz_empacadas
+        FROM items
+        WHERE id=%s
+    """,(item["id"],)).fetchone()
 
     conn.commit()
     conn.close()
 
     return jsonify({
         "ok": True,
-        "estado_nota": nuevo_estado
+        "estado_nota": nuevo_estado,
+        "producto": producto_actualizado
     })
+
 
 
 
@@ -515,14 +536,23 @@ def ajustar_producto(nota_id):
             WHERE id=%s
         """,(nuevo_estado, nota_id))
 
+    producto_actualizado = conn.execute("""
+        SELECT codigo,
+               cantidad as pz_requeridas,
+               empacadas as pz_empacadas
+        FROM items
+        WHERE id=%s
+    """,(item["id"],)).fetchone()
 
     conn.commit()
     conn.close()
 
     return jsonify({
         "ok": True,
-        "estado_nota": nuevo_estado
+        "estado_nota": nuevo_estado,
+        "producto": producto_actualizado
     })
+
 
 
 

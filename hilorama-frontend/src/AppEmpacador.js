@@ -263,8 +263,10 @@ function App() {
   const reiniciarNota = async () => {
     if (!window.confirm("¿Reiniciar toda la nota?")) return;
 
+    const idNota = notaActiva.id;
+
     const res = await fetch(
-      `${API_URL}/notas/${notaActiva.id}/reset`,
+      `${API_URL}/notas/${idNota}/reset`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -272,9 +274,26 @@ function App() {
     );
 
     const data = await res.json();
-    setNotaActiva(data);
-    setNotas(notas.map(n => n.id === data.id ? data : n));
+
+    // 🔥 volver a pedir la nota completa
+    const notaActualizada = await fetch(
+      `${API_URL}/notas/${idNota}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    ).then(r => r.json());
+
+    setNotaActiva(notaActualizada);
+
+    setNotas(prev =>
+      prev.map(n =>
+        n.id === idNota ? notaActualizada : n
+      )
+    );
+
+    actualizarProgreso(idNota);
   };
+
 
   /* ======================
      LOGIN UI
