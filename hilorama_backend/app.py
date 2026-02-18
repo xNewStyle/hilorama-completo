@@ -445,6 +445,19 @@ def ajustar_producto(nota_id):
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
+    data = request.get_json(silent=True)
+
+    if not data:
+        return jsonify({"error": "JSON inválido"}), 400
+
+    codigo = data.get("codigo")
+    marca = data.get("marca")
+    hilo = data.get("hilo")
+    cantidad = data.get("cantidad")
+
+    if not codigo or not marca or not hilo or cantidad is None:
+        return jsonify({"error": "Datos incompletos"}), 400
+
     with get_conn() as conn:
 
         nota = conn.execute("""
@@ -459,12 +472,6 @@ def ajustar_producto(nota_id):
             and auth["rol"] != "ADMIN"
         ):
             return jsonify({"error": "No autorizado para esta nota"}), 403
-
-        data = request.json
-        codigo = data["codigo"]
-        marca = data["marca"]
-        hilo = data["hilo"]
-        cantidad = data["cantidad"]
 
         item = conn.execute("""
             SELECT id, cantidad, empacadas
@@ -498,19 +505,21 @@ def ajustar_producto(nota_id):
 
         if totales["emp"] == totales["total"]:
             nuevo_estado = "COMPLETA"
-        elif totales["emp"] == 0:
-            nuevo_estado = "EN_PROCESO"
-        else:
-            nuevo_estado = "INCOMPLETA"
-
-        if nuevo_estado == "COMPLETA":
             conn.execute("""
                 UPDATE notas
                 SET estado=%s,
                     fecha_finalizacion=NOW()
                 WHERE id=%s
             """,(nuevo_estado, nota_id))
+        elif totales["emp"] == 0:
+            nuevo_estado = "EN_PROCESO"
+            conn.execute("""
+                UPDATE notas
+                SET estado=%s
+                WHERE id=%s
+            """,(nuevo_estado, nota_id))
         else:
+            nuevo_estado = "INCOMPLETA"
             conn.execute("""
                 UPDATE notas
                 SET estado=%s
@@ -530,7 +539,6 @@ def ajustar_producto(nota_id):
         "estado_nota": nuevo_estado,
         "producto": producto_actualizado
     })
-
 
 
 
