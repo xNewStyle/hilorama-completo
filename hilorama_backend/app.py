@@ -150,6 +150,7 @@ def login():
 # =========================
 @app.route("/notas-pagadas", methods=["GET"])
 def notas_pagadas():
+
     auth = validar_token(request)
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
@@ -160,7 +161,16 @@ def notas_pagadas():
             SELECT id, cliente_nombre, estado, paqueteria
             FROM notas
             WHERE empacador_id=%s
-            ...
+            AND estado != 'ARCHIVADA'
+            AND (
+                estado IN ('PAGADA','EN_PROCESO','INCOMPLETA')
+                OR
+                (
+                    estado='COMPLETA'
+                    AND fecha_finalizacion > NOW() - INTERVAL '24 hours'
+                )
+            )
+            ORDER BY fecha_asignacion DESC
         """,(auth["empacador_id"],)).fetchall()
 
         resultado = []
