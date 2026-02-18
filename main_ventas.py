@@ -1882,7 +1882,15 @@ def actualizar_total_con_envio():
 
     texto += f"\nTOTAL PIEZAS: {total_general}"
 
-    lbl_piezas.configure(text=texto)
+    texto_final = ""
+
+    for hilo, cantidad in totales_hilo.items():
+        texto_final += f"• {hilo}: {cantidad} pz\n"
+
+    texto_final += f"\n🧵 TOTAL PIEZAS: {total_general}"
+
+    lbl_piezas.configure(text=texto_final)
+
 
 
     
@@ -2699,6 +2707,7 @@ def refrescar_carrito():
             "end",
             values=(
                 p["hilo"],
+                p["color"],
                 p["codigo"],
                 p["cantidad"],
                 f"${p['precio']:.2f}",

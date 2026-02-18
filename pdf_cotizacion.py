@@ -249,28 +249,30 @@ from reportlab.platypus import Table, TableStyle
 
 def draw_info_cliente_envio_fechas(
     c,
-   
     fecha_base,
     x_cm=3,
     y_cm=19,
     ancho_cm=14
 ):
-    """
-    Layout:
 
-    Cliente: Patricia Lozano      Fecha Estimada de Envío:
-    Paquetería: DHL               25/02/2026 - 27/02/2026
-    """
-
-    # ========= rango fechas (+2 días) =========
     rango = ""
+
     if fecha_base:
         try:
-            fecha_base = fecha_base.split(" ")[0]
-            f = datetime.strptime(fecha_base, "%d/%m/%Y")
+            fecha_base = str(fecha_base).split(" ")[0]
+
+            # 🔥 Detecta formato automáticamente
+            if "-" in fecha_base:
+                f = datetime.strptime(fecha_base, "%Y-%m-%d")
+            else:
+                f = datetime.strptime(fecha_base, "%d/%m/%Y")
+
             entrega = f + timedelta(days=2)
+
             rango = f"{f.strftime('%d/%m/%Y')} - {entrega.strftime('%d/%m/%Y')}"
-        except:
+
+        except Exception as e:
+            print("Error fecha:", e)
             rango = fecha_base
 
     x = x_cm * cm
@@ -282,23 +284,20 @@ def draw_info_cliente_envio_fechas(
         [rango]
     ]
 
-    tabla = Table(data, colWidths=[w*0.55, w*0.45])
+    tabla = Table(data, colWidths=[w])
 
     tabla.setStyle(TableStyle([
         ("FONT", (0,0), (-1,-1), "Times-Roman", 14),
-
         ("ALIGN", (0,0), (-1,-1), "LEFT"),
-
         ("TEXTCOLOR", (0,0), (-1,-1), colors.HexColor("#B49A04")),
-
         ("BOTTOMPADDING", (0,0), (-1,-1), 3),
         ("TOPPADDING", (0,0), (-1,-1), 3),
-
         ("GRID", (0,0), (-1,-1), 0, colors.transparent),
     ]))
 
     tabla.wrapOn(c, w, 2*cm)
     tabla.drawOn(c, x, y)
+
 
 
 # ================= FUENTE ELEGANTE =================
@@ -472,7 +471,8 @@ def generar_pdf_cotizacion(
     # 🔵 TABLA PRODUCTOS (AUTO PAGINACIÓN)
     # ======================================================
 
-    data = [["Producto", "Cant.", "Precio", "Subtotal"]]
+    data = [["Hilo", "Color", "Código", "Cant.", "Precio", "Subtotal"]]
+
 
     total_productos = 0
 
@@ -481,11 +481,14 @@ def generar_pdf_cotizacion(
         total_productos += sub
 
         data.append([
-            str(p["codigo"]),
+            str(p.get("hilo", "")),      # 🔥 hilo
+            str(p.get("color", "")),     # 🔥 color
+            str(p["codigo"]),            # código
             str(p["cantidad"]),
             f"${p['precio']:.2f}",
             f"${sub:.2f}"
         ])
+
 
     envio = nota.get("envio", {})
     costo_envio = envio.get("precio", 0)
@@ -613,10 +616,11 @@ def generar_pdf_cotizacion(
 
     tabla = Table(
         data,
-        colWidths=[7*cm, 2*cm, 3*cm, 3*cm],
+        colWidths=[3*cm, 3*cm, 2.5*cm, 2*cm, 2.5*cm, 2.5*cm],
         repeatRows=1,
-        splitByRow=1   # 🔥 permite cortes limpios
+        splitByRow=1
     )
+
 
     tabla.setStyle(TableStyle([
 
