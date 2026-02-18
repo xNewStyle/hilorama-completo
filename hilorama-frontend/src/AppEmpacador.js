@@ -195,8 +195,12 @@ function App() {
      AJUSTAR PRODUCTO
   ====================== */
   const ajustar = async (codigo, cantidad) => {
+    if (!notaActiva) return;
+
+    const idNota = notaActiva.id; // 🔥 congelamos el id
+
     const res = await fetch(
-      `${API_URL}/notas/${notaActiva.id}/producto/ajustar`,
+      `${API_URL}/notas/${idNota}/producto/ajustar`,
       {
         method: "POST",
         headers: {
@@ -214,31 +218,41 @@ function App() {
       return;
     }
 
-    // 🔥 USAR ESTADO FUNCIONAL
-    setNotaActiva(prev => ({
-      ...prev,
-      estado: data.estado_nota,
-      productos: prev.productos.map((p) =>
-        p.codigo === data.producto.codigo ? data.producto : p
-      ),
-    }));
+    // 🔥 actualizar nota activa SIEMPRE desde prev
+    setNotaActiva(prev => {
+      if (!prev) return prev;
 
+      return {
+        ...prev,
+        estado: data.estado_nota,
+        productos: prev.productos.map(p =>
+          p.codigo === data.producto.codigo
+            ? data.producto
+            : p
+        ),
+      };
+    });
+
+    // 🔥 actualizar lista de notas sin usar notaActiva directamente
     setNotas(prev =>
       prev.map(n =>
-        n.id === notaActiva.id
+        n.id === idNota
           ? {
               ...n,
               estado: data.estado_nota,
-              productos: n.productos.map((p) =>
-                p.codigo === data.producto.codigo ? data.producto : p
+              productos: n.productos?.map(p =>
+                p.codigo === data.producto.codigo
+                  ? data.producto
+                  : p
               ),
             }
           : n
       )
     );
 
-    actualizarProgreso(notaActiva.id);
+    actualizarProgreso(idNota);
   };
+
 
 
 
