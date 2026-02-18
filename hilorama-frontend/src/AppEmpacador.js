@@ -591,35 +591,43 @@ function App() {
   }
 
   /* ======================
-     LISTA DE NOTAS
+   LISTA DE NOTAS
   ====================== */
   return (
     <div style={{ padding: 20 }}>
       <h1>Notas asignadas</h1>
 
-      {Array.isArray(notas) && notas.map((nota) => (
-        <div
-          key={nota.id}
-          onClick={() => setNotaActiva(nota)}
-          style={{
-            cursor: "pointer",
-            padding: 15,
-            borderRadius: 10,
-            marginBottom: 12,
-            background: coloresEstado[nota.estado],
-          }}
-        >
-          <strong>{nota.id}</strong><br />
-          Cliente: {nota.cliente}<br />
-          Estado: {nota.estado}
-        </div>
-      ))}
+      {Array.isArray(notas) &&
+        notas.map((nota) => (
+          <div
+            key={nota.id}
+            onClick={() => setNotaActiva(nota)}
+            style={{
+              cursor: "pointer",
+              padding: 15,
+              borderRadius: 10,
+              marginBottom: 12,
+              background: coloresEstado[nota.estado],
+            }}
+          >
+            <strong>{nota.id}</strong><br />
+            Cliente: {nota.cliente}<br />
+            Estado: {nota.estado}<br />
+
+            {nota.paqueteria && (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontWeight: "bold",
+                  fontSize: 14,
+                }}
+              >
+                🚚 {nota.paqueteria}
+              </div>
+            )}
+          </div>
+        ))}
     </div>
   );
 }
-
 export default App;
-
-
-
-

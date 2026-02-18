@@ -1859,10 +1859,30 @@ def guardar_cotizacion():
 def actualizar_total_con_envio():
     total_productos = sum(p["cantidad"] * p["precio"] for p in carrito)
     envio_precio = envio_actual["precio"] if envio_actual else 0
-
     total = total_productos + envio_precio
 
     lbl_total.configure(text=f"${total:.2f}")
+
+    # 🔥 TOTAL PIEZAS
+    total_general = 0
+    totales_hilo = {}
+
+    for p in carrito:
+        total_general += p["cantidad"]
+
+        if p["hilo"] not in totales_hilo:
+            totales_hilo[p["hilo"]] = 0
+
+        totales_hilo[p["hilo"]] += p["cantidad"]
+
+    texto = ""
+
+    for hilo, cantidad in totales_hilo.items():
+        texto += f"{hilo}: {cantidad} pz   "
+
+    texto += f"\nTOTAL PIEZAS: {total_general}"
+
+    lbl_piezas.configure(text=texto)
 
 
     
@@ -2236,7 +2256,8 @@ style.configure(
 style.map("Treeview", background=[("selected", "#DCEBFF")])
 
 
-cols = ("Marca", "Hilo", "Código", "Cantidad", "Precio", "Subtotal")
+cols = ("Hilo", "Color", "Código", "Cantidad", "Precio", "Subtotal")
+
 
 tabla_carrito = ttk.Treeview(
     frame_tabla,
@@ -2359,6 +2380,12 @@ lbl_total = ctk.CTkLabel(
     font=("Segoe UI", 36, "bold")
 )
 lbl_total.pack(anchor="w", padx=20, pady=(0, 15))
+lbl_piezas = ctk.CTkLabel(
+    frame_total,
+    text="",
+    font=("Segoe UI", 13)
+)
+lbl_piezas.pack(anchor="w", padx=20, pady=(0,10))
 
 
 ctk.CTkFrame(frame_total, height=2, fg_color="#EEEEEE").pack(fill="x", padx=15, pady=5)
@@ -2630,25 +2657,31 @@ def agregar_al_carrito(pedido):
 
     productos = productos_cache
 
-
     for p in productos:
         if p["codigo"] == codigo:
             precio = obtener_precio_venta(p["marca"])
 
             for c in carrito:
-                if c["codigo"] == codigo:
+                if (
+                    c["codigo"] == codigo
+                    and c["marca"] == p["marca"]
+                    and c["hilo"] == p["hilo"]
+                ):
                     c["cantidad"] += cantidad
                     return
 
             carrito.append({
-                "marca": p["marca"],
+                "marca": p["marca"],  # se mantiene interno
                 "hilo": p["hilo"],
+                "color": p["color"],  # 🔥 agregar
                 "codigo": codigo,
                 "cantidad": cantidad,
                 "precio": precio,
                 "stock": p["stock"]
             })
+
             return
+
 
 def refrescar_carrito():
     tabla_carrito.delete(*tabla_carrito.get_children())
@@ -2665,7 +2698,6 @@ def refrescar_carrito():
             "",
             "end",
             values=(
-                p["marca"],
                 p["hilo"],
                 p["codigo"],
                 p["cantidad"],

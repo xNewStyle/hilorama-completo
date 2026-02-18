@@ -28,10 +28,9 @@ def indice_clientes():
 
 
 def tiene_pago(id_nota, pagos):
-    for p in pagos:
-        if p.get("nota") == id_nota:
-            return True
-    return False
+    pagos_idx = {p["nota"] for p in pagos}
+    return id_nota in pagos_idx
+
 
 
 def normalizar(texto):
@@ -89,8 +88,8 @@ def abrir_visor_notas(root):
 
     # ================= DATOS =================
     clientes_idx = indice_clientes()
-    pagos = cargar_pagos()
     notas = listar_cotizaciones()
+    pagos = cargar_pagos()
     # ===== AUTOCOMPLETE CLIENTES =====
     nombres_clientes = sorted({
         c.get("nombre", "")
@@ -102,10 +101,13 @@ def abrir_visor_notas(root):
 
 
     def refrescar(filtro=""):
+        pagos = cargar_pagos()
         tree.delete(*tree.get_children())
         f = normalizar(filtro)
+        notas_actuales = listar_cotizaciones()
 
-        for n in notas:
+        for n in notas_actuales:
+
             id_nota = n["id"]
             cliente = clientes_idx.get(n["cliente_id"], {})
             nombre = cliente.get("nombre", "")

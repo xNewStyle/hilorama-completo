@@ -164,10 +164,10 @@ def notas_pagadas():
     conn = get_conn()
 
     notas = conn.execute("""
-        SELECT id, cliente_nombre, estado
+        SELECT id, cliente_nombre, estado, paqueteria
         FROM notas
         WHERE empacador_id=%s
-        AND estado != 'ARCHIVADA' 
+        AND estado != 'ARCHIVADA'
         AND (
             estado IN ('PAGADA','EN_PROCESO','INCOMPLETA')
             OR
@@ -177,15 +177,17 @@ def notas_pagadas():
             )
         )
         ORDER BY fecha_asignacion DESC
-                         
     """,(auth["empacador_id"],)).fetchall()
+
 
     resultado = []
 
     for n in notas:
         productos = conn.execute("""
-            SELECT codigo, cantidad as pz_requeridas,
+            SELECT marca, hilo, codigo,
+                   cantidad as pz_requeridas,
                    empacadas as pz_empacadas
+
             FROM items
             WHERE nota_id=%s
         """,(n["id"],)).fetchall()
@@ -194,8 +196,10 @@ def notas_pagadas():
             "id": n["id"],
             "cliente": n["cliente_nombre"],
             "estado": n["estado"],
+            "paqueteria": n["paqueteria"],   # 👈 NUEVO
             "productos": productos
         })
+
 
     conn.close()
     return jsonify(resultado)
@@ -337,9 +341,10 @@ def resetear_nota(nota_id):
         WHERE id=%s
     """,(nota_id,))
     productos = conn.execute("""
-        SELECT codigo,
+        SELECT marca, hilo, codigo,
                cantidad as pz_requeridas,
                empacadas as pz_empacadas
+
         FROM items
         WHERE nota_id=%s
     """,(nota_id,)).fetchall()
@@ -390,8 +395,17 @@ def escanear_producto(nota_id):
     item = conn.execute("""
         SELECT id, cantidad, empacadas
         FROM items
-        WHERE nota_id=%s AND codigo=%s
-    """,(nota_id, producto["codigo"])).fetchone()
+        WHERE nota_id=%s
+        AND marca=%s
+        AND hilo=%s
+        AND codigo=%s
+    """,(
+        nota_id,
+        producto["marca"],
+        producto["hilo"],
+        producto["codigo"]
+    )).fetchone()
+
 
     if not item:
         conn.close()
@@ -437,9 +451,10 @@ def escanear_producto(nota_id):
         """,(nuevo_estado, nota_id))
 
     producto_actualizado = conn.execute("""
-        SELECT codigo,
+        SELECT marca, hilo, codigo,
                cantidad as pz_requeridas,
                empacadas as pz_empacadas
+
         FROM items
         WHERE id=%s
     """,(item["id"],)).fetchone()
@@ -484,13 +499,19 @@ def ajustar_producto(nota_id):
 
     data = request.json
     codigo = data["codigo"]
+    marca = data["marca"]
+    hilo = data["hilo"]
     cantidad = data["cantidad"]
 
     item = conn.execute("""
         SELECT id, cantidad, empacadas
         FROM items
-        WHERE nota_id=%s AND codigo=%s
-    """,(nota_id, codigo)).fetchone()
+        WHERE nota_id=%s
+        AND marca=%s
+        AND hilo=%s
+        AND codigo=%s
+    """,(nota_id, marca, hilo, codigo)).fetchone()
+
 
     if not item:
         conn.close()
@@ -538,9 +559,10 @@ def ajustar_producto(nota_id):
         """,(nuevo_estado, nota_id))
 
     producto_actualizado = conn.execute("""
-        SELECT codigo,
+        SELECT marca, hilo, codigo,
                cantidad as pz_requeridas,
                empacadas as pz_empacadas
+
         FROM items
         WHERE id=%s
     """,(item["id"],)).fetchone()

@@ -113,14 +113,13 @@ def eliminar_venta_desde_lista(tree, win):
 
     # 🔁 devolver stock
     for item in nota["items"]:
-        prod = obtener_producto_por_codigo(item["codigo"])
-
         descontar_stock(
-            prod["marca"],
-            prod["hilo"],
-            prod["codigo"],
-            -item["cantidad"]
+            item["marca"],
+            item["hilo"],
+            item["codigo"],
+           -item["cantidad"]
         )
+
 
     eliminar_nota(id_nota)
 
@@ -362,7 +361,8 @@ def ver_detalles(tree, parent):
     frame_tabla.pack(side="left", fill="both", expand=True, padx=(10, 5))
 
     # ================= PRODUCTOS =================
-    cols = ("Código", "Cantidad", "Precio", "Subtotal")
+    cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+
 
     tree_det = ttk.Treeview(frame_tabla, columns=cols, show="headings")
 
@@ -380,10 +380,13 @@ def ver_detalles(tree, parent):
 
         tree_det.insert("", "end", values=(
             p["codigo"],
+            p["marca"],
+            p["hilo"],
             p["cantidad"],
             f"${p['precio']:.2f}",
             f"${sub:.2f}"
         ))
+
 
     # ================= ENVÍO =================
     import json
@@ -1047,9 +1050,8 @@ def abrir_visor(root):
     # DESCONTAR STOCK
     # =========================
         for item in nota["items"]:
-            prod = obtener_producto_por_codigo(item["codigo"])
 
-            if not prod:
+            if not item:
                 messagebox.showerror(
                     "Error crítico",
                     f"El producto {item['codigo']} no existe en almacén.",
@@ -1058,11 +1060,12 @@ def abrir_visor(root):
                 return
 
             descontar_stock(
-                prod["marca"],
-                prod["hilo"],
-                prod["codigo"],
+                item["marca"],
+                item["hilo"],
+                item["codigo"],
                 item["cantidad"]
             )
+
 
 
 
@@ -1213,7 +1216,12 @@ def abrir_visor(root):
                 existe = None
                 for item in tree_ed.get_children():
                     vals = tree_ed.item(item)["values"]
-                    if str(vals[0]) == str(p["codigo"]):
+                    if (
+                       str(vals[0]) == str(p["codigo"]) and
+                       str(vals[1]) == str(prod["marca"]) and
+                       str(vals[2]) == str(prod["hilo"])
+                    ):
+
                         existe = item
                         break
 
@@ -1231,10 +1239,13 @@ def abrir_visor(root):
                 else:
                     tree_ed.insert("", "end", values=(
                         p["codigo"],
+                        prod["marca"],
+                        prod["hilo"],
                         cantidad,
                         precio,
                         subtotal
                     ))
+
 
             texto_parser.set("")
             recalcular()
@@ -1247,7 +1258,8 @@ def abrir_visor(root):
            command=agregar_producto
         ).pack(side="right")
 
-        cols = ("Código", "Cantidad", "Precio", "Subtotal")
+        cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+
 
         tree_ed = ttk.Treeview(frame, columns=cols, show="headings")
 
@@ -1261,10 +1273,13 @@ def abrir_visor(root):
         for p in nota["items"]:
             tree_ed.insert("", "end", values=(
                 p["codigo"],
+                p["marca"],
+                p["hilo"],
                 p["cantidad"],
                 p["precio"],
                 p["cantidad"] * p["precio"]
             ))
+
 
 
         # =====================================================
@@ -1277,7 +1292,8 @@ def abrir_visor(root):
         def recalcular():
             total = 0
             for i in tree_ed.get_children():
-                _, _, _, sub = tree_ed.item(i, "values")
+                _, _, _, _, _, sub = tree_ed.item(i, "values")
+
                 total += float(sub)
 
             envio = nota.get("envio", {}).get("precio", 0)
@@ -1379,66 +1395,53 @@ def abrir_visor(root):
 
             # 🔵 1. Guardar estado original
             originales = {
-                item["codigo"]: item["cantidad"]
+                (item["codigo"], item["marca"], item["hilo"]): item["cantidad"]
                 for item in nota["items"]
             }
+
 
             # 🔵 2. Construir nuevos items
             nuevos = []
             actuales = {}
 
             for i in tree_ed.get_children():
-                codigo, cantidad, precio, _ = tree_ed.item(i, "values")
+                codigo, marca, hilo, cantidad, precio, _ = tree_ed.item(i, "values")
+
 
                 cantidad = int(cantidad)
 
                 nuevos.append({
                     "codigo": codigo,
-                    "cantidad": cantidad,
+                    "marca": marca,
+                    "hilo": hilo,
+                    "cantidad": int(cantidad),
                     "precio": float(precio)
                 })
 
-                actuales[codigo] = cantidad
+                actuales[(codigo, marca, hilo)] = int(cantidad)
+
 
             # 🔵 3. Comparar diferencias
-            todos_codigos = set(originales.keys()) | set(actuales.keys())
+            todas_claves = set(originales.keys()) | set(actuales.keys())
 
-            for codigo in todos_codigos:
+            for clave in todas_claves:
 
-                cantidad_original = originales.get(codigo, 0)
-                cantidad_nueva = actuales.get(codigo, 0)
+                cantidad_original = originales.get(clave, 0)
+                cantidad_nueva = actuales.get(clave, 0)
 
                 diferencia = cantidad_nueva - cantidad_original
 
                 if diferencia == 0:
                     continue
 
-                prod = obtener_producto_por_codigo(codigo)
-                if not prod:
-                    messagebox.showerror(
-                        "Error crítico",
-                        f"El producto {codigo} no existe en almacén",
-                        parent=ed
-                    )
-                    return
+                codigo, marca, hilo = clave
 
-
-                # 🔴 AUMENTÓ → descontar
-                if diferencia > 0:
+                if diferencia != 0:
                     descontar_stock(
-                        prod["marca"],
-                        prod["hilo"],
-                        prod["codigo"],
+                        marca,
+                        hilo,
+                        codigo,
                         diferencia
-                    )
-
-                # 🟢 BAJÓ → devolver
-                if diferencia < 0:
-                    descontar_stock(
-                        prod["marca"],
-                        prod["hilo"],
-                        prod["codigo"],
-                        diferencia   # negativo = devuelve
                     )
 
             
@@ -1609,7 +1612,12 @@ def editar_cotizacion(win, tree):
             for i in tree_ed.get_children():
                 vals = tree_ed.item(i, "values")
 
-                if str(vals[0]) == codigo:
+                if (
+                    str(vals[0]) == codigo and
+                    str(vals[1]) == prod["marca"] and
+                    str(vals[2]) == prod["hilo"]
+                ):
+
                     nueva_cant = int(vals[1]) + cantidad
                     precio = float(vals[2])
 
@@ -1631,11 +1639,14 @@ def editar_cotizacion(win, tree):
                     "end",
                     values=(
                         codigo,
+                        prod["marca"],
+                        prod["hilo"],
                         cantidad,
                         precio,
                         cantidad * precio
                     )
                 )
+
 
         recalcular_total()
         buscar_codigo_var.set("")
@@ -1657,7 +1668,8 @@ def editar_cotizacion(win, tree):
     frame_tabla.pack(fill="both", expand=True, padx=15, pady=10)
 
 
-    cols = ("Código", "Cantidad", "Precio", "Subtotal")
+    cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+
 
     tree_ed = ttk.Treeview(frame_tabla, columns=cols, show="headings")
 
@@ -1690,7 +1702,7 @@ def editar_cotizacion(win, tree):
     def recalcular_total():
         total = 0
         for i in tree_ed.get_children():
-            _, _, _, sub = tree_ed.item(i, "values")
+            _, _, _, _, _, sub = tree_ed.item(i, "values")
             total += float(sub)
         lbl_total.configure(text=f"${total:.2f}")
 
@@ -1699,16 +1711,15 @@ def editar_cotizacion(win, tree):
     # 🔵 CARGAR ITEMS
     # ======================================================
     for p in nota["items"]:
-        tree_ed.insert(
-            "",
-            "end",
-            values=(
-                p["codigo"],
-                p["cantidad"],
-                p["precio"],
-                p["cantidad"] * p["precio"]
-            )
-        )
+        tree_ed.insert("", "end", values=(
+            p["codigo"],
+            p["marca"],
+            p["hilo"],
+            p["cantidad"],
+            p["precio"],
+            p["cantidad"] * p["precio"]
+        ))
+
 
     recalcular_total()
 
@@ -1778,12 +1789,16 @@ def editar_cotizacion(win, tree):
     def guardar():
         nuevos = []
         for i in tree_ed.get_children():
-            c, q, p, _ = tree_ed.item(i, "values")
+            c, marca, hilo, q, p, _ = tree_ed.item(i, "values")
+
             nuevos.append({
                 "codigo": c,
+                "marca": marca,
+                "hilo": hilo,
                 "cantidad": int(q),
                 "precio": float(p)
             })
+
 
         actualizar_cotizacion(id_nota, nuevos)
 
@@ -1824,12 +1839,16 @@ def editar_cotizacion(win, tree):
             # 1️⃣ Recolectar items
             items_finales = []
             for i in tree_ed.get_children():
-                codigo, cantidad, precio, _ = tree_ed.item(i, "values")
+                codigo, marca, hilo, cantidad, precio, _ = tree_ed.item(i, "values")
+
                 items_finales.append({
                     "codigo": codigo,
+                    "marca": marca,
+                    "hilo": hilo,
                     "cantidad": int(cantidad),
                     "precio": float(precio)
                 })
+
 
             if not items_finales:
                 messagebox.showwarning(
@@ -1852,8 +1871,8 @@ def editar_cotizacion(win, tree):
 
             # 4️⃣ Descontar stock
             for item in items_finales:
-                prod = obtener_producto_por_codigo(item["codigo"])
-                if not prod:
+                
+                if not item:
                     messagebox.showerror(
                         "Error",
                         f"No existe el producto {item['codigo']}",
@@ -1862,11 +1881,12 @@ def editar_cotizacion(win, tree):
                     return
 
                 descontar_stock(
-                    prod["marca"],
-                    prod["hilo"],
-                    prod["codigo"],
+                    item["marca"],
+                    item["hilo"],
+                    item["codigo"],
                     item["cantidad"]
                 )
+
 
             # 5️⃣ Convertir cotización → venta (GUARDA TODO)
             ok = convertir_cotizacion_a_venta(
@@ -1918,12 +1938,14 @@ def editar_cotizacion(win, tree):
         items = []
 
         for i in tree_ed.get_children():
-            codigo, cantidad, precio, _ = tree_ed.item(i, "values")
+            codigo, marca, hilo, cantidad, precio, _ = tree_ed.item(i, "values")
 
             items.append({
                 "codigo": codigo,
-                "cantidad": int(cantidad),
-                "precio": float(precio)
+                "marca": marca,
+                "hilo": hilo,
+                "cantidad": cantidad,
+                "precio": precio
             })
 
         if not items:
@@ -2106,7 +2128,8 @@ def mostrar_detalle_nota(nota, parent):
     ttk.Label(det, text=f"Fecha: {nota['fecha']}").pack(anchor="w", padx=10)
     ttk.Label(det, text=f"Estado: {nota['estado']}").pack(anchor="w", padx=10)
 
-    cols = ("Código", "Cantidad", "Precio", "Subtotal")
+    cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+
     tree = ttk.Treeview(det, columns=cols, show="headings")
 
     for c in cols:
@@ -2120,10 +2143,13 @@ def mostrar_detalle_nota(nota, parent):
             "end",
             values=(
                 p["codigo"],
+                p["marca"],
+                p["hilo"],
                 p["cantidad"],
                 f"${p['precio']:.2f}",
                 f"${p['cantidad'] * p['precio']:.2f}"
             )
+
         )
 
     ttk.Label(

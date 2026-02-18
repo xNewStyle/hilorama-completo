@@ -574,3 +574,11 @@ def obtener_producto_por_codigo_barras(codigo_barras):
 
 
 
+def obtener_producto_por_codigo(codigo):
+    conn = get_conn()
+    r = conn.execute("""
+        SELECT * FROM productos
+        WHERE codigo=%s
+    """,(codigo,)).fetchone()
+    conn.close()
+    return r
