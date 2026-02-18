@@ -17,7 +17,7 @@ def get_pool():
     if _pool is None:
         _pool = SimpleConnectionPool(
             1,
-            20,
+            5,
             get_database_url()
         )
     return _pool

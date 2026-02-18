@@ -1,4 +1,3 @@
-
 from core.almacen_api import obtener_producto_por_codigo_barras
 
 from flask_cors import CORS
@@ -47,13 +46,13 @@ def validar_token(req):
 
         empacador_id = int(empacador_id)
 
-        conn = get_conn()
-        row = conn.execute("""
-            SELECT id, rol
-            FROM empacadores
-            WHERE id=%s AND activo=TRUE
-        """,(empacador_id,)).fetchone()
-        conn.close()
+        with get_conn() as conn:
+            row = conn.execute("""
+                SELECT id, rol
+                FROM empacadores
+                WHERE id=%s AND activo=TRUE
+            """,(empacador_id,)).fetchone()
+
 
         if not row:
             return None
@@ -91,20 +90,17 @@ def evaluar_estado_nota(nota):
 from database.connection import get_conn
 
 def registrar_error(nota_id, codigo, empacador_id, motivo):
-    conn = get_conn()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO errores_scan (
+                nota_id,
+                empacador_id,
+                codigo,
+                motivo
+            )
+            VALUES (%s,%s,%s,%s)
+        """,(nota_id, empacador_id, codigo, motivo))
 
-    conn.execute("""
-        INSERT INTO errores_scan (
-            nota_id,
-            empacador_id,
-            codigo,
-            motivo
-        )
-        VALUES (%s,%s,%s,%s)
-    """,(nota_id, empacador_id, codigo, motivo))
-
-    conn.commit()
-    conn.close()
 
 
 
@@ -124,19 +120,16 @@ def login():
     usuario = data.get("usuario")
     password = data.get("password")
 
-    conn = get_conn()
+    with get_conn() as conn:
+        row = conn.execute("""
+            SELECT id, nombre, password, rol
+            FROM empacadores
+            WHERE usuario=%s AND activo=TRUE
+        """,(usuario,)).fetchone()
 
-    row = conn.execute("""
-        SELECT id, nombre, password, rol
-        FROM empacadores
-        WHERE usuario=%s AND activo=TRUE
-    """,(usuario,)).fetchone()
+        if not row or row["password"] != password:
+            return jsonify({"error": "Credenciales inválidas"}), 401
 
-    if not row or row["password"] != password:
-        conn.close()
-        return jsonify({"error": "Credenciales inválidas"}), 401
-
-    conn.close()
 
     token = generar_token(row["id"])
 
@@ -161,47 +154,34 @@ def notas_pagadas():
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
-    conn = get_conn()
+    with get_conn() as conn:
 
-    notas = conn.execute("""
-        SELECT id, cliente_nombre, estado, paqueteria
-        FROM notas
-        WHERE empacador_id=%s
-        AND estado != 'ARCHIVADA'
-        AND (
-            estado IN ('PAGADA','EN_PROCESO','INCOMPLETA')
-            OR
-            (
-                estado='COMPLETA'
-                AND fecha_finalizacion > NOW() - INTERVAL '24 hours'
-            )
-        )
-        ORDER BY fecha_asignacion DESC
-    """,(auth["empacador_id"],)).fetchall()
+        notas = conn.execute("""
+            SELECT id, cliente_nombre, estado, paqueteria
+            FROM notas
+            WHERE empacador_id=%s
+            ...
+        """,(auth["empacador_id"],)).fetchall()
 
+        resultado = []
 
-    resultado = []
+        for n in notas:
+            productos = conn.execute("""
+                SELECT marca, hilo, codigo,
+                       cantidad as pz_requeridas,
+                       empacadas as pz_empacadas
+                FROM items
+                WHERE nota_id=%s
+            """,(n["id"],)).fetchall()
 
-    for n in notas:
-        productos = conn.execute("""
-            SELECT marca, hilo, codigo,
-                   cantidad as pz_requeridas,
-                   empacadas as pz_empacadas
+            resultado.append({
+                "id": n["id"],
+                "cliente": n["cliente_nombre"],
+                "estado": n["estado"],
+                "paqueteria": n["paqueteria"],
+                "productos": productos
+            })
 
-            FROM items
-            WHERE nota_id=%s
-        """,(n["id"],)).fetchall()
-
-        resultado.append({
-            "id": n["id"],
-            "cliente": n["cliente_nombre"],
-            "estado": n["estado"],
-            "paqueteria": n["paqueteria"],   # 👈 NUEVO
-            "productos": productos
-        })
-
-
-    conn.close()
     return jsonify(resultado)
 
 
@@ -222,19 +202,16 @@ def asignar_nota():
     nota_id = data["nota_id"]
     empacador_id = data["empacador_id"]
 
-    conn = get_conn()
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE notas
+            SET empacador_id=%s,
+                fecha_asignacion=NOW(),
+                estado='EN_PROCESO',
+                fecha_finalizacion=NULL
+            WHERE id=%s
+        """,(empacador_id, nota_id))
 
-    conn.execute("""
-        UPDATE notas
-        SET empacador_id=%s,
-            fecha_asignacion=NOW(),
-            estado='EN_PROCESO',
-            fecha_finalizacion=NULL
-        WHERE id=%s
-    """,(empacador_id, nota_id))
-
-    conn.commit()
-    conn.close()
 
     return jsonify({"ok": True})
 
@@ -255,108 +232,93 @@ def cambiar_estado(nota_id):
     if nuevo_estado not in ESTADOS_VALIDOS:
         return jsonify({"error": "Estado inválido"}), 400
 
-    conn = get_conn()
+    with get_conn() as conn:
 
-    nota = conn.execute("""
-        SELECT estado, empacador_id
-        FROM notas
-        WHERE id=%s
-        AND estado!='ARCHIVADA'
-    """,(nota_id,)).fetchone()
+        nota = conn.execute("""
+            SELECT estado, empacador_id
+            FROM notas
+            WHERE id=%s
+            AND estado!='ARCHIVADA'
+        """,(nota_id,)).fetchone()
 
-    if not nota:
-        conn.close()
-        return jsonify({"error": "Nota no encontrada"}), 404
+        if not nota:
+            return jsonify({"error": "Nota no encontrada"}), 404
 
-    # 🔒 Validar que la nota pertenece al empacador
-    if nota["empacador_id"] != auth["empacador_id"] and auth["rol"] != "ADMIN":
-        conn.close()
-        return jsonify({"error": "No es tu nota"}), 403
+        if nota["empacador_id"] != auth["empacador_id"] and auth["rol"] != "ADMIN":
+            return jsonify({"error": "No es tu nota"}), 403
 
-    estado_actual = nota["estado"]
+        estado_actual = nota["estado"]
 
-    # 🔒 Reglas de transición empresariales
-    transicion_valida = False
+        transicion_valida = False
 
-    if estado_actual == "PAGADA" and nuevo_estado == "EN_PROCESO":
-        transicion_valida = True
+        if estado_actual == "PAGADA" and nuevo_estado == "EN_PROCESO":
+            transicion_valida = True
+        elif estado_actual == "EN_PROCESO" and nuevo_estado in ["COMPLETA", "INCOMPLETA"]:
+            transicion_valida = True
+        elif estado_actual == "INCOMPLETA" and nuevo_estado == "EN_PROCESO":
+            transicion_valida = True
 
-    elif estado_actual == "EN_PROCESO" and nuevo_estado in ["COMPLETA", "INCOMPLETA"]:
-        transicion_valida = True
+        if not transicion_valida:
+            return jsonify({"error": "Transición no permitida"}), 400
 
-    elif estado_actual == "INCOMPLETA" and nuevo_estado == "EN_PROCESO":
-        transicion_valida = True
-
-    if not transicion_valida:
-        conn.close()
-        return jsonify({"error": "Transición no permitida"}), 400
-
-    # Actualizar estado
-    conn.execute("""
-        UPDATE notas
-        SET estado=%s
-        WHERE id=%s
-    """,(nuevo_estado, nota_id))
-
-    conn.commit()
-    conn.close()
+        conn.execute("""
+            UPDATE notas
+            SET estado=%s
+            WHERE id=%s
+        """,(nuevo_estado, nota_id))
 
     return jsonify({
         "ok": True,
         "nuevo_estado": nuevo_estado
     })
 
+
 @app.route("/notas/<nota_id>/reset", methods=["POST"])
 def resetear_nota(nota_id):
+
     auth = validar_token(request)
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
-    conn = get_conn()
+    with get_conn() as conn:
 
-    # Verificar que la nota pertenece al empacador
-    nota = conn.execute("""
-        SELECT id
-        FROM notas
-        WHERE id=%s
-        AND empacador_id=%s
-        AND estado!='ARCHIVADA'
-    """,(nota_id, auth["empacador_id"])).fetchone()
+        nota = conn.execute("""
+            SELECT id
+            FROM notas
+            WHERE id=%s
+            AND empacador_id=%s
+            AND estado!='ARCHIVADA'
+        """,(nota_id, auth["empacador_id"])).fetchone()
 
-    if not nota:
-        conn.close()
-        return jsonify({"error": "Nota no encontrada o no autorizada"}), 403
+        if not nota:
+            return jsonify({"error": "Nota no encontrada o no autorizada"}), 403
 
-    # Resetear productos
-    conn.execute("""
-        UPDATE items
-        SET empacadas = 0
-        WHERE nota_id=%s
-    """,(nota_id,))
+        conn.execute("""
+            UPDATE items
+            SET empacadas = 0
+            WHERE nota_id=%s
+        """,(nota_id,))
 
-    # Cambiar estado
-    conn.execute("""
-        UPDATE notas
-        SET estado='EN_PROCESO'
-        WHERE id=%s
-    """,(nota_id,))
-    productos = conn.execute("""
-        SELECT marca, hilo, codigo,
-               cantidad as pz_requeridas,
-               empacadas as pz_empacadas
+        conn.execute("""
+            UPDATE notas
+            SET estado='EN_PROCESO'
+            WHERE id=%s
+        """,(nota_id,))
 
-        FROM items
-        WHERE nota_id=%s
-    """,(nota_id,)).fetchall()
-
-    conn.commit()
-    conn.close()
+        productos = conn.execute("""
+            SELECT marca, hilo, codigo,
+                   cantidad as pz_requeridas,
+                   empacadas as pz_empacadas
+            FROM items
+            WHERE nota_id=%s
+        """,(nota_id,)).fetchall()
 
     return jsonify({
         "id": nota_id,
         "estado": "EN_PROCESO",
         "productos": productos
     })
+
 
 
 
@@ -367,106 +329,100 @@ def escanear_producto(nota_id):
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
-    conn = get_conn()
-
-    # 🔒 Verificar que la nota pertenece al empacador
-    nota = conn.execute("""
-        SELECT empacador_id
-        FROM notas
-        WHERE id=%s
-        AND estado!='ARCHIVADA'
-    """,(nota_id,)).fetchone()
-
-    if not nota or (
-        nota["empacador_id"] != auth["empacador_id"]
-        and auth["rol"] != "ADMIN"
-    ):
-
-        conn.close()
-        return jsonify({"error": "No autorizado para esta nota"}), 403
-
     codigo_barras = request.json.get("codigo")
+
+    if not codigo_barras:
+        return jsonify({"error": "Código requerido"}), 400
 
     producto = obtener_producto_por_codigo_barras(codigo_barras)
     if not producto:
-        conn.close()
         return jsonify({"error": "No existe en almacén"}), 404
 
-    item = conn.execute("""
-        SELECT id, cantidad, empacadas
-        FROM items
-        WHERE nota_id=%s
-        AND marca=%s
-        AND hilo=%s
-        AND codigo=%s
-    """,(
-        nota_id,
-        producto["marca"],
-        producto["hilo"],
-        producto["codigo"]
-    )).fetchone()
+    with get_conn() as conn:
 
-
-    if not item:
-        conn.close()
-        return jsonify({"error": "No pertenece a la nota"}), 404
-
-    if item["empacadas"] >= item["cantidad"]:
-        conn.close()
-        return jsonify({"error": "Piezas completas"}), 409
-
-    conn.execute("""
-        UPDATE items
-        SET empacadas = empacadas + 1
-        WHERE id=%s
-    """,(item["id"],))
-
-    # recalcular estado
-    totales = conn.execute("""
-        SELECT SUM(cantidad) total,
-               SUM(empacadas) emp
-        FROM items
-        WHERE nota_id=%s
-    """,(nota_id,)).fetchone()
-
-    if totales["emp"] == totales["total"]:
-        nuevo_estado = "COMPLETA"
-    elif totales["emp"] == 0:
-        nuevo_estado = "EN_PROCESO"
-    else:
-        nuevo_estado = "INCOMPLETA"
-
-    if nuevo_estado == "COMPLETA":
-        conn.execute("""
-            UPDATE notas
-            SET estado=%s,
-                fecha_finalizacion=NOW()
+        nota = conn.execute("""
+            SELECT empacador_id
+            FROM notas
             WHERE id=%s
-        """,(nuevo_estado, nota_id))
-    else:
+            AND estado!='ARCHIVADA'
+        """,(nota_id,)).fetchone()
+
+        if not nota or (
+            nota["empacador_id"] != auth["empacador_id"]
+            and auth["rol"] != "ADMIN"
+        ):
+            return jsonify({"error": "No autorizado para esta nota"}), 403
+
+        item = conn.execute("""
+            SELECT id, cantidad, empacadas
+            FROM items
+            WHERE nota_id=%s
+            AND marca=%s
+            AND hilo=%s
+            AND codigo=%s
+        """,(
+            nota_id,
+            producto["marca"],
+            producto["hilo"],
+            producto["codigo"]
+        )).fetchone()
+
+        if not item:
+            return jsonify({"error": "No pertenece a la nota"}), 404
+
+        if item["empacadas"] >= item["cantidad"]:
+            return jsonify({"error": "Piezas completas"}), 409
+
         conn.execute("""
-            UPDATE notas
-            SET estado=%s
+            UPDATE items
+            SET empacadas = empacadas + 1
             WHERE id=%s
-        """,(nuevo_estado, nota_id))
+        """,(item["id"],))
 
-    producto_actualizado = conn.execute("""
-        SELECT marca, hilo, codigo,
-               cantidad as pz_requeridas,
-               empacadas as pz_empacadas
+        totales = conn.execute("""
+            SELECT SUM(cantidad) total,
+                   SUM(empacadas) emp
+            FROM items
+            WHERE nota_id=%s
+        """,(nota_id,)).fetchone()
 
-        FROM items
-        WHERE id=%s
-    """,(item["id"],)).fetchone()
+        if totales["emp"] == totales["total"]:
+            nuevo_estado = "COMPLETA"
+            conn.execute("""
+                UPDATE notas
+                SET estado=%s,
+                    fecha_finalizacion=NOW()
+                WHERE id=%s
+            """,(nuevo_estado, nota_id))
+        elif totales["emp"] == 0:
+            nuevo_estado = "EN_PROCESO"
+            conn.execute("""
+                UPDATE notas
+                SET estado=%s
+                WHERE id=%s
+            """,(nuevo_estado, nota_id))
+        else:
+            nuevo_estado = "INCOMPLETA"
+            conn.execute("""
+                UPDATE notas
+                SET estado=%s
+                WHERE id=%s
+            """,(nuevo_estado, nota_id))
 
-    conn.commit()
-    conn.close()
+        producto_actualizado = conn.execute("""
+            SELECT marca, hilo, codigo,
+                   cantidad as pz_requeridas,
+                   empacadas as pz_empacadas
+            FROM items
+            WHERE id=%s
+        """,(item["id"],)).fetchone()
 
     return jsonify({
         "ok": True,
         "estado_nota": nuevo_estado,
         "producto": producto_actualizado
     })
+
 
 
 
@@ -479,96 +435,85 @@ def ajustar_producto(nota_id):
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
-    conn = get_conn()
+    with get_conn() as conn:
 
-    # 🔒 validar pertenencia
-    nota = conn.execute("""
-        SELECT empacador_id
-        FROM notas
-        WHERE id=%s
-        AND estado!='ARCHIVADA'
-    """,(nota_id,)).fetchone()
-
-    if not nota or (
-        nota["empacador_id"] != auth["empacador_id"]
-        and auth["rol"] != "ADMIN"
-    ):
-
-        conn.close()
-        return jsonify({"error": "No autorizado para esta nota"}), 403
-
-    data = request.json
-    codigo = data["codigo"]
-    marca = data["marca"]
-    hilo = data["hilo"]
-    cantidad = data["cantidad"]
-
-    item = conn.execute("""
-        SELECT id, cantidad, empacadas
-        FROM items
-        WHERE nota_id=%s
-        AND marca=%s
-        AND hilo=%s
-        AND codigo=%s
-    """,(nota_id, marca, hilo, codigo)).fetchone()
-
-
-    if not item:
-        conn.close()
-        return jsonify({"error": "No pertenece a la nota"}), 404
-
-    nuevo_total = item["empacadas"] + cantidad
-
-    if nuevo_total < 0 or nuevo_total > item["cantidad"]:
-        conn.close()
-        return jsonify({"error": "Cantidad inválida"}), 409
-
-    conn.execute("""
-        UPDATE items
-        SET empacadas=%s
-        WHERE id=%s
-    """,(nuevo_total, item["id"]))
-
-    # recalcular estado
-    totales = conn.execute("""
-        SELECT SUM(cantidad) total,
-               SUM(empacadas) emp
-        FROM items
-        WHERE nota_id=%s
-    """,(nota_id,)).fetchone()
-
-    if totales["emp"] == totales["total"]:
-        nuevo_estado = "COMPLETA"
-    elif totales["emp"] == 0:
-        nuevo_estado = "EN_PROCESO"
-    else:
-        nuevo_estado = "INCOMPLETA"
-
-    if nuevo_estado == "COMPLETA":
-        conn.execute("""
-            UPDATE notas
-            SET estado=%s,
-                fecha_finalizacion=NOW()
+        nota = conn.execute("""
+            SELECT empacador_id
+            FROM notas
             WHERE id=%s
-        """,(nuevo_estado, nota_id))
-    else:
+            AND estado!='ARCHIVADA'
+        """,(nota_id,)).fetchone()
+
+        if not nota or (
+            nota["empacador_id"] != auth["empacador_id"]
+            and auth["rol"] != "ADMIN"
+        ):
+            return jsonify({"error": "No autorizado para esta nota"}), 403
+
+        data = request.json
+        codigo = data["codigo"]
+        marca = data["marca"]
+        hilo = data["hilo"]
+        cantidad = data["cantidad"]
+
+        item = conn.execute("""
+            SELECT id, cantidad, empacadas
+            FROM items
+            WHERE nota_id=%s
+            AND marca=%s
+            AND hilo=%s
+            AND codigo=%s
+        """,(nota_id, marca, hilo, codigo)).fetchone()
+
+        if not item:
+            return jsonify({"error": "No pertenece a la nota"}), 404
+
+        nuevo_total = item["empacadas"] + cantidad
+
+        if nuevo_total < 0 or nuevo_total > item["cantidad"]:
+            return jsonify({"error": "Cantidad inválida"}), 409
+
         conn.execute("""
-            UPDATE notas
-            SET estado=%s
+            UPDATE items
+            SET empacadas=%s
             WHERE id=%s
-        """,(nuevo_estado, nota_id))
+        """,(nuevo_total, item["id"]))
 
-    producto_actualizado = conn.execute("""
-        SELECT marca, hilo, codigo,
-               cantidad as pz_requeridas,
-               empacadas as pz_empacadas
+        totales = conn.execute("""
+            SELECT SUM(cantidad) total,
+                   SUM(empacadas) emp
+            FROM items
+            WHERE nota_id=%s
+        """,(nota_id,)).fetchone()
 
-        FROM items
-        WHERE id=%s
-    """,(item["id"],)).fetchone()
+        if totales["emp"] == totales["total"]:
+            nuevo_estado = "COMPLETA"
+        elif totales["emp"] == 0:
+            nuevo_estado = "EN_PROCESO"
+        else:
+            nuevo_estado = "INCOMPLETA"
 
-    conn.commit()
-    conn.close()
+        if nuevo_estado == "COMPLETA":
+            conn.execute("""
+                UPDATE notas
+                SET estado=%s,
+                    fecha_finalizacion=NOW()
+                WHERE id=%s
+            """,(nuevo_estado, nota_id))
+        else:
+            conn.execute("""
+                UPDATE notas
+                SET estado=%s
+                WHERE id=%s
+            """,(nuevo_estado, nota_id))
+
+        producto_actualizado = conn.execute("""
+            SELECT marca, hilo, codigo,
+                   cantidad as pz_requeridas,
+                   empacadas as pz_empacadas
+            FROM items
+            WHERE id=%s
+        """,(item["id"],)).fetchone()
 
     return jsonify({
         "ok": True,
@@ -579,45 +524,39 @@ def ajustar_producto(nota_id):
 
 
 
-
 @app.route("/errores-scan", methods=["GET"])
 def ver_errores_scan():
-    conn = get_conn()
-
-    rows = conn.execute("""
-        SELECT e.id,
-               e.nota_id,
-               e.codigo,
-               e.motivo,
-               e.fecha,
-               em.nombre as empacador
-        FROM errores_scan e
-        JOIN empacadores em
-            ON em.id = e.empacador_id
-        ORDER BY e.fecha DESC
-    """).fetchall()
-
-    conn.close()
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT e.id,
+                   e.nota_id,
+                   e.codigo,
+                   e.motivo,
+                   e.fecha,
+                   em.nombre as empacador
+            FROM errores_scan e
+            JOIN empacadores em
+                ON em.id = e.empacador_id
+            ORDER BY e.fecha DESC
+        """).fetchall()
 
     return jsonify(rows)
 
 
 @app.route("/notas/<nota_id>/progreso", methods=["GET"])
 def progreso_nota(nota_id):
+
     auth = validar_token(request)
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
-    conn = get_conn()
-
-    datos = conn.execute("""
-        SELECT SUM(cantidad) total,
-               SUM(empacadas) emp
-        FROM items
-        WHERE nota_id=%s
-    """,(nota_id,)).fetchone()
-
-    conn.close()
+    with get_conn() as conn:
+        datos = conn.execute("""
+            SELECT SUM(cantidad) total,
+                   SUM(empacadas) emp
+            FROM items
+            WHERE nota_id=%s
+        """,(nota_id,)).fetchone()
 
     total = datos["total"] or 0
     emp = datos["emp"] or 0
@@ -630,6 +569,7 @@ def progreso_nota(nota_id):
         "porcentaje": porcentaje
     })
 
+
 @app.route("/notas/<nota_id>/archivar", methods=["POST"])
 def archivar_nota(nota_id):
 
@@ -637,22 +577,18 @@ def archivar_nota(nota_id):
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
-    # 🔒 Solo admin puede archivar
     if auth["rol"] != "ADMIN":
         return jsonify({"error": "Solo admin puede archivar"}), 403
 
-    conn = get_conn()
-
-    conn.execute("""
-        UPDATE notas
-        SET estado='ARCHIVADA'
-        WHERE id=%s
-    """,(nota_id,))
-
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE notas
+            SET estado='ARCHIVADA'
+            WHERE id=%s
+        """,(nota_id,))
 
     return jsonify({"ok": True})
+
 
 @app.route("/mantenimiento/archivar-expiradas", methods=["POST"])
 def archivar_expiradas():
@@ -664,19 +600,16 @@ def archivar_expiradas():
     if auth["rol"] != "ADMIN":
         return jsonify({"error": "Solo admin"}), 403
 
-    conn = get_conn()
-
-    conn.execute("""
-        UPDATE notas
-        SET estado = 'ARCHIVADA'
-        WHERE estado='COMPLETA'
-        AND fecha_finalizacion < NOW() - INTERVAL '24 hours'
-    """)
-
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE notas
+            SET estado = 'ARCHIVADA'
+            WHERE estado='COMPLETA'
+            AND fecha_finalizacion < NOW() - INTERVAL '24 hours'
+        """)
 
     return jsonify({"ok": True})
+
 
 def generar_link_paqueteria(paqueteria, guia):
 
@@ -699,16 +632,14 @@ def generar_link_paqueteria(paqueteria, guia):
 @app.route("/seguimiento/<nota_id>")
 def seguimiento(nota_id):
 
-    conn = get_conn()
-
-    row = conn.execute("""
-        SELECT id, cliente_nombre, estado, paqueteria, guia
-        FROM notas
-        WHERE id = %s
-    """, (nota_id,)).fetchone()
+    with get_conn() as conn:
+        row = conn.execute("""
+            SELECT id, cliente_nombre, estado, paqueteria, guia
+            FROM notas
+            WHERE id = %s
+        """, (nota_id,)).fetchone()
 
     if not row:
-        conn.close()
         return "Nota no encontrada", 404
 
     nota = {
@@ -718,8 +649,6 @@ def seguimiento(nota_id):
         "paqueteria": row["paqueteria"],
         "guia": row["guia"],
     }
-
-    conn.close()
 
     progreso_map = {
         "PAGADA": 25,
@@ -736,6 +665,7 @@ def seguimiento(nota_id):
         estado_visual=nota["estado"],
         progreso=progreso
     )
+
 
 
 # =========================
