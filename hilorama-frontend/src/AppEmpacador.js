@@ -275,24 +275,32 @@ function App() {
 
     const data = await res.json();
 
-    // 🔥 volver a pedir la nota completa
-    const notaActualizada = await fetch(
-      `${API_URL}/notas/${idNota}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    ).then(r => r.json());
+    if (!res.ok) {
+      alert(data.error);
+      return;
+    }
 
-    setNotaActiva(notaActualizada);
+    // 🔥 ACTUALIZAR NOTA ACTIVA COMPLETA
+    setNotaActiva(prev => ({
+      ...prev,
+      estado: data.estado,
+      productos: data.productos
+    }));
 
+    // 🔥 ACTUALIZAR TAMBIÉN LISTA DE NOTAS
     setNotas(prev =>
       prev.map(n =>
-        n.id === idNota ? notaActualizada : n
+        n.id === idNota
+          ? {
+              ...n,
+              estado: data.estado,
+              productos: data.productos
+            }
+          : n
       )
     );
-
-    actualizarProgreso(idNota);
   };
+
 
 
   /* ======================
