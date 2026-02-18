@@ -3,10 +3,12 @@ import psycopg2
 from psycopg2.pool import SimpleConnectionPool
 from psycopg2.extras import RealDictCursor
 
-database_url = os.environ.get("DATABASE_URL")
+def get_database_url():
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise Exception("DATABASE_URL no configurado")
+    return database_url
 
-if not database_url:
-    raise Exception("DATABASE_URL no configurado")
 
 _pool = None  # 🔥 pool lazy
 
@@ -16,9 +18,10 @@ def get_pool():
         _pool = SimpleConnectionPool(
             1,
             20,
-            database_url
+            get_database_url()
         )
     return _pool
+
 
 
 class PGConnection:
