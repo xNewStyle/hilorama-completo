@@ -64,3 +64,9 @@ class PGConnection:
             self.commit()
         self.close()
 
+def get_conn():
+    return PGConnection()
+
+with get_conn() as conn:
+    conn.execute("SELECT * FROM productos")
+    rows = conn.fetchall()
