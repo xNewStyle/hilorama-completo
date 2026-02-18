@@ -17,7 +17,13 @@ def generar_id():
 
     conn.close()
 
-    return f"COT-{row['c']+1:05d}"
+    if row and row[0]:
+        ultimo = int(row[0].split("-")[1])
+    else:
+        ultimo = 0
+
+    return f"COT-{ultimo+1:05d}"
+
 
 
 # ================= CREAR =================

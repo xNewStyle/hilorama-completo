@@ -50,7 +50,6 @@ def calcular_volumetrico_total(items):
         vol = prod.get("volumetrico", 0)
         total += vol * i["cantidad"]
 
-    return {
-        "total": round(total, 2)
-    }
+    return round(total, 2)
+    
 
