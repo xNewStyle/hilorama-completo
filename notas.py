@@ -11,18 +11,19 @@ from tkinter import messagebox
 def generar_id():
     conn = get_conn()
 
-    row = conn.execute(
-        "SELECT MAX(id) FROM notas"
-    ).fetchone()
+    row = conn.execute("""
+        SELECT COALESCE(MAX(id), 'COT-00000') AS ultimo
+        FROM notas
+    """).fetchone()
 
     conn.close()
 
-    if row and row[0]:
-        ultimo = int(row[0].split("-")[1])
-    else:
-        ultimo = 0
+    ultimo = row["ultimo"]
 
-    return f"COT-{ultimo+1:05d}"
+    numero = int(ultimo.split("-")[1])
+
+    return f"COT-{numero + 1:05d}"
+
 
 
 
