@@ -15,7 +15,7 @@ def get_pool():
     if _pool is None:
         _pool = SimpleConnectionPool(
             1,
-            10,
+            20,
             database_url
         )
     return _pool
@@ -23,7 +23,8 @@ def get_pool():
 
 class PGConnection:
     def __init__(self):
-        pool = get_pool()  # 🔥 se crea solo cuando se usa
+        pool = get_pool()
+        self.pool = pool
         self.conn = pool.getconn()
         self.cur = self.conn.cursor(cursor_factory=RealDictCursor)
 
@@ -44,9 +45,19 @@ class PGConnection:
         self.conn.rollback()
 
     def close(self):
-        self.cur.close()
-        get_pool().putconn(self.conn)
+        if self.cur:
+            self.cur.close()
+        if self.conn:
+            self.pool.putconn(self.conn)
 
+    # 🔥 CLAVE
+    def __enter__(self):
+        return self
 
-def get_conn():
-    return PGConnection()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
