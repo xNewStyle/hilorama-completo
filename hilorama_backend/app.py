@@ -348,10 +348,11 @@ def resetear_nota(nota_id):
     conn.close()
 
     return jsonify({
-        "id": int(nota_id),
+        "id": nota_id,
         "estado": "EN_PROCESO",
         "productos": productos
     })
+
 
 
 @app.route("/notas/<nota_id>/scan", methods=["POST"])
