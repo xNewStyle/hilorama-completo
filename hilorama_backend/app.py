@@ -440,12 +440,14 @@ def escanear_producto(nota_id):
 
 @app.route("/notas/<nota_id>/producto/ajustar", methods=["POST"])
 def ajustar_producto(nota_id):
-
+   
+       
     auth = validar_token(request)
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
     data = request.get_json(silent=True)
+    print("JSON recibido:", data)
 
     if not data:
         return jsonify({"error": "JSON inválido"}), 400
@@ -454,25 +456,30 @@ def ajustar_producto(nota_id):
     marca = data.get("marca")
     hilo = data.get("hilo")
     cantidad = data.get("cantidad")
+    print("codigo:", codigo)
+    print("marca:", marca)
+    print("hilo:", hilo)
+    print("cantidad:", cantidad)
 
     if not codigo or not marca or not hilo or cantidad is None:
         return jsonify({"error": "Datos incompletos"}), 400
 
     with get_conn() as conn:
-
+        
         nota = conn.execute("""
             SELECT empacador_id
             FROM notas
             WHERE id=%s
             AND estado!='ARCHIVADA'
         """,(nota_id,)).fetchone()
-
+   
         if not nota or (
             nota["empacador_id"] != auth["empacador_id"]
             and auth["rol"] != "ADMIN"
         ):
             return jsonify({"error": "No autorizado para esta nota"}), 403
-
+   
+        
         item = conn.execute("""
             SELECT id, cantidad, empacadas
             FROM items
