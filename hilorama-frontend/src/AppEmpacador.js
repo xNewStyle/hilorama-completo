@@ -387,6 +387,11 @@ function App() {
         <h2>{notaActiva.id}</h2>
         <p><strong>Cliente:</strong> {notaActiva.cliente}</p>
         <p><strong>Estado:</strong> {notaActiva.estado}</p>
+        <p>
+          <strong>Paquetería:</strong>{" "}
+          {notaActiva.paqueteria || "Entrega personal"}
+        </p>
+
         <div style={{ marginBottom: 15 }}>
           <select
             value={tema}
@@ -634,15 +639,10 @@ function App() {
             Estado: {nota.estado}<br />
 
             {nota.paqueteria && (
-              <div
-                style={{
-                  marginTop: 6,
-                  fontWeight: "bold",
-                  fontSize: 14,
-                }}
-              >
-                🚚 {nota.paqueteria}
+              <div style={{ marginTop: 6, fontWeight: "bold" }}>
+                🚚 {nota.paqueteria || "Entrega personal"}
               </div>
+
             )}
           </div>
         ))}
