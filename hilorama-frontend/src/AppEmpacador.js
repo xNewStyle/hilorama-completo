@@ -501,8 +501,8 @@ function App() {
 
               }}
             >
-              <div style={{ fontSize: 14, marginBottom: 4 }}>
-                🧵 {p.marca ?? "Sin marca"} - {p.hilo ?? "Sin hilo"}
+              <div style={{ fontSize: 15, fontWeight: "bold", marginBottom: 6 }}>
+                🧶 {p.hilo ?? "Sin hilo"}
               </div>
 
               {p.color && (
@@ -510,8 +510,9 @@ function App() {
                   🎨 {p.color}
                 </div>
               )}
-
-
+              <div style={{ marginTop: 4 }}>
+                 <div style={{ marginTop: 4 }}></div>
+              </div>   
               <strong>{p.codigo}</strong>
 
 
@@ -652,6 +653,7 @@ function App() {
               borderRadius: 10,
               marginBottom: 12,
               background: coloresEstado[nota.estado],
+              color: "#111",
             }}
           >
             <strong>{nota.id}</strong><br />
