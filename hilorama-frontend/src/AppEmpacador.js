@@ -173,6 +173,7 @@ function App() {
     })
       .then((res) => res.json())
       .then((data) => {
+          console.log("Notas recibidas:", data);
         if (Array.isArray(data)) {
           setNotas(data);
         } else {
@@ -644,9 +645,8 @@ function App() {
 
             {nota.paqueteria && (
               <div style={{ marginTop: 6, fontWeight: "bold" }}>
-                🚚 {nota.paqueteria || "Entrega personal"}
+                🚚 {nota.paqueteria ? nota.paqueteria : "Entrega personal"}
               </div>
-
             )}
           </div>
         ))}
