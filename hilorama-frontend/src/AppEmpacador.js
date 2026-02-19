@@ -390,8 +390,9 @@ function App() {
         <p><strong>Estado:</strong> {notaActiva.estado}</p>
         <p>
           <strong>Paquetería:</strong>{" "}
-          {notaActiva.paqueteria || "Entrega personal"}
+          {notaActiva.paqueteria ? notaActiva.paqueteria : "Entrega personal"}
         </p>
+
 
         <div style={{ marginBottom: 15 }}>
           <select
