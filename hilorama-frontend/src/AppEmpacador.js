@@ -390,8 +390,9 @@ function App() {
         <p><strong>Estado:</strong> {notaActiva.estado}</p>
         <p>
           <strong>Paquetería:</strong>{" "}
-          {notaActiva.paqueteria ? notaActiva.paqueteria : "Entrega personal"}
+          {notaActiva.paqueteria ?? "Entrega personal"}
         </p>
+
 
 
         <div style={{ marginBottom: 15 }}>
@@ -501,7 +502,7 @@ function App() {
               }}
             >
               <div style={{ fontSize: 14, marginBottom: 4 }}>
-                🧵 {p.marca} - {p.hilo}
+                🧵 {p.marca ?? "Sin marca"} - {p.hilo ?? "Sin hilo"}
               </div>
 
               {p.color && (
@@ -510,7 +511,9 @@ function App() {
                 </div>
               )}
 
+
               <strong>{p.codigo}</strong>
+
 
 
               <div>
@@ -655,8 +658,9 @@ function App() {
             Cliente: {nota.cliente}<br />
             Estado: {nota.estado}<br />
             <div style={{ marginTop: 6, fontWeight: "bold" }}>
-                🚚 {nota.paqueteria ? nota.paqueteria : "Entrega personal"}
+              🚚 {nota.paqueteria ?? "Entrega personal"}
             </div>
+
           </div>
         ))}
     </div>
