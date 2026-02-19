@@ -625,7 +625,11 @@ function App() {
         notas.map((nota) => (
           <div
             key={nota.id}
-            onClick={() => setNotaActiva(nota)}
+            onClick={() => {
+              console.log("NOTA ABIERTA:", nota);
+              setNotaActiva(nota);
+            }}
+
             style={{
               cursor: "pointer",
               padding: 15,

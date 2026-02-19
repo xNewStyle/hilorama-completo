@@ -188,9 +188,10 @@ def notas_pagadas():
                 "id": n["id"],
                 "cliente": n["cliente_nombre"],
                 "estado": n["estado"],
-                "paqueteria": n["paqueteria"],
+                "paqueteria": n["paqueteria"] or "",
                 "productos": productos
             })
+
 
     return jsonify(resultado)
 
