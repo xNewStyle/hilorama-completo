@@ -500,7 +500,18 @@ function App() {
 
               }}
             >
+              <div style={{ fontSize: 14, marginBottom: 4 }}>
+                🧵 {p.marca} - {p.hilo}
+              </div>
+
+              {p.color && (
+                <div style={{ fontSize: 13, opacity: 0.8 }}>
+                  🎨 {p.color}
+                </div>
+              )}
+
               <strong>{p.codigo}</strong>
+
 
               <div>
                 {p.pz_empacadas} / {p.pz_requeridas}
@@ -643,12 +654,9 @@ function App() {
             <strong>{nota.id}</strong><br />
             Cliente: {nota.cliente}<br />
             Estado: {nota.estado}<br />
-
-            {nota.paqueteria && (
-              <div style={{ marginTop: 6, fontWeight: "bold" }}>
+            <div style={{ marginTop: 6, fontWeight: "bold" }}>
                 🚚 {nota.paqueteria ? nota.paqueteria : "Entrega personal"}
-              </div>
-            )}
+            </div>
           </div>
         ))}
     </div>

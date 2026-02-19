@@ -192,7 +192,7 @@ def notas_pagadas():
                 "productos": productos
             })
 
-
+    print("Notas enviadas:", resultado)
     return jsonify(resultado)
 
 
