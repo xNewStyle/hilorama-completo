@@ -688,7 +688,7 @@ def seguimiento(nota_id):
 # IMPRIMIR DESTINATARIO
 # ==============================
 
-@app.route("/notas/<int:nota_id>/imprimir/<tipo>", methods=["POST"])
+@app.route("/notas/<nota_id>/imprimir/<tipo>", methods=["POST"])
 def solicitar_impresion(nota_id, tipo):
 
     auth = validar_token(request)
