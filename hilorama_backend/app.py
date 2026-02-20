@@ -453,14 +453,11 @@ def ajustar_producto(nota_id):
     if not data:
         return jsonify({"error": "JSON inválido"}), 400
 
-    codigo = data.get("codigo")
+    item_id = data.get("id")
     cantidad = data.get("cantidad")
-    print("codigo:", codigo)
-    print("cantidad:", cantidad)
 
-    if not codigo or cantidad is None:
+    if not item_id or cantidad is None:
         return jsonify({"error": "Datos incompletos"}), 400
-
 
     with get_conn() as conn:
         
@@ -483,7 +480,7 @@ def ajustar_producto(nota_id):
             FROM items
             WHERE nota_id=%s
             AND id=%s
-        """,(nota_id, data.get("id"))).fetchone()
+        """,(nota_id, item_id)).fetchone()
 
 
         if not item:

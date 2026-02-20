@@ -560,7 +560,7 @@ function App() {
                   </button>
 
                   <button
-                    onClick={() => ajustar(p.codigo, p.marca, p.hilo, 1)}
+                    onClick={() => ajustar(p.id, 1)}
                     style={{
                       flex: 1,
                       padding: "14px 0",
