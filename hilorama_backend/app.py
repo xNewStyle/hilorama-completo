@@ -417,7 +417,7 @@ def escanear_producto(nota_id):
             """,(nuevo_estado, nota_id))
 
         producto_actualizado = conn.execute("""
-            SELECT marca, hilo, codigo,
+            SELECT id, marca, hilo, codigo,
                    cantidad as pz_requeridas,
                    empacadas as pz_empacadas
             FROM items
