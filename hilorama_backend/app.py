@@ -722,14 +722,7 @@ def datos_impresion(nota_id):
                    n.cliente_nombre,
                    n.paqueteria,
                    c.telefono,
-                   c.calle,
-                   c.numero_ext,
-                   c.numero_int,
-                   c.colonia,
-                   c.municipio,
-                   c.estado,
-                   c.codigo_postal,
-                   c.referencia
+                   c.direccion
             FROM notas n
             JOIN clientes c ON c.nombre = n.cliente_nombre
             WHERE n.id=%s
@@ -738,19 +731,21 @@ def datos_impresion(nota_id):
     if not nota:
         return jsonify({"error": "Nota no encontrada"}), 404
 
+    import json
+
+    direccion = nota["direccion"]
+
+    # Si está guardado como texto JSON
+    if isinstance(direccion, str):
+        try:
+            direccion = json.loads(direccion)
+        except:
+            direccion = {}
+
     cliente = {
         "nombre": nota["cliente_nombre"],
         "telefono": nota["telefono"],
-        "direccion": {
-            "calle": nota["calle"],
-            "numero_ext": nota["numero_ext"],
-            "numero_int": nota["numero_int"],
-            "colonia": nota["colonia"],
-            "municipio": nota["municipio"],
-            "estado": nota["estado"],
-            "codigo_postal": nota["codigo_postal"],
-            "referencia": nota["referencia"],
-        }
+        "direccion": direccion or {}
     }
 
     remitente = {
@@ -773,6 +768,7 @@ def datos_impresion(nota_id):
         "envio": {"tipo": nota["paqueteria"]},
         "remitente": remitente
     })
+
 @app.route("/cola-impresion", methods=["GET"])
 def obtener_cola():
 
