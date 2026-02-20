@@ -197,16 +197,25 @@ def obtener_mis_datos():
 
 def imprimir_remitente(nota):
 
-    remitente = obtener_mis_datos()
+    mis_datos = obtener_mis_datos()
 
-    etiqueta_remitente(remitente, nota["id"])
+    etiqueta_remitente(
+        nota["id"],
+        mis_datos
+    )
 
 
 import time
 
 def imprimir_ambas(nota):
 
-    etiqueta_remitente(nota["id"])
+    mis_datos = obtener_mis_datos()
+
+    etiqueta_remitente(
+        nota["id"],
+        mis_datos
+    )
+
     time.sleep(2)
 
     etiqueta_destinatario(

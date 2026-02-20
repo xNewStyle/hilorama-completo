@@ -246,22 +246,23 @@ def etiqueta_destinatario(cliente, nota_id, envio=None):
     enviar_a_impresora(comando)
 
 
-def etiqueta_remitente(nota_id):
-    mis_datos = obtener_mis_datos()
+def etiqueta_remitente(nota_id, mis_datos):
 
     cliente = {
-        "nombre": mis_datos["nombre"],
-        "direccion": {
-            "calle": mis_datos["calle"],
-            "colonia": mis_datos["colonia"],
-            "municipio": mis_datos["ciudad"],
-            "estado": "",
-            "codigo_postal": mis_datos["cp"]
-        },
-        "telefono": ""
+    "nombre": mis_datos["nombre"],
+    "telefono": mis_datos.get("telefono", ""),
+    "direccion": {
+        "calle": mis_datos["direccion"].get("calle", ""),
+        "numero_ext": mis_datos["direccion"].get("numero_ext", ""),
+        "numero_int": mis_datos["direccion"].get("numero_int", ""),
+        "colonia": mis_datos["direccion"].get("colonia", ""),
+        "municipio": mis_datos["direccion"].get("municipio", ""),
+        "estado": mis_datos["direccion"].get("estado", ""),
+        "codigo_postal": mis_datos["direccion"].get("codigo_postal", ""),
+        "referencia": mis_datos["direccion"].get("referencia", "")
     }
+}
 
     img = generar_etiqueta(cliente, nota_id, "REMITENTE")
     comando = convertir_a_tspl(img)
     enviar_a_impresora(comando)
-
