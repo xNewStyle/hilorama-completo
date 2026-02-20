@@ -177,7 +177,7 @@ def notas_pagadas():
 
         for n in notas:
             productos = conn.execute("""
-                SELECT hilo, color, codigo,
+                SELECT id, hilo, color, codigo,
                        cantidad as pz_requeridas,
                        empacadas as pz_empacadas
                 FROM items
