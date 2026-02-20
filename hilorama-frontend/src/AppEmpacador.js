@@ -199,7 +199,7 @@ function App() {
      AJUSTAR PRODUCTO
   ====================== */
   const ajustar = async (id, cantidad) => {
-
+    console.log("AJUSTANDO:", id, cantidad); // 👈 agrega esto   
     if (!notaActiva) return;
 
     const idNota = notaActiva.id; // 🔥 congelamos el id
