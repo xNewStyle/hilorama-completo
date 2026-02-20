@@ -688,7 +688,9 @@ def seguimiento(nota_id):
         progreso=progreso
     )
 
-
+@app.route("/health")
+def health():
+    return {"status": "ok"}, 200
 
 # =========================
 # MAIN

@@ -660,7 +660,7 @@ function App() {
             Cliente: {nota.cliente}<br />
             Estado: {nota.estado}<br />
             <div style={{ marginTop: 6, fontWeight: "bold" }}>
-              🚚 {nota.paqueteria ?? "Entrega personal"}
+              🚚 {nota.paqueteria || "Entrega personal"}
             </div>
 
           </div>
