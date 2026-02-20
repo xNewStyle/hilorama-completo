@@ -368,13 +368,9 @@ def escanear_producto(nota_id):
             SELECT id, cantidad, empacadas
             FROM items
             WHERE nota_id=%s
-            AND marca=%s
-            AND hilo=%s
             AND codigo=%s
         """,(
             nota_id,
-            producto["marca"],
-            producto["hilo"],
             producto["codigo"]
         )).fetchone()
 
