@@ -317,13 +317,13 @@ def resetear_nota(nota_id):
         """,(nota_id,))
 
         productos = conn.execute("""
-            SELECT marca, hilo, codigo,
+            SELECT id, marca, hilo, color, codigo,
                    cantidad as pz_requeridas,
                    empacadas as pz_empacadas
             FROM items
             WHERE nota_id=%s
         """,(nota_id,)).fetchall()
-
+        
     return jsonify({
         "id": nota_id,
         "estado": "EN_PROCESO",
