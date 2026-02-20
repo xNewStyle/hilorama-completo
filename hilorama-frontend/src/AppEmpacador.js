@@ -143,9 +143,7 @@ function App() {
       ...prev,
       estado: data.estado_nota,
       productos: prev.productos.map((p) =>
-        p.codigo === data.producto.codigo &&
-        p.marca === data.producto.marca &&
-        p.hilo === data.producto.hilo
+        p.id === data.producto.id
           ? data.producto
           : p
       ),
@@ -200,7 +198,7 @@ function App() {
   /* ======================
      AJUSTAR PRODUCTO
   ====================== */
-  const ajustar = async (codigo, marca, hilo, cantidad) => {
+  const ajustar = async (id, cantidad) => {
 
     if (!notaActiva) return;
 
@@ -215,9 +213,7 @@ function App() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          codigo,
-          marca,
-          hilo,
+          id,
           cantidad
         }),
 
@@ -229,7 +225,7 @@ function App() {
 
     if (!res.ok) {
       alert(data.error);
-      return;
+      return;  
     }
 
     // 🔥 actualizar nota activa SIEMPRE desde prev
@@ -240,9 +236,7 @@ function App() {
         ...prev,
         estado: data.estado_nota,
         productos: prev.productos.map(p =>
-          p.codigo === data.producto.codigo &&
-          p.marca === data.producto.marca &&
-          p.hilo === data.producto.hilo
+          p.id === data.producto.id
 
             ? data.producto
             : p
@@ -258,9 +252,7 @@ function App() {
               ...n,
               estado: data.estado_nota,
               productos: n.productos?.map(p =>
-                p.codigo === data.producto.codigo &&
-                p.marca === data.producto.marca &&
-                p.hilo === data.producto.hilo
+                p.id === data.producto.id
 
                   ? data.producto
                   : p
@@ -485,7 +477,7 @@ function App() {
 
           return (
             <div
-              key={`${p.marca}-${p.hilo}-${p.codigo}`}
+              key={p.id}
               style={{
                 marginTop: 16,
                 padding: 18,
@@ -550,7 +542,7 @@ function App() {
               <div style={{ marginTop: 8 }}>
                 <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
                   <button
-                    onClick={() => ajustar(p.codigo, p.marca, p.hilo, -1)}
+                    onClick={() => ajustar(p.id, -1)}
                     style={{
                       flex: 1,
                       padding: "14px 0",

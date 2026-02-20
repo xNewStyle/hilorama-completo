@@ -482,8 +482,8 @@ def ajustar_producto(nota_id):
             SELECT id, cantidad, empacadas
             FROM items
             WHERE nota_id=%s
-            AND codigo=%s
-        """,(nota_id, codigo)).fetchone()
+            AND id=%s
+        """,(nota_id, data.get("id"))).fetchone()
 
 
         if not item:
