@@ -14,7 +14,7 @@ from core.almacen_api import (
 
 from parser_whatsapp import extraer_pedidos
 from notas import crear_cotizacion, listar_cotizaciones, obtener_cotizacion, eliminar_cotizacion
-from clientes import obtener_o_crear_cliente
+from clientes import obtener_o_crear_cliente, listar_clientes, buscar_cliente_por_telefono
 from ver_cotizaciones import abrir_visor, ver_detalles
 from ver_clientes import abrir_clientes, editar_cliente_por_id
 from ver_notas_completo import abrir_visor_notas
@@ -1817,7 +1817,58 @@ def cargar_contexto():
         actualizar_hilos()
 
 
+def pedir_nombre_cliente(parent):
+    resultado = {"nombre": None}
 
+    modal = ctk.CTkToplevel(parent)
+    modal.title("Nuevo Cliente")
+    modal.geometry("400x220")
+    modal.grab_set()
+    modal.resizable(False, False)
+
+    modal.configure(fg_color="#F3F4F6")
+
+    frame = ctk.CTkFrame(modal, corner_radius=15)
+    frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+    ctk.CTkLabel(
+        frame,
+        text="👤 Nuevo Cliente",
+        font=("Segoe UI", 16, "bold")
+    ).pack(pady=(10,5))
+
+    nombre_var = tk.StringVar()
+
+    entry = ctk.CTkEntry(
+        frame,
+        textvariable=nombre_var,
+        placeholder_text="Nombre del cliente",
+        height=40
+    )
+    entry.pack(fill="x", padx=15, pady=10)
+    entry.focus()
+
+    def confirmar():
+        nombre = nombre_var.get().strip()
+
+        if not nombre:
+            return
+
+        resultado["nombre"] = nombre
+        modal.destroy()
+
+    ctk.CTkButton(
+        frame,
+        text="Guardar",
+        fg_color="#1976D2",
+        hover_color="#1565C0",
+        height=40,
+        command=confirmar
+    ).pack(pady=10)
+
+    modal.wait_window()
+
+    return resultado["nombre"]
 
 def guardar_cotizacion():
     global cliente_actual
@@ -1835,17 +1886,12 @@ def guardar_cotizacion():
 
 
     else:
-        # crear nuevo solo si no hay seleccionado
-        nombre = simpledialog.askstring(
-            "Cliente nuevo",
-            "Nombre del cliente:"
-        )
+        nombre = pedir_nombre_cliente(root)
 
         if not nombre:
             return
 
         cliente = obtener_o_crear_cliente(nombre)
-
     # ================= GUARDAR NOTA =================
     crear_cotizacion(
         cliente,
@@ -2650,7 +2696,175 @@ frame_cliente_btns = ctk.CTkFrame(
     fg_color="transparent"
 )
 frame_cliente_btns.pack(fill="x", padx=40, pady=(0, 6))
+# =========================================
+# 🔎 BUSCADOR RÁPIDO CLIENTE
+# =========================================
 
+frame_busqueda_cliente = ctk.CTkFrame(
+    frame_cliente_pedido,
+    fg_color="transparent"
+)
+frame_busqueda_cliente.pack(fill="x", padx=40, pady=(10, 5))
+
+telefono_buscar_var = tk.StringVar()
+
+entry_buscar_tel = ctk.CTkEntry(
+    frame_busqueda_cliente,
+    textvariable=telefono_buscar_var,
+    placeholder_text="Buscar por teléfono...",
+    height=36,
+    corner_radius=10
+)
+entry_buscar_tel.pack(side="left", fill="x", expand=True, padx=(0,8))
+
+lbl_estado_cliente = ctk.CTkLabel(
+    frame_cliente_pedido,
+    text="",
+    font=("Segoe UI", 12)
+)
+lbl_estado_cliente.pack(anchor="w", padx=40)
+def limpiar_telefono(texto):
+    return "".join(c for c in texto if c.isdigit())
+
+def formatear_telefono(numero):
+    # Quitar lada si tiene 52
+    if numero.startswith("52") and len(numero) == 12:
+        numero = numero[2:]
+
+    if len(numero) <= 2:
+        return numero
+    elif len(numero) <= 6:
+        return f"{numero[:2]} {numero[2:]}"
+    else:
+        return f"{numero[:2]} {numero[2:6]} {numero[6:10]}"
+    
+def buscar_cliente_automatico(*args):
+    global cliente_actual
+
+    numero_limpio = limpiar_telefono(telefono_buscar_var.get())
+
+    # Permitir máximo 12 dígitos
+    if len(numero_limpio) > 12:
+        numero_limpio = numero_limpio[:12]
+
+    # Actualizar máscara visual
+    telefono_formateado = formatear_telefono(numero_limpio)
+    telefono_buscar_var.set(telefono_formateado)
+
+    # Quitar lada si viene con 52
+    numero_busqueda = numero_limpio
+    if numero_limpio.startswith("52") and len(numero_limpio) == 12:
+        numero_busqueda = numero_limpio[2:]
+
+    # Solo buscar cuando tenga exactamente 10 dígitos reales
+    if len(numero_busqueda) == 10:
+
+        cliente = buscar_cliente_por_telefono(numero_busqueda)
+
+        if cliente:
+            cliente_actual = cliente
+
+            lbl_cliente_valor.configure(
+                text=f"👤 {cliente['nombre']}"
+            )
+
+            lbl_estado_cliente.configure(
+                text="✅ Cliente existente",
+                text_color="#16A34A"
+            )
+
+            entry_buscar_tel.configure(
+                border_color="#16A34A"
+            )
+
+            btn_editar_cliente.pack(side="right", padx=(6,0))
+
+        else:
+            cliente_actual = None
+
+            lbl_estado_cliente.configure(
+                text="❌ No hay registro",
+                text_color="#DC2626"
+            )
+
+            entry_buscar_tel.configure(
+                border_color="#DC2626"
+            )
+
+    else:
+        # Estado neutro mientras escribe
+        lbl_estado_cliente.configure(text="")
+        entry_buscar_tel.configure(
+            border_color="#D1D5DB"
+        )
+
+def on_key_release(event):
+    global cliente_actual
+
+    cursor_pos = entry_buscar_tel.index("insert")
+
+    numero_limpio = limpiar_telefono(entry_buscar_tel.get())
+
+    # máximo 12 dígitos
+    if len(numero_limpio) > 12:
+        numero_limpio = numero_limpio[:12]
+
+    # quitar lada si viene con 52
+    numero_busqueda = numero_limpio
+    if numero_limpio.startswith("52") and len(numero_limpio) == 12:
+        numero_busqueda = numero_limpio[2:]
+
+    # aplicar máscara
+    numero_formateado = formatear_telefono(numero_limpio)
+
+    entry_buscar_tel.delete(0, "end")
+    entry_buscar_tel.insert(0, numero_formateado)
+
+    entry_buscar_tel.icursor(len(numero_formateado))
+
+    # ==========================
+    # BÚSQUEDA AUTOMÁTICA
+    # ==========================
+    if len(numero_busqueda) == 10:
+
+        cliente = buscar_cliente_por_telefono(numero_busqueda)
+
+        if cliente:
+            cliente_actual = cliente
+
+            lbl_cliente_valor.configure(
+                text=f"👤 {cliente['nombre']}"
+            )
+
+            lbl_estado_cliente.configure(
+                text="✅ Cliente existente",
+                text_color="#16A34A"
+            )
+
+            entry_buscar_tel.configure(
+                border_color="#16A34A"
+            )
+
+            btn_editar_cliente.pack(side="right", padx=(6,0))
+
+        else:
+            cliente_actual = None
+
+            lbl_estado_cliente.configure(
+                text="❌ No hay registro",
+                text_color="#DC2626"
+            )
+
+            entry_buscar_tel.configure(
+                border_color="#DC2626"
+            )
+
+    else:
+        lbl_estado_cliente.configure(text="")
+        entry_buscar_tel.configure(
+            border_color="#D1D5DB"
+        )
+entry_buscar_tel.bind("<KeyRelease>", on_key_release)
 
 # ---- botón principal seleccionar ----
 lbl_cliente_valor = ctk.CTkButton(

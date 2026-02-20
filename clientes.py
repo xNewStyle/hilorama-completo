@@ -152,3 +152,16 @@ def normalizar_nombre(nombre):
     return nombre
 
 
+def buscar_cliente_por_telefono(telefono):
+    from database.connection import get_conn
+
+    conn = get_conn()
+
+    row = conn.execute("""
+        SELECT * FROM clientes
+        WHERE telefono=%s
+    """, (telefono,)).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
