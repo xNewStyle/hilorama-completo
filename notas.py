@@ -62,14 +62,14 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
     for p in carrito:
         conn.execute("""
             INSERT INTO items
-            (nota_id, codigo, marca, hilo, cantidad, precio)
-
-            VALUES (%s,%s,%s,%s,%s,%s)
+            (nota_id, codigo, marca, hilo, color, cantidad, precio)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
         """,(
                nota_id,
                p["codigo"],
                p["marca"],
                p["hilo"],
+               p.get("color"), 
                p["cantidad"],
                p["precio"]
             )
@@ -114,7 +114,7 @@ def obtener_cotizacion(id_nota):
         return None
 
     items = conn.execute("""
-        SELECT codigo, marca, hilo, cantidad, precio
+        SELECT codigo, marca, hilo, color, cantidad, precio
         FROM items
         WHERE nota_id=%s
     """, (id_nota,)).fetchall()
@@ -288,13 +288,14 @@ def convertir_cotizacion_a_venta(id_nota, items_finales, cliente, envio=None):
 
     for p in items_finales:
         conn.execute("""
-            INSERT INTO items(nota_id,codigo,marca,hilo,cantidad,precio)
-            VALUES (%s,%s,%s,%s,%s,%s)
+            INSERT INTO items(nota_id,codigo,marca,hilo,color,cantidad,precio)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
         """, (
             id_nota,
             p["codigo"],
             p["marca"],
             p["hilo"],
+            p.get("color"),
             p["cantidad"],
             p["precio"]
         ))
@@ -316,13 +317,14 @@ def actualizar_cotizacion(id_nota, nuevos_items):
 
     for p in nuevos_items:
         conn.execute("""
-            INSERT INTO items(nota_id,codigo,marca,hilo,cantidad,precio)
-            VALUES (%s,%s,%s,%s,%s,%s)
+            INSERT INTO items(nota_id,codigo,marca,hilo,color,cantidad,precio)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
         """, (
             id_nota,
             p["codigo"],
             p["marca"],
             p["hilo"],
+            p.get("color"),
             p["cantidad"],
             p["precio"]
         ))
