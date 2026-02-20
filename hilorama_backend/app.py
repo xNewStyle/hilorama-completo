@@ -710,8 +710,11 @@ def solicitar_impresion(nota_id, tipo):
 # ==============================
 # IMPRIMIR AMBAS
 # ==============================
-@app.route("/notas/<int:nota_id>/datos-impresion", methods=["GET"])
+@app.route("/notas/<nota_id>/datos-impresion", methods=["GET"])
 def datos_impresion(nota_id):
+
+    if request.headers.get("X-PRINT-KEY") != "MI_CLAVE_DE_IMPRESION_LOCAL":
+        return jsonify({"error": "No autorizado"}), 401
 
     with get_conn() as conn:
         nota = conn.execute("""

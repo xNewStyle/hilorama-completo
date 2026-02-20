@@ -12,12 +12,19 @@ def obtener_datos_nota(nota_id):
     try:
         res = requests.get(
             f"{API_URL}/notas/{nota_id}/datos-impresion",
+            headers={"X-PRINT-KEY": PRINT_KEY},
             timeout=10
         )
+
+        print("STATUS:", res.status_code)
+        print("RESPUESTA:", res.text)
+
         if res.status_code != 200:
-            print(f"Error obteniendo datos nota {nota_id}")
+            print(f"❌ Error obteniendo datos nota {nota_id}")
             return None
+
         return res.json()
+
     except Exception as e:
         print("Error datos nota:", e)
         return None
