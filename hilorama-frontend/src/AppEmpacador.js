@@ -313,7 +313,28 @@ function App() {
     );
   };
 
+  const imprimirEtiqueta = async (tipo) => {
+    if (!notaActiva) return;
 
+    const res = await fetch(
+      `${API_URL}/notas/${notaActiva.id}/imprimir/${tipo}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Error enviando a impresión");
+      return;
+    }
+
+    alert("Etiqueta enviada a impresión 🖨");
+  };
 
   /* ======================
      LOGIN UI
@@ -384,6 +405,58 @@ function App() {
           <strong>Paquetería:</strong>{" "}
           {notaActiva.paqueteria ?? "Entrega personal"}
         </p>
+        <div style={{ marginTop: 15, display: "flex", gap: 10 }}>
+  
+          <button
+            onClick={() => imprimirEtiqueta("destinatario")}
+            style={{
+              flex: 1,
+              padding: 10,
+              borderRadius: 8,
+              border: "none",
+              background: "#2563EB",
+              color: "#fff",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Destinatario
+          </button>
+
+          <button
+            onClick={() => imprimirEtiqueta("remitente")}
+            style={{
+              flex: 1,
+              padding: 10,
+              borderRadius: 8,
+              border: "none",
+              background: "#6B7280",
+              color: "#fff",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Remitente
+          </button>
+
+        </div>
+
+        <button
+          onClick={() => imprimirEtiqueta("ambas")}
+          style={{
+            marginTop: 10,
+            width: "100%",
+            padding: 12,
+            borderRadius: 8,
+            border: "none",
+            background: "#111827",
+            color: "#fff",
+            fontWeight: "bold",
+            cursor: "pointer",
+          }}
+        >
+          🖨 Imprimir ambas
+        </button>
 
 
 

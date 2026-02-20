@@ -37,3 +37,21 @@ def obtener_registros():
     conn.close()
 
     return [dict(r) for r in rows]    
+from database.connection import get_conn
+from datetime import datetime
+
+def registrar_evento(nota_id, tipo, descripcion):
+    conn = get_conn()
+
+    conn.execute("""
+        INSERT INTO auditoria (fecha, nota_id, tipo, descripcion)
+        VALUES (%s, %s, %s, %s)
+    """, (
+        datetime.now(),
+        nota_id,
+        tipo,
+        descripcion
+    ))
+
+    conn.commit()
+    conn.close()

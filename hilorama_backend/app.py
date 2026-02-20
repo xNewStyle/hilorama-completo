@@ -684,6 +684,126 @@ def seguimiento(nota_id):
         estado_visual=nota["estado"],
         progreso=progreso
     )
+# ==============================
+# IMPRIMIR DESTINATARIO
+# ==============================
+
+@app.route("/notas/<int:nota_id>/imprimir/<tipo>", methods=["POST"])
+def solicitar_impresion(nota_id, tipo):
+
+    auth = validar_token(request)
+    if not auth:
+        return jsonify({"error": "No autorizado"}), 401
+
+    if tipo not in ["destinatario", "remitente", "ambas"]:
+        return jsonify({"error": "Tipo inválido"}), 400
+
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO cola_impresion (nota_id, tipo)
+            VALUES (%s,%s)
+        """,(nota_id, tipo))
+
+    return jsonify({"ok": True, "mensaje": "Enviado a cola de impresión"})
+
+
+# ==============================
+# IMPRIMIR AMBAS
+# ==============================
+@app.route("/notas/<int:nota_id>/datos-impresion", methods=["GET"])
+def datos_impresion(nota_id):
+
+    with get_conn() as conn:
+        nota = conn.execute("""
+            SELECT n.id,
+                   n.cliente_nombre,
+                   n.paqueteria,
+                   c.telefono,
+                   c.calle,
+                   c.numero_ext,
+                   c.numero_int,
+                   c.colonia,
+                   c.municipio,
+                   c.estado,
+                   c.codigo_postal,
+                   c.referencia
+            FROM notas n
+            JOIN clientes c ON c.nombre = n.cliente_nombre
+            WHERE n.id=%s
+        """,(nota_id,)).fetchone()
+
+    if not nota:
+        return jsonify({"error": "Nota no encontrada"}), 404
+
+    cliente = {
+        "nombre": nota["cliente_nombre"],
+        "telefono": nota["telefono"],
+        "direccion": {
+            "calle": nota["calle"],
+            "numero_ext": nota["numero_ext"],
+            "numero_int": nota["numero_int"],
+            "colonia": nota["colonia"],
+            "municipio": nota["municipio"],
+            "estado": nota["estado"],
+            "codigo_postal": nota["codigo_postal"],
+            "referencia": nota["referencia"],
+        }
+    }
+
+    remitente = {
+        "nombre": "Jorge Angel Ortiz Anguiano",
+        "telefono": "5545414186",
+        "direccion": {
+            "calle": "Cocula",
+            "numero_ext": "246",
+            "numero_int": "",
+            "colonia": "Benito Juarez",
+            "municipio": "Nezahualcoyotl",
+            "estado": "Estado de Mexico",
+            "codigo_postal": "57000",
+            "referencia": "Lona rosa"
+        }
+    }
+
+    return jsonify({
+        "cliente": cliente,
+        "envio": {"tipo": nota["paqueteria"]},
+        "remitente": remitente
+    })
+@app.route("/cola-impresion", methods=["GET"])
+def obtener_cola():
+
+    clave = request.headers.get("X-PRINT-KEY")
+    if clave != "MI_CLAVE_DE_IMPRESION_LOCAL":
+        return jsonify({"error": "No autorizado"}), 401
+
+    with get_conn() as conn:
+        tareas = conn.execute("""
+            SELECT id, nota_id, tipo
+            FROM cola_impresion
+            WHERE estado='PENDIENTE'
+            ORDER BY creado_en ASC
+            LIMIT 5
+        """).fetchall()
+
+    return jsonify(tareas)
+
+@app.route("/cola-impresion/<int:id>/completar", methods=["POST"])
+def completar_impresion(id):
+
+    clave = request.headers.get("X-PRINT-KEY")
+    if clave != "MI_CLAVE_DE_IMPRESION_LOCAL":
+        return jsonify({"error": "No autorizado"}), 401
+
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE cola_impresion
+            SET estado='IMPRESO',
+                impreso_en=NOW()
+            WHERE id=%s
+        """,(id,))
+
+    return jsonify({"ok": True})
 
 @app.route("/health")
 def health():

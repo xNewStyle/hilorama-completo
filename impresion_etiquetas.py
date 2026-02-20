@@ -3,7 +3,7 @@ import textwrap
 from PIL import Image, ImageDraw, ImageFont
 import barcode
 from barcode.writer import ImageWriter
-
+from auditoria import registrar_evento
 
 PRINTER_IP = "192.168.100.71"
 PRINTER_PORT = 9100
@@ -244,7 +244,11 @@ def etiqueta_destinatario(cliente, nota_id, envio=None):
     img = generar_etiqueta(cliente, nota_id, "DESTINATARIO", envio)
     comando = convertir_a_tspl(img)
     enviar_a_impresora(comando)
-
+    registrar_evento(
+        nota_id,
+        "IMPRESION",
+        "Se imprimió etiqueta DESTINATARIO"
+    )
 
 def etiqueta_remitente(nota_id, mis_datos):
 
@@ -266,3 +270,8 @@ def etiqueta_remitente(nota_id, mis_datos):
     img = generar_etiqueta(cliente, nota_id, "REMITENTE")
     comando = convertir_a_tspl(img)
     enviar_a_impresora(comando)
+    registrar_evento(
+        nota_id,
+        "IMPRESION",
+        "Se imprimió etiqueta REMITENTE"
+    )

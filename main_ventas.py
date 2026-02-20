@@ -2891,14 +2891,17 @@ def editar_y_refrescar():
     global cliente_actual
 
     if not cliente_actual:
-        abrir_clientes(root)
+        messagebox.showwarning(
+            "Sin cliente",
+            "Primero selecciona un cliente."
+        )
         return
 
-    editar_cliente_por_id(cliente_actual["id"], root)
-
-    # 🔥 RECARGAR DESDE BD
+    # Recargar cliente desde BD antes de editar
     from clientes import obtener_cliente_por_id
     cliente_actual = obtener_cliente_por_id(cliente_actual["id"])
+
+    editar_cliente_por_id(cliente_actual["id"], root)
 
 btn_editar_cliente = ctk.CTkButton(
     frame_cliente_btns,
