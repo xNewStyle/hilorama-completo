@@ -139,7 +139,7 @@ def cliente_completo(cliente):
         return False
 
     referencia = direccion.get("referencia", "")
-    if len(referencia) > 20:
+    if len(referencia) > 100:
         return False
 
     return True

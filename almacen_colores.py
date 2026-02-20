@@ -22,14 +22,19 @@ def marcas_existentes():
 
 def calcular_ganancia_total(productos):
     total = 0
+
     for r in productos:
-        if r["venta"] and r["distribuidor"]:
-            total += (r["venta"] - r["distribuidor"]) * r["stock"]
+        precio = r.get("precio")
+        distribuidor = r.get("distribuidor")
+
+        if precio is not None and distribuidor is not None:
+            precio = float(precio)
+            distribuidor = float(distribuidor)
+            total += (precio - distribuidor) * r["stock"]
 
     lbl_ganancia.config(
         text=f"Ganancia estimada total: ${total:.2f}"
     )
-
 
 
 # ================= TABLA =================
@@ -46,7 +51,8 @@ def refrescar_tabla(filtro=None):
             p.stock,
             p.codigo_barras,
             p.estado,
-            pr.venta,
+            p.precio,
+            p.volumetrico,                 
             pr.distribuidor
         FROM productos p
         LEFT JOIN precios pr 
@@ -84,6 +90,8 @@ def refrescar_tabla(filtro=None):
                         p["codigo"],
                         p["stock"],
                         p["codigo_barras"],
+                        f"${p['precio']:.2f}" if p["precio"] else "$0.00",
+                        f"{float(p['volumetrico']):.2f}" if p["volumetrico"] else "1.00",
                         p["estado"]
                     ),
                     tags=(tag,)
@@ -220,7 +228,11 @@ def editar_producto(event):
 
     opcion = simpledialog.askstring(
         "Editar",
-        "¿Qué deseas editar?\n\n1 = Stock\n2 = Código de barras"
+        "¿Qué deseas editar?\n\n"
+        "1 = Stock\n"
+        "2 = Código de barras\n"
+        "3 = Precio\n"
+        "4 = Volumétrico"
     )
 
     # valores ahora son:
@@ -265,7 +277,37 @@ def editar_producto(event):
         """,(nuevo_barras,marca,hilo,codigo))
         conn.commit()
         conn.close()
+    elif opcion == "3":
+        nuevo_precio = simpledialog.askfloat("Precio", "Nuevo precio de venta:")
+        if nuevo_precio is None:
+            return
 
+        conn = get_conn()
+        conn.execute("""
+            UPDATE productos
+            SET precio=%s
+            WHERE marca=%s AND hilo=%s AND codigo=%s
+        """,(nuevo_precio,marca,hilo,codigo))
+        conn.commit()
+        conn.close()
+    elif opcion == "4":
+        nuevo_vol = simpledialog.askfloat(
+            "Volumétrico",
+            "Nuevo peso volumétrico:",
+            minvalue=0.01
+        )
+
+        if nuevo_vol is None:
+            return
+
+        conn = get_conn()
+        conn.execute("""
+            UPDATE productos
+            SET volumetrico=%s
+            WHERE marca=%s AND hilo=%s AND codigo=%s
+        """,(nuevo_vol,marca,hilo,codigo))
+        conn.commit()
+        conn.close()    
     refrescar_tabla()
 
 
@@ -304,18 +346,10 @@ def asignar_volumetrico_hilo():
     hilo = entry_hilo.get().strip().upper()
 
     if not marca or not hilo:
-        messagebox.showerror(
-            "Error",
-            "Selecciona una marca y escribe el hilo",
-        )
+        messagebox.showerror("Error", "Selecciona una marca y escribe el hilo")
         return
 
-    # 🔒 contraseña
-    pwd = simpledialog.askstring(
-        "Autorización",
-        "Contraseña:",
-        show="*"
-    )
+    pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
     if pwd != PASSWORD:
         messagebox.showerror("Error", "Contraseña incorrecta")
         return
@@ -330,20 +364,92 @@ def asignar_volumetrico_hilo():
 
     conn = get_conn()
 
-    cur = conn.execute("""
-    UPDATE productos
-    SET volumetrico=%s
-    WHERE marca=%s AND hilo=%s
+    # 🔥 UPDATE REAL
+    conn.execute("""
+        UPDATE productos
+        SET volumetrico=%s
+        WHERE UPPER(marca)=UPPER(%s)
+        AND UPPER(hilo)=UPPER(%s)
     """,(vol,marca,hilo))
 
+    # 🔥 CONTAR AFECTADOS
+    r = conn.execute("""
+        SELECT COUNT(*) AS total
+        FROM productos
+        WHERE UPPER(marca)=UPPER(%s)
+        AND UPPER(hilo)=UPPER(%s)
+    """,(marca,hilo)).fetchone()
+
+    afectados = r["total"] if r else 0
+
     conn.commit()
-    cambios = cur.rowcount
     conn.close()
 
+    refrescar_tabla()
 
     messagebox.showinfo(
         "Listo",
-        f"Volumétrico aplicado a {cambios} productos"
+        f"Volumétrico aplicado a {afectados} productos"
+    )
+
+def obtener_producto_por_codigo(codigo):
+    conn = get_conn()
+    r = conn.execute("""
+        SELECT * FROM productos
+        WHERE codigo=%s
+    """,(codigo,)).fetchone()
+    conn.close()
+    return r
+def asignar_volumetrico_multiple():
+    marca = simpledialog.askstring("Marca", "Marca (ej: KARINA):")
+    if not marca:
+        return
+
+    hilo = simpledialog.askstring("Hilo", "Hilo (ej: KOMFY):")
+    if not hilo:
+        return
+
+    pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
+    if pwd != PASSWORD:
+        messagebox.showerror("Error", "Contraseña incorrecta")
+        return
+
+    nuevo_vol = simpledialog.askfloat(
+        "Volumétrico",
+        f"Nuevo volumétrico para {marca.upper()} / {hilo.upper()}:",
+        minvalue=0.01
+    )
+
+    if nuevo_vol is None:
+        return
+
+    conn = get_conn()
+
+    conn.execute("""
+        UPDATE productos
+        SET volumetrico=%s
+        WHERE UPPER(marca)=UPPER(%s)
+        AND UPPER(hilo)=UPPER(%s)
+    """,(nuevo_vol,marca,hilo))
+
+    # Obtener filas afectadas correctamente
+    r = conn.execute("""
+        SELECT COUNT(*) AS total
+        FROM productos
+        WHERE UPPER(marca)=UPPER(%s)
+        AND UPPER(hilo)=UPPER(%s)
+    """,(marca,hilo)).fetchone()
+
+    afectados = r["total"] if r else 0
+
+    conn.commit()
+    conn.close()
+
+    refrescar_tabla()
+
+    messagebox.showinfo(
+        "Actualizado",
+        f"Se actualizaron {afectados} productos"
     )
 
 
@@ -367,6 +473,7 @@ if __name__ == "__main__":
         text="Buscar",
         command=lambda: refrescar_tabla(entry_buscar.get())
     ).pack(side="left")
+    
 
     # Formulario
     frame_form = tk.Frame(root)
@@ -407,6 +514,11 @@ if __name__ == "__main__":
     text="📦 Volumétrico por hilo",
     command=asignar_volumetrico_hilo
     ).grid(row=1, column=11, padx=5)
+    tk.Button(
+        frame_form,
+        text="⚖ Volumétrico múltiple",
+        command=asignar_volumetrico_multiple
+    ).grid(row=1, column=12, padx=5)
 
 
     # Tabla
@@ -451,12 +563,36 @@ if __name__ == "__main__":
     # ===== TABLA =====
     tabla = ttk.Treeview(
         card_tabla,
-        columns=("Hilo", "Color", "Código", "Stock","Codigo_Barras", "Estado"),
+        columns=("Hilo", "Color", "Código", "Stock","Codigo_Barras", "Precio", "Volumetrico", "Estado"),
         show="tree headings"
     )
 
     tabla.heading("#0", text="Marca")
-    tabla.column("#0", width=160, anchor="w")
+    tabla.column("#0", width=150, anchor="w")
+
+    tabla.heading("Hilo", text="Hilo")
+    tabla.column("Hilo", width=150)
+
+    tabla.heading("Color", text="Color")
+    tabla.column("Color", width=120)
+
+    tabla.heading("Código", text="Código")
+    tabla.column("Código", width=90)
+
+    tabla.heading("Stock", text="Stock")
+    tabla.column("Stock", width=80, anchor="center")
+
+    tabla.heading("Codigo_Barras", text="Cod. Barras")
+    tabla.column("Codigo_Barras", width=120)
+
+    tabla.heading("Precio", text="Precio")
+    tabla.column("Precio", width=100, anchor="e")
+
+    tabla.heading("Volumetrico", text="Volumétrico")
+    tabla.column("Volumetrico", width=100, anchor="center")
+
+    tabla.heading("Estado", text="Estado")
+    tabla.column("Estado", width=100, anchor="center")
 
 
     tabla.pack(fill="both", expand=True, padx=15, pady=15)
@@ -573,12 +709,3 @@ def obtener_producto_por_codigo_barras(codigo_barras):
 
 
 
-
-def obtener_producto_por_codigo(codigo):
-    conn = get_conn()
-    r = conn.execute("""
-        SELECT * FROM productos
-        WHERE codigo=%s
-    """,(codigo,)).fetchone()
-    conn.close()
-    return r

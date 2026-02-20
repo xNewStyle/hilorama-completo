@@ -1868,7 +1868,7 @@ def guardar_cotizacion():
 def actualizar_total_con_envio():
     total_productos = sum(p["cantidad"] * p["precio"] for p in carrito)
     envio_precio = envio_actual["precio"] if envio_actual else 0
-    total = total_productos + envio_precio
+    total = float(total_productos) + float(envio_precio)
 
     lbl_total.configure(text=f"${total:.2f}")
 
@@ -2213,7 +2213,107 @@ def obtener_ranking():
     conn.close()
 
     return rows
+def abrir_registro_cambios(parent):
 
+    import datetime
+    from auditoria import obtener_registros  # asegúrate que exista
+
+    win = ctk.CTkToplevel(parent)
+    win.title("Registro de Cambios")
+    win.geometry("1100x700")
+    win.configure(fg_color="#F3F4F6")
+    win.grab_set()
+
+    # ================= HEADER =================
+    header = ctk.CTkFrame(win, corner_radius=12)
+    header.pack(fill="x", padx=15, pady=10)
+
+    ctk.CTkLabel(
+        header,
+        text="📜 Registro de Cambios",
+        font=("Segoe UI", 20, "bold")
+    ).pack(side="left", padx=10)
+
+    # ================= FILTROS =================
+    filtros = ctk.CTkFrame(win, corner_radius=12)
+    filtros.pack(fill="x", padx=15, pady=5)
+
+    desde_var = tk.StringVar()
+    hasta_var = tk.StringVar()
+    nota_var = tk.StringVar()
+    tipo_var = tk.StringVar(value="TODOS")
+
+    def campo(label, var, width=140):
+        cont = ctk.CTkFrame(filtros, fg_color="transparent")
+        ctk.CTkLabel(cont, text=label).pack(anchor="w")
+        ctk.CTkEntry(cont, textvariable=var, width=width).pack()
+        cont.pack(side="left", padx=10, pady=5)
+
+    campo("Desde (YYYY-MM-DD)", desde_var)
+    campo("Hasta (YYYY-MM-DD)", hasta_var)
+    campo("ID Nota", nota_var, 120)
+
+    combo_tipo = ctk.CTkComboBox(
+        filtros,
+        variable=tipo_var,
+        values=["TODOS", "Cambio de estado", "Cambio de cantidad", "Cambio de envío", "Venta eliminada"],
+        width=180
+    )
+    combo_tipo.pack(side="left", padx=10, pady=20)
+
+    # ================= TABLA =================
+    frame_tabla = ctk.CTkFrame(win, corner_radius=12)
+    frame_tabla.pack(fill="both", expand=True, padx=15, pady=10)
+
+    cols = ("Fecha", "Nota", "Tipo", "Descripción")
+
+    tree = ttk.Treeview(
+        frame_tabla,
+        columns=cols,
+        show="headings"
+    )
+
+    for c in cols:
+        tree.heading(c, text=c)
+        tree.column(c, anchor="center")
+
+    tree.pack(fill="both", expand=True)
+
+    # ================= CARGAR =================
+    def cargar():
+        tree.delete(*tree.get_children())
+
+        registros = obtener_registros()
+
+        for r in registros:
+
+            if nota_var.get() and str(r["nota_id"]) != nota_var.get():
+                continue
+
+            if tipo_var.get() != "TODOS" and r["tipo"] != tipo_var.get():
+                continue
+
+            if desde_var.get() and r["fecha"][:10] < desde_var.get():
+                continue
+
+            if hasta_var.get() and r["fecha"][:10] > hasta_var.get():
+                continue
+
+            tree.insert("", "end", values=(
+                r["fecha"],
+                r["nota_id"],
+                r["tipo"],
+                r["descripcion"]
+            ))
+
+    ctk.CTkButton(
+        filtros,
+        text="🔎 Filtrar",
+        fg_color="#1976D2",
+        command=cargar
+    ).pack(side="left", padx=15, pady=20)
+
+    cargar()
 
 
 # ================= WHATSAPP =================
@@ -2288,16 +2388,104 @@ for c in cols:
     tabla_carrito.column(c, anchor="center")
 
 tabla_carrito.pack(fill="both", expand=True)
+def editar_celda(event):
+    region = tabla_carrito.identify("region", event.x, event.y)
+    if region != "cell":
+        return
 
+    row_id = tabla_carrito.identify_row(event.y)
+    column = tabla_carrito.identify_column(event.x)
+    col_index = int(column.replace("#", "")) - 1
+
+    # Solo permitir editar Cantidad (3) y Precio (4)
+    if col_index not in [3, 4]:
+        return
+
+    x, y, width, height = tabla_carrito.bbox(row_id, column)
+    valores = tabla_carrito.item(row_id)["values"]
+    codigo = valores[2]
+
+    # Limpiar formato $
+    valor_actual = valores[col_index]
+    if col_index == 4:
+        if not pedir_password():
+            return
+        valor_actual = str(valor_actual).replace("$", "")
+
+    # 🔵 Contenedor elegante
+    frame_editor = tk.Frame(
+        tabla_carrito,
+        bg="white",
+        bd=1,
+        relief="solid"
+    )
+    frame_editor.place(x=x, y=y, width=width, height=height)
+
+    # ==========================================
+    # 🔵 CANTIDAD → SPINBOX CON FLECHAS
+    # ==========================================
+    if col_index == 3:
+
+        editor = tk.Spinbox(
+            frame_editor,
+            from_=1,
+            to=9999,
+            font=("Segoe UI", 12),
+            justify="center",
+            bd=0
+        )
+
+    # ==========================================
+    # 🔵 PRECIO → ENTRY NORMAL
+    # ==========================================
+    else:
+
+        editor = tk.Entry(
+            frame_editor,
+            font=("Segoe UI", 12),
+            justify="center",
+            bd=0
+        )
+
+    editor.pack(fill="both", expand=True)
+    editor.insert(0, valor_actual)
+    editor.focus()
+
+    def guardar(event=None):
+        nuevo_valor = editor.get()
+
+        try:
+            if col_index == 3:
+                nuevo_valor = int(nuevo_valor)
+            else:
+                nuevo_valor = float(nuevo_valor)
+        except:
+            frame_editor.destroy()
+            return
+
+        for p in carrito:
+            if str(p["codigo"]) == str(codigo):
+                if col_index == 3:
+                    p["cantidad"] = nuevo_valor
+                else:
+                    p["precio"] = nuevo_valor
+                break
+
+        frame_editor.destroy()
+        refrescar_carrito()
+
+    def cancelar(event=None):
+        frame_editor.destroy()
+
+    editor.bind("<Return>", guardar)
+    editor.bind("<FocusOut>", cancelar)
+
+tabla_carrito.bind("<Double-1>", editar_celda)
 
 # zebra rows
 tabla_carrito.tag_configure("odd", background="#FAFAFA")
 tabla_carrito.tag_configure("even", background="white")
 tabla_carrito.tag_configure("bajo", background="#FFE5E5")
-
-
-tabla_carrito.bind("<Double-1>", lambda e: editar_cantidad_multiple())
-
 
 # ================= FOOTER =================
 footer = tk.Frame(frame_carrito, bg="white")
@@ -2665,7 +2853,16 @@ ctk.CTkButton(
     hover_color="#DC2626",
     command=abrir_panel_errores
 ).pack(side="left", padx=5)
-
+ctk.CTkButton(
+    frame_total,
+    text="📜 Registro de Cambios",
+    fg_color="#455A64",
+    hover_color="#37474F",
+    height=50,
+    corner_radius=14,
+    font=("Segoe UI", 15, "bold"),
+    command=lambda: abrir_registro_cambios(root)
+).pack(fill="x", padx=20, pady=(0, 20))
 
 
 def agregar_al_carrito(pedido):
@@ -2676,7 +2873,7 @@ def agregar_al_carrito(pedido):
 
     for p in productos:
         if p["codigo"] == codigo:
-            precio = obtener_precio_venta(p["marca"])
+            precio = p["precio"]
 
             for c in carrito:
                 if (

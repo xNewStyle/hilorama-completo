@@ -19,6 +19,7 @@ from generar_pdf_venta_premium import generar_pdf_venta_premium
 import customtkinter as ctk
 from parser_whatsapp import extraer_pedidos
 from core.almacen_api import obtener_todos_los_productos, obtener_producto_por_codigo, obtener_precio_venta
+from auditoria import registrar_cambio
 
 
 PASSWORD = "12587987521"
@@ -120,7 +121,11 @@ def eliminar_venta_desde_lista(tree, win):
            -item["cantidad"]
         )
 
-
+    registrar_cambio(
+        id_nota,
+        "Venta eliminada",
+        "Se eliminó la venta y se devolvió stock"
+    )
     eliminar_nota(id_nota)
 
     messagebox.showinfo(
@@ -619,7 +624,52 @@ def abrir_editor_venta(parent, nota):
 
     frame = ctk.CTkFrame(ed)
     frame.pack(fill="both", expand=True, padx=20, pady=20)
+    # ================= CONTEXTO =================
+    frame_contexto = ctk.CTkFrame(frame)
+    frame_contexto.pack(fill="x", pady=(0,10))
 
+    from core.almacen_api import obtener_marcas, obtener_hilos
+
+    ctk.CTkLabel(frame_contexto, text="Marca").pack(side="left", padx=(0,5))
+
+    combo_marca_contexto = ctk.CTkComboBox(
+        frame_contexto,
+        values=obtener_marcas(),
+        width=150,
+        command=lambda value: actualizar_hilos()
+    )
+    combo_marca_contexto.pack(side="left", padx=(0,10))
+
+    ctk.CTkLabel(frame_contexto, text="Hilo").pack(side="left", padx=(0,5))
+
+    combo_hilo_contexto = ctk.CTkComboBox(
+        frame_contexto,
+        values=[],
+        width=150
+    )
+    combo_hilo_contexto.pack(side="left")
+
+
+    def actualizar_hilos(event=None):
+
+        marca = combo_marca_contexto.get()
+
+        if not marca:
+            combo_hilo_contexto.configure(values=[])
+            combo_hilo_contexto.set("")
+            return
+
+        hilos = obtener_hilos(marca)
+
+        combo_hilo_contexto.configure(values=hilos)
+
+        if hilos:
+            combo_hilo_contexto.set(hilos[0])
+        else:
+            combo_hilo_contexto.set("")
+    # 🔥 FORZAR CARGA INICIAL
+    if combo_marca_contexto.get():
+        actualizar_hilos()
     # ================= PRODUCTOS =================
     cols = ("Código", "Cantidad", "Precio", "Subtotal")
     tree_ed = ttk.Treeview(frame, columns=cols, show="headings")
@@ -1134,8 +1184,7 @@ def abrir_visor(root):
         id_nota = tree.item(sel, "values")[0]
         nota = obtener_cotizacion(id_nota)
 
-        if not nota or nota["estado"] not in ("VENTA_PENDIENTE", "PAGADA"):
-            messagebox.showwarning("Aviso", "Solo ventas se pueden editar", parent=win)
+        if not nota:
             return
 
 
@@ -1156,6 +1205,52 @@ def abrir_visor(root):
         # =====================================================
         frame = ctk.CTkFrame(ed)
         frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # ================= CONTEXTO =================
+        frame_contexto = ctk.CTkFrame(frame)
+        frame_contexto.pack(fill="x", pady=(0,10))
+
+        from core.almacen_api import obtener_marcas, obtener_hilos
+
+        ctk.CTkLabel(frame_contexto, text="Marca").pack(side="left", padx=(0,5))
+
+        combo_marca_contexto = ctk.CTkComboBox(
+            frame_contexto,
+            values=obtener_marcas(),
+            width=150,
+            command=lambda value: actualizar_hilos()
+        )
+        combo_marca_contexto.pack(side="left", padx=(0,10))
+
+        ctk.CTkLabel(frame_contexto, text="Hilo").pack(side="left", padx=(0,5))
+
+        combo_hilo_contexto = ctk.CTkComboBox(
+            frame_contexto,
+            values=[],
+            width=150
+        )
+        combo_hilo_contexto.pack(side="left")
+
+
+        def actualizar_hilos(event=None):
+
+            marca = combo_marca_contexto.get()
+
+            if not marca:
+                combo_hilo_contexto.configure(values=[])
+                combo_hilo_contexto.set("")
+                return
+
+            hilos = obtener_hilos(marca)
+
+            combo_hilo_contexto.configure(values=hilos)
+
+            if hilos:
+                combo_hilo_contexto.set(hilos[0])
+            else:
+                combo_hilo_contexto.set("")
+        # 🔥 FORZAR CARGA INICIAL
+        if combo_marca_contexto.get():
+            actualizar_hilos()        
         # ==========================
         # 🔵 PARSER WHATSAPP
         # ==========================
@@ -1179,6 +1274,21 @@ def abrir_visor(root):
                 return
 
             productos = obtener_todos_los_productos()
+
+            marca_ctx = combo_marca_contexto.get().strip().upper()
+            hilo_ctx = combo_hilo_contexto.get().strip().upper()
+
+            if marca_ctx:
+                productos = [
+                    p for p in productos
+                    if p["marca"].upper() == marca_ctx
+                ]
+
+            if hilo_ctx:
+                productos = [
+                    p for p in productos
+                    if p["hilo"].upper() == hilo_ctx
+                ]
             resultado = extraer_pedidos(texto, productos)
 
             if resultado["errores"]:
@@ -1261,7 +1371,12 @@ def abrir_visor(root):
         cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
 
 
-        tree_ed = ttk.Treeview(frame, columns=cols, show="headings")
+        tree_ed = ttk.Treeview(
+            frame,
+            columns=cols,
+            show="headings",
+            selectmode="extended"   # 🔥 clave
+        )
 
         for c in cols:
             tree_ed.heading(c, text=c)
@@ -1308,41 +1423,173 @@ def abrir_visor(root):
         # =====================================================
         # 🔵 ACCIONES PRODUCTOS
         # =====================================================
-        def cambiar_cantidad():
-            item = tree_ed.focus()
-            if not item:
+        def editar_celda_cantidad(event):
+
+            item = tree_ed.identify_row(event.y)
+            col = tree_ed.identify_column(event.x)
+
+            # Columna Cantidad (#4)
+            if not item or col != "#4":
                 return
 
-            nueva = simpledialog.askinteger("Cantidad", "Nueva cantidad:", parent=ed)
-            if nueva is None:
+            x, y, width, height = tree_ed.bbox(item, col)
+
+            valores = list(tree_ed.item(item, "values"))
+            valor_actual = valores[3]
+
+            spin = tk.Spinbox(
+                tree_ed,
+                from_=1,
+                to=9999,
+                justify="center",
+                font=("Segoe UI", 11)
+            )
+
+            spin.place(x=x, y=y, width=width, height=height)
+            spin.delete(0, "end")
+            spin.insert(0, valor_actual)
+            spin.focus()
+            spin.selection_range(0, "end")
+
+            def guardar(event=None):
+                try:
+                    nueva = int(spin.get())
+                    if nueva <= 0:
+                        raise ValueError
+                except:
+                    spin.destroy()
+                    return
+
+                valores[3] = nueva
+                valores[5] = round(nueva * float(valores[4]), 2)
+
+                tree_ed.item(item, values=valores)
+ 
+                spin.destroy()
+                recalcular()
+
+            spin.bind("<Return>", guardar)
+            spin.bind("<FocusOut>", guardar)
+
+
+        def editar_celda_precio(event):
+
+            item = tree_ed.identify_row(event.y)
+            col = tree_ed.identify_column(event.x)
+
+            # Columna Precio (#5)
+            if not item or col != "#5":
                 return
 
-            vals = list(tree_ed.item(item, "values"))
-            vals[1] = nueva
-            vals[3] = nueva * float(vals[2])
-            tree_ed.item(item, values=vals)
-            recalcular()
-
-
-        def cambiar_precio():
             if not pedir_password(ed):
                 return
 
-            item = tree_ed.focus()
-            if not item:
+            x, y, width, height = tree_ed.bbox(item, col)
+
+            valores = list(tree_ed.item(item, "values"))
+            valor_actual = valores[4]
+
+            spin = tk.Spinbox(
+                tree_ed,
+                from_=0.01,
+                to=9999,
+                increment=0.50,
+                format="%.2f",
+                justify="center",
+                font=("Segoe UI", 11)
+            )
+
+            spin.place(x=x, y=y, width=width, height=height)
+            spin.delete(0, "end")
+            spin.insert(0, valor_actual)
+            spin.focus()
+            spin.selection_range(0, "end")
+
+            def guardar(event=None):
+                try:
+                    nuevo = float(spin.get())
+                    if nuevo <= 0:
+                        raise ValueError
+                except:
+                    spin.destroy()
+                    return
+
+                valores[4] = round(nuevo, 2)
+                valores[5] = round(float(valores[3]) * nuevo, 2)
+
+                tree_ed.item(item, values=valores)
+
+                spin.destroy()
+                recalcular()
+
+            spin.bind("<Return>", guardar)
+            spin.bind("<FocusOut>", guardar)
+
+        def editar_celda(event):
+            col = tree_ed.identify_column(event.x)
+
+            if col == "#4":
+                editar_celda_cantidad(event)
+            elif col == "#5":
+                editar_celda_precio(event)
+
+        tree_ed.bind("<Double-1>", editar_celda)
+        def cambiar_precio_seleccion():
+
+            items = tree_ed.selection()
+            if not items:
                 return
 
-            nuevo = simpledialog.askfloat("Precio", "Nuevo precio:", parent=ed)
+            if not pedir_password(ed):
+                return
+
+            nuevo = simpledialog.askfloat(
+                "Precio múltiple",
+                "Nuevo precio para productos seleccionados:",
+                parent=ed,
+                minvalue=0.01
+            )
+
             if nuevo is None:
                 return
 
-            vals = list(tree_ed.item(item, "values"))
-            vals[2] = nuevo
-            vals[3] = nuevo * float(vals[1])
-            tree_ed.item(item, values=vals)
+            for item in items:
+                vals = list(tree_ed.item(item, "values"))
+                vals[4] = round(nuevo, 2)
+                vals[5] = round(vals[3] * nuevo, 2)
+                tree_ed.item(item, values=vals)
+
             recalcular()
+        def cambiar_precio_por_contexto():
 
+            marca_ctx = combo_marca_contexto.get().strip().upper()
+            hilo_ctx = combo_hilo_contexto.get().strip().upper()
 
+            if not marca_ctx or not hilo_ctx:
+                return
+
+            if not pedir_password(ed):
+                return
+
+            nuevo = simpledialog.askfloat(
+                "Precio por grupo",
+                f"Nuevo precio para {marca_ctx} / {hilo_ctx}:",
+                parent=ed,
+                minvalue=0.01
+            )
+
+            if nuevo is None:
+                return
+
+            for item in tree_ed.get_children():
+                vals = list(tree_ed.item(item, "values"))
+
+                if vals[1].upper() == marca_ctx and vals[2].upper() == hilo_ctx:
+                    vals[4] = round(nuevo, 2)
+                    vals[5] = round(vals[3] * nuevo, 2)
+                    tree_ed.item(item, values=vals)
+
+            recalcular()
         def eliminar_item():
             tree_ed.delete(tree_ed.focus())
             recalcular()
@@ -1354,10 +1601,18 @@ def abrir_visor(root):
         def editar_envio():
             vol = calcular_volumetrico_total(nota["items"])
             envio = seleccionar_envio(ed, vol)
-            if envio:
-                nota["envio"] = envio
-                recalcular()
 
+            if not envio:
+                return
+
+            nota["envio"] = envio
+            recalcular()
+
+            registrar_cambio(
+                nota["id"],
+                "Cambio de envío",
+                f"{envio['paqueteria']} - ${envio['precio']}"
+            )
 
        # =====================================================
        # 🔵 CAMBIAR COMPROBANTE
@@ -1373,7 +1628,11 @@ def abrir_visor(root):
                 ruta_inicial=nota.get("comprobante"),
                 on_save=lambda r: nota.update({"comprobante": r})
             )
-
+            registrar_cambio(
+                nota["id"],
+                "Cambio de comprobante",
+                "Se actualizó imagen de comprobante"
+            )
 
         # =====================================================
         # 🔵 ELIMINAR VENTA
@@ -1420,30 +1679,37 @@ def abrir_visor(root):
 
                 actuales[(codigo, marca, hilo)] = int(cantidad)
 
+            # 🔵 3. Ajustar stock SOLO si NO es cotización
+            if nota["estado"] != "COTIZACION":
 
-            # 🔵 3. Comparar diferencias
-            todas_claves = set(originales.keys()) | set(actuales.keys())
+                todas_claves = set(originales.keys()) | set(actuales.keys())
 
-            for clave in todas_claves:
+                for clave in todas_claves:
 
-                cantidad_original = originales.get(clave, 0)
-                cantidad_nueva = actuales.get(clave, 0)
+                    cantidad_original = originales.get(clave, 0)
+                    cantidad_nueva = actuales.get(clave, 0)
 
-                diferencia = cantidad_nueva - cantidad_original
+                    diferencia = cantidad_nueva - cantidad_original
 
-                if diferencia == 0:
-                    continue
+                    if diferencia != 0:
 
-                codigo, marca, hilo = clave
+                        codigo, marca, hilo = clave
 
-                if diferencia != 0:
-                    descontar_stock(
-                        marca,
-                        hilo,
-                        codigo,
-                        diferencia
-                    )
+                        # Ajustar stock
+                        descontar_stock(
+                            marca,
+                            hilo,
+                            codigo,
+                            diferencia
+                        )
 
+                        # Registrar cambio
+                        registrar_cambio(
+                            nota["id"],
+                            "Cambio de cantidad",
+                            f"{marca} {hilo} {codigo} | {cantidad_original} → {cantidad_nueva}"
+                        )
+                            
             
             # 🔵 4. Recalcular total real
             total = 0
@@ -1476,9 +1742,8 @@ def abrir_visor(root):
 
         def b(t, c, f):
             return ctk.CTkButton(btn_frame, text=t, fg_color=c, command=f)
-
-        b("Cantidad", "#90A4AE", cambiar_cantidad).pack(side="left", padx=5)
-        b("Precio 🔒", "#607D8B", cambiar_precio).pack(side="left", padx=5)
+        b("💲 Precio por hilo 🔒", "#5C6BC0", cambiar_precio_por_contexto).pack(side="left", padx=5)
+        b("💲 Precio selección 🔒", "#7986CB", cambiar_precio_seleccion).pack(side="left", padx=5)
         b("Eliminar item", "#E57373", eliminar_item).pack(side="left", padx=5)
         b("Envío", "#64B5F6", editar_envio).pack(side="left", padx=5)
         b("Comprobante 🔒", "#9575CD", cambiar_comprobante).pack(side="left", padx=5)
@@ -1533,7 +1798,7 @@ def editar_cotizacion(win, tree):
     # ======================================================
     ed = ctk.CTkToplevel(win)
     ed.title(f"Editar {id_nota}")
-    ed.geometry("1100x650")
+    ed.geometry("1500x650")
     ed.configure(fg_color="#F3F4F6")
     ed.grab_set()
 
@@ -1561,7 +1826,6 @@ def editar_cotizacion(win, tree):
         text="Productos",
         font=("Segoe UI", 18, "bold")
     ).pack(anchor="w", padx=20, pady=(15, 5))
-
     # ================= BUSCADOR PRODUCTOS =================
     frame_buscar = ctk.CTkFrame(card_tabla, fg_color="transparent")
     frame_buscar.pack(fill="x", padx=20, pady=(0, 10))
@@ -1575,7 +1839,51 @@ def editar_cotizacion(win, tree):
         height=36
     )
     entry_buscar.pack(side="left", fill="x", expand=True, padx=(0, 8))
+    # ================= CONTEXTO =================
+    frame_contexto = ctk.CTkFrame(card_tabla, fg_color="transparent")
+    frame_contexto.pack(fill="x", padx=20, pady=(0, 10))
 
+    ctk.CTkLabel(frame_contexto, text="Marca").pack(side="left", padx=(0,5))
+
+    from core.almacen_api import obtener_marcas, obtener_hilos
+    
+    combo_marca_contexto = ctk.CTkComboBox(
+        frame_contexto,
+        values=obtener_marcas(),
+        width=150,
+        command=lambda value: actualizar_hilos()
+    )
+    combo_marca_contexto.pack(side="left", padx=(0,10))
+
+    ctk.CTkLabel(frame_contexto, text="Hilo").pack(side="left", padx=(0,5))
+
+    combo_hilo_contexto = ctk.CTkComboBox(
+        frame_contexto,
+        values=[],
+        width=150
+    )
+    combo_hilo_contexto.pack(side="left")
+
+    def actualizar_hilos(event=None):
+        marca = combo_marca_contexto.get()
+
+        if not marca:
+            combo_hilo_contexto.configure(values=[])
+            combo_hilo_contexto.set("")
+            return
+
+        hilos = obtener_hilos(marca)
+
+        combo_hilo_contexto.configure(values=hilos)
+
+        if hilos:
+            combo_hilo_contexto.set(hilos[0])
+        else:
+            combo_hilo_contexto.set("")
+    
+
+    if combo_marca_contexto.get():
+        actualizar_hilos()
 
     def agregar_producto():
         texto = buscar_codigo_var.get().strip()
@@ -1586,6 +1894,15 @@ def editar_cotizacion(win, tree):
         # 🔥 obtener todos los productos del sistema
         from core.almacen_api import obtener_todos_los_productos
         productos = obtener_todos_los_productos()
+
+        marca_ctx = combo_marca_contexto.get().strip().upper()
+        hilo_ctx = combo_hilo_contexto.get().strip().upper()
+
+        if marca_ctx:
+           productos = [p for p in productos if p["marca"].upper() == marca_ctx]
+
+        if hilo_ctx:
+           productos = [p for p in productos if p["hilo"].upper() == hilo_ctx]
 
         resultado = extraer_pedidos(texto, productos)
  
@@ -1671,7 +1988,12 @@ def editar_cotizacion(win, tree):
     cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
 
 
-    tree_ed = ttk.Treeview(frame_tabla, columns=cols, show="headings")
+    tree_ed = ttk.Treeview(
+        frame_tabla,
+        columns=cols,
+        show="headings",
+        selectmode="extended"   # 🔥 permite selección múltiple
+    )
 
     for c in cols:
         tree_ed.heading(c, text=c)
@@ -1786,6 +2108,135 @@ def editar_cotizacion(win, tree):
 
      tree_ed.item(item, values=vals)
 
+    def cambiar_precio_seleccion():
+
+        items = tree_ed.selection()
+        if not items:
+            return
+
+        if not pedir_password(ed):
+            messagebox.showerror("Error", "Contraseña incorrecta", parent=ed)
+            return
+
+        nuevo = simpledialog.askfloat(
+            "Precio múltiple",
+            "Nuevo precio para productos seleccionados:",
+            parent=ed,
+            minvalue=0.01
+        )
+
+        if nuevo is None:
+            return
+
+        for item in items:
+            vals = list(tree_ed.item(item, "values"))
+
+            vals[4] = round(float(nuevo), 2)      # precio
+            vals[5] = round(vals[3] * float(nuevo), 2)  # subtotal
+
+            tree_ed.item(item, values=vals)
+
+        recalcular_total()
+    def cambiar_precio_por_contexto():
+
+        marca_ctx = combo_marca_contexto.get().strip().upper()
+        hilo_ctx = combo_hilo_contexto.get().strip().upper()
+ 
+        if not marca_ctx or not hilo_ctx:
+            messagebox.showwarning(
+                "Contexto incompleto",
+                "Selecciona marca e hilo",
+                parent=ed
+            )
+            return
+
+        if not pedir_password(ed):
+            messagebox.showerror("Error", "Contraseña incorrecta", parent=ed)
+            return
+
+        nuevo = simpledialog.askfloat(
+            "Precio por grupo",
+            f"Nuevo precio para {marca_ctx} / {hilo_ctx}:",
+            parent=ed,
+            minvalue=0.01
+        ) 
+
+        if nuevo is None:
+            return
+
+        cambios = 0
+
+        for item in tree_ed.get_children():
+
+            vals = list(tree_ed.item(item, "values"))
+
+            if (
+                vals[1].upper() == marca_ctx and
+                vals[2].upper() == hilo_ctx
+            ):
+                vals[4] = round(float(nuevo), 2)
+                vals[5] = round(vals[3] * float(nuevo), 2)
+
+                tree_ed.item(item, values=vals)
+                cambios += 1
+
+        recalcular_total()
+
+        messagebox.showinfo(
+            "Actualizado",
+            f"Precio aplicado a {cambios} productos",
+            parent=ed
+        )
+    def editar_celda_cantidad(event):
+
+        item = tree_ed.identify_row(event.y)
+        col = tree_ed.identify_column(event.x)
+
+        # Solo columna Cantidad (#4)
+        if not item or col != "#4":
+            return
+
+        x, y, width, height = tree_ed.bbox(item, col)
+
+        valores = list(tree_ed.item(item, "values"))
+        valor_actual = valores[3]
+
+        # 🔥 Spinbox con flechas
+        spin = tk.Spinbox(
+            tree_ed,
+            from_=1,
+            to=9999,
+            width=5,
+            justify="center",
+            font=("Segoe UI", 11)
+        )
+
+        spin.place(x=x, y=y, width=width, height=height)
+        spin.delete(0, "end")
+        spin.insert(0, valor_actual)
+        spin.focus()
+        spin.selection_range(0, "end")
+
+        def guardar(event=None):
+            try:
+                nueva = int(spin.get())
+                if nueva <= 0:
+                    raise ValueError
+            except:
+                spin.destroy()
+                return
+
+            valores[3] = nueva                         # cantidad
+            valores[5] = round(nueva * float(valores[4]), 2)  # subtotal
+
+            tree_ed.item(item, values=valores)
+
+            spin.destroy()
+            recalcular_total()
+
+        spin.bind("<Return>", guardar)
+        spin.bind("<FocusOut>", guardar)   
+
     def guardar():
         nuevos = []
         for i in tree_ed.get_children():
@@ -1808,7 +2259,7 @@ def editar_cotizacion(win, tree):
 
 
     # doble click = cantidad
-    tree_ed.bind("<Double-1>", lambda e: cambiar_cantidad())
+    tree_ed.bind("<Double-1>", editar_celda_cantidad)
 
 
     # ======================================================
@@ -1909,7 +2360,12 @@ def editar_cotizacion(win, tree):
                 "Venta registrada como PENDIENTE DE PAGO",
                 parent=ed
             )
-
+            if ok:
+                registrar_cambio(
+                    id_nota,
+                    "Cambio de estado",
+                    "COTIZACION → VENTA_PENDIENTE"
+                )
             ed.destroy()
             win.destroy()
             abrir_visor(win.master)
@@ -1975,6 +2431,11 @@ def editar_cotizacion(win, tree):
     btn("✏️ Cantidad", "#A0A8CC", cambiar_cantidad).pack(fill="x", padx=20, pady=4)
     btn("💲 Precio 🔒", "#90A2C5", cambiar_precio).pack(fill="x", padx=20, pady=4)
     btn("🗑 Eliminar", "#DF959D", eliminar_item).pack(fill="x", padx=20, pady=4)
+    btn("💲 Precio selección 🔒", "#7986CB", cambiar_precio_seleccion)\
+        .pack(fill="x", padx=20, pady=4)
+
+    btn("💲 Precio por hilo 🔒", "#5C6BC0", cambiar_precio_por_contexto)\
+        .pack(fill="x", padx=20, pady=4)
 
     ctk.CTkFrame(card_resumen, height=2, fg_color="#E5E7EB").pack(fill="x", padx=20, pady=10)
 
@@ -2088,7 +2549,11 @@ def marcar_como_pagada(tree, win):
             "La venta fue marcada como PAGADA",
             parent=win
         )
-
+        registrar_cambio(
+            id_nota,
+            "Cambio de estado",
+            "VENTA_PENDIENTE → PAGADA"
+        )
         win.destroy()
         abrir_visor(win.master)
 
