@@ -445,7 +445,9 @@ def ajustar_producto(nota_id):
     auth = validar_token(request)
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
-
+    print("Headers:", request.headers)
+    print("Raw data:", request.data)
+    print("JSON recibido:", request.get_json(silent=True))
     data = request.get_json()
 
     item_id = data.get("id")
