@@ -441,40 +441,35 @@ def escanear_producto(nota_id):
 
 @app.route("/notas/<nota_id>/producto/ajustar", methods=["POST"])
 def ajustar_producto(nota_id):
-   
-       
+
     auth = validar_token(request)
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
 
-    data = request.get_json(silent=True)
-    print("JSON recibido:", data)
-
-    if not data:
-        return jsonify({"error": "JSON inválido"}), 400
+    data = request.get_json()
 
     item_id = data.get("id")
     cantidad = data.get("cantidad")
 
-    if not item_id or cantidad is None:
+    if item_id is None or cantidad is None:
         return jsonify({"error": "Datos incompletos"}), 400
 
     with get_conn() as conn:
-        
+
         nota = conn.execute("""
             SELECT empacador_id
             FROM notas
             WHERE id=%s
             AND estado!='ARCHIVADA'
         """,(nota_id,)).fetchone()
-   
+
         if not nota or (
             nota["empacador_id"] != auth["empacador_id"]
             and auth["rol"] != "ADMIN"
         ):
             return jsonify({"error": "No autorizado para esta nota"}), 403
-   
-        
+
+
         item = conn.execute("""
             SELECT id, cantidad, empacadas
             FROM items
@@ -482,20 +477,22 @@ def ajustar_producto(nota_id):
             AND id=%s
         """,(nota_id, item_id)).fetchone()
 
-
         if not item:
             return jsonify({"error": "No pertenece a la nota"}), 404
+
 
         nuevo_total = item["empacadas"] + cantidad
 
         if nuevo_total < 0 or nuevo_total > item["cantidad"]:
             return jsonify({"error": "Cantidad inválida"}), 409
 
+
         conn.execute("""
             UPDATE items
             SET empacadas=%s
             WHERE id=%s
-        """,(nuevo_total, item["id"]))
+        """,(nuevo_total, item_id))
+
 
         totales = conn.execute("""
             SELECT SUM(cantidad) total,
@@ -503,6 +500,7 @@ def ajustar_producto(nota_id):
             FROM items
             WHERE nota_id=%s
         """,(nota_id,)).fetchone()
+
 
         if totales["emp"] == totales["total"]:
             nuevo_estado = "COMPLETA"
@@ -512,6 +510,7 @@ def ajustar_producto(nota_id):
                     fecha_finalizacion=NOW()
                 WHERE id=%s
             """,(nuevo_estado, nota_id))
+
         elif totales["emp"] == 0:
             nuevo_estado = "EN_PROCESO"
             conn.execute("""
@@ -519,6 +518,7 @@ def ajustar_producto(nota_id):
                 SET estado=%s
                 WHERE id=%s
             """,(nuevo_estado, nota_id))
+
         else:
             nuevo_estado = "INCOMPLETA"
             conn.execute("""
@@ -527,13 +527,15 @@ def ajustar_producto(nota_id):
                 WHERE id=%s
             """,(nuevo_estado, nota_id))
 
+
         producto_actualizado = conn.execute("""
-            SELECT marca, hilo, codigo,
+            SELECT id, marca, hilo, color, codigo,
                    cantidad as pz_requeridas,
                    empacadas as pz_empacadas
             FROM items
             WHERE id=%s
-        """,(item["id"],)).fetchone()
+        """,(item_id,)).fetchone()
+
 
     return jsonify({
         "ok": True,
