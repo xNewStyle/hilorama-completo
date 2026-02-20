@@ -3,7 +3,13 @@
 import time
 import requests
 from impresion_etiquetas import etiqueta_destinatario, etiqueta_remitente
+from impresion_etiquetas import (
+    etiqueta_destinatario,
+    etiqueta_remitente,
+    enviar_a_impresora
+)
 
+from auditoria import registrar_evento
 API_URL = "https://hilorama-completo.onrender.com"
 PRINT_KEY = "MI_CLAVE_DE_IMPRESION_LOCAL"
 
@@ -68,14 +74,26 @@ def procesar_cola():
 
                 try:
                     if tipo == "destinatario":
-                        etiqueta_destinatario(cliente, nota_id, envio)
+
+                        cmd = etiqueta_destinatario(cliente, nota_id, envio)
+                        enviar_a_impresora(cmd)
+                        registrar_evento(nota_id, "IMPRESION", "Etiqueta DESTINATARIO")
 
                     elif tipo == "remitente":
-                        etiqueta_remitente(nota_id, mis_datos)
+
+                        cmd = etiqueta_remitente(nota_id, mis_datos)
+                        enviar_a_impresora(cmd)
+                        registrar_evento(nota_id, "IMPRESION", "Etiqueta REMITENTE")
 
                     elif tipo == "ambas":
-                        etiqueta_remitente(nota_id, mis_datos)
-                        etiqueta_destinatario(cliente, nota_id, envio)
+
+                        cmd1 = etiqueta_remitente(nota_id, mis_datos)
+                        cmd2 = etiqueta_destinatario(cliente, nota_id, envio)
+
+                        # 🔥 IMPORTANTE: enviar todo en un solo socket
+                        enviar_a_impresora(cmd1 + cmd2)
+
+                        registrar_evento(nota_id, "IMPRESION", "Ambas etiquetas")
 
                     # marcar como impresa
                     requests.post(
