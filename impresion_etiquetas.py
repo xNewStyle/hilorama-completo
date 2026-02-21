@@ -225,14 +225,9 @@ def convertir_a_tspl(img):
     bitmap_data = img.tobytes()
 
     tspl = f"""
-SIZE 100 mm,150 mm
-GAP 3 mm,0
-DENSITY 8
-DIRECTION 0
-REFERENCE 0,0
-CLS
-BITMAP 0,0,{bytes_per_row},{height},0,
-""".encode()
+    CLS
+    BITMAP 0,0,{bytes_per_row},{height},0,
+    """.encode()
 
     return tspl + bitmap_data + b"\nPRINT 1\n"
 

@@ -90,12 +90,11 @@ def procesar_cola():
                         cmd1 = etiqueta_remitente(nota_id, mis_datos)
                         cmd2 = etiqueta_destinatario(cliente, nota_id, envio)
 
-                        # 🔥 IMPORTANTE: enviar todo en un solo socket
+                        # 🔥 abrir una sola conexión y mandar ambas
                         enviar_a_impresora(cmd1 + cmd2)
 
                         registrar_evento(nota_id, "IMPRESION", "Ambas etiquetas")
-
-                    # marcar como impresa
+                        # marcar como impresa
                     requests.post(
                         f"{API_URL}/cola-impresion/{tarea['id']}/completar",
                         headers={"X-PRINT-KEY": PRINT_KEY},
