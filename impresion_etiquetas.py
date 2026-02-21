@@ -209,6 +209,7 @@ def generar_etiqueta(cliente, nota_id, tipo="DESTINATARIO", envio=None):
 # CONVERTIR A TSPL (HORIZONTAL REAL)
 # ==================================================
 def convertir_a_tspl(img):
+
     img = img.rotate(90, expand=True)
     img = img.convert("1")
 
@@ -224,10 +225,10 @@ def convertir_a_tspl(img):
     bytes_per_row = width // 8
     bitmap_data = img.tobytes()
 
-    tspl = f"""
-    CLS
-    BITMAP 0,0,{bytes_per_row},{height},0,
-    """.encode()
+    tspl = (
+        f"CLS\n"
+        f"BITMAP 0,0,{bytes_per_row},{height},0,"
+    ).encode()
 
     return tspl + bitmap_data + b"\nPRINT 1\n"
 

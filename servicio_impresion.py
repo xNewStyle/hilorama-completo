@@ -88,10 +88,12 @@ def procesar_cola():
                     elif tipo == "ambas":
 
                         cmd1 = etiqueta_remitente(nota_id, mis_datos)
-                        cmd2 = etiqueta_destinatario(cliente, nota_id, envio)
+                        enviar_a_impresora(cmd1)
 
-                        # 🔥 abrir una sola conexión y mandar ambas
-                        enviar_a_impresora(cmd1 + cmd2)
+                        time.sleep(4)  # 🔥 más tiempo
+
+                        cmd2 = etiqueta_destinatario(cliente, nota_id, envio)
+                        enviar_a_impresora(cmd2)
 
                         registrar_evento(nota_id, "IMPRESION", "Ambas etiquetas")
                         # marcar como impresa
