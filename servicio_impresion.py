@@ -90,7 +90,7 @@ def procesar_cola():
                         cmd1 = etiqueta_remitente(nota_id, mis_datos)
                         enviar_a_impresora(cmd1)
 
-                        time.sleep(4)  # 🔥 más tiempo
+                        time.sleep(5)  # 🔥 más tiempo
 
                         cmd2 = etiqueta_destinatario(cliente, nota_id, envio)
                         enviar_a_impresora(cmd2)

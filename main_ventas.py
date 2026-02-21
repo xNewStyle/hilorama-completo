@@ -155,6 +155,7 @@ from clientes import listar_clientes
 def imprimir_destinatario(nota):
 
     from clientes import obtener_cliente_por_id
+    from impresion_etiquetas import enviar_a_impresora
 
     cliente_id = nota.get("cliente_id")
 
@@ -168,13 +169,13 @@ def imprimir_destinatario(nota):
         messagebox.showerror("Error", "No se encontró el cliente")
         return
 
-    # 🔥 AQUÍ ESTÁ LA CORRECCIÓN
-    etiqueta_destinatario(
+    data = etiqueta_destinatario(
         cliente,
         nota["id"],
-        envio=nota.get("envio")  # ← ESTO FALTABA
+        envio=nota.get("envio")
     )
 
+    enviar_a_impresora(data)
 
 
 def obtener_mis_datos():
@@ -197,33 +198,50 @@ def obtener_mis_datos():
 
 def imprimir_remitente(nota):
 
+    from impresion_etiquetas import enviar_a_impresora
+
     mis_datos = obtener_mis_datos()
 
-    etiqueta_remitente(
+    data = etiqueta_remitente(
         nota["id"],
         mis_datos
     )
 
+    enviar_a_impresora(data)
 
 import time
 
 def imprimir_ambas(nota):
 
+    from clientes import obtener_cliente_por_id
+    from impresion_etiquetas import enviar_a_impresora
+    import time
+
+    cliente_id = nota.get("cliente_id")
+
+    if not cliente_id:
+        messagebox.showerror("Error", "La nota no tiene cliente asignado")
+        return
+
+    cliente = obtener_cliente_por_id(cliente_id)
+
+    if not cliente:
+        messagebox.showerror("Error", "No se encontró el cliente")
+        return
+
     mis_datos = obtener_mis_datos()
 
-    etiqueta_remitente(
+    data_rem = etiqueta_remitente(nota["id"], mis_datos)
+    data_dest = etiqueta_destinatario(
+        cliente,
         nota["id"],
-        mis_datos
+        envio=nota.get("envio")
     )
 
-    time.sleep(2)
+    # 🔥 unir ambos trabajos en un solo envío
+    data_total = data_rem + data_dest
 
-    etiqueta_destinatario(
-        nota["cliente"],
-        nota["id"],
-        nota.get("envio")
-    )
-
+    enviar_a_impresora(data_total)
 
 
 def abrir_opciones_impresion(nota):

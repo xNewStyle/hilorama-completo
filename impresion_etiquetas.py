@@ -11,7 +11,7 @@ PRINTER_PORT = 9100
 # ==================================================
 # TAMAÑO HORIZONTAL REAL (150mm ancho x 100mm alto)
 # ==================================================
-ANCHO = 1200   # más ancho
+ANCHO = 1200  # más ancho
 ALTO = 800     # menos alto
 
 
@@ -226,11 +226,16 @@ def convertir_a_tspl(img):
     bitmap_data = img.tobytes()
 
     tspl = (
-        f"CLS\n"
+        "SIZE 100 mm,150 mm\n"
+        "GAP 3 mm,0\n"
+        "DENSITY 8\n"
+        "DIRECTION 0\n"
+        "REFERENCE 0,0\n"
+        "CLS\n"
         f"BITMAP 0,0,{bytes_per_row},{height},0,"
     ).encode()
 
-    return tspl + bitmap_data + b"\nPRINT 1\n"
+    return tspl + bitmap_data + b"\nPRINT 1,1\n"
 
 
 # ==================================================
