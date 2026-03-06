@@ -1575,8 +1575,8 @@ def abrir_visor(root):
                     spin.destroy()
                     return
 
-                valores[3] = nueva
-                valores[5] = round(nueva * float(valores[4]), 2)
+                valores[4] = nueva
+                valores[6] = round(nueva * float(valores[4]), 2)
 
                 tree_ed.item(item, values=valores)
  
@@ -1643,9 +1643,9 @@ def abrir_visor(root):
         def editar_celda(event):
             col = tree_ed.identify_column(event.x)
 
-            if col == "#4":
+            if col == "#5":
                 editar_celda_cantidad(event)
-            elif col == "#5":
+            elif col == "#6":
                 editar_celda_precio(event)
 
         tree_ed.bind("<Double-1>", editar_celda)
