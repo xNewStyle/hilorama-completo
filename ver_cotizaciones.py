@@ -1451,20 +1451,25 @@ def abrir_visor(root):
 
                 if existe:
                     vals = list(tree_ed.item(existe)["values"])
-                    nueva_cantidad = int(vals[1]) + cantidad
-                    nuevo_subtotal = nueva_cantidad * float(vals[2])
+                    nueva_cantidad = int(vals[4]) + cantidad
+                    nuevo_subtotal = nueva_cantidad * float(vals[5])
 
                     tree_ed.item(existe, values=(
                         vals[0],
-                        nueva_cantidad,
+                        vals[1],
                         vals[2],
+                        vals[3],
+                        nueva_cantidad,
+                        vals[5],
                         nuevo_subtotal
                     ))
                 else:
+                    color = prod.get("color", "")
                     tree_ed.insert("", "end", values=(
                         p["codigo"],
                         prod["marca"],
                         prod["hilo"],
+                        color,
                         cantidad,
                         precio,
                         subtotal
@@ -1543,7 +1548,7 @@ def abrir_visor(root):
             item = tree_ed.identify_row(event.y)
             col = tree_ed.identify_column(event.x)
 
-            # Columna Cantidad (#4)
+            # Columna Cantidad (#5)
             if not item or col != "#5":
                 return
 
@@ -1576,7 +1581,7 @@ def abrir_visor(root):
                     return
 
                 valores[4] = nueva
-                valores[6] = round(nueva * float(valores[4]), 2)
+                valores[6] = round(nueva * float(valores[5]), 2)
 
                 tree_ed.item(item, values=valores)
  
@@ -1592,8 +1597,8 @@ def abrir_visor(root):
             item = tree_ed.identify_row(event.y)
             col = tree_ed.identify_column(event.x)
 
-            # Columna Precio (#5)
-            if not item or col != "#5":
+            # Columna Precio (#6)
+            if not item or col != "#6":
                 return
 
             if not pedir_password(ed):
@@ -1602,7 +1607,7 @@ def abrir_visor(root):
             x, y, width, height = tree_ed.bbox(item, col)
 
             valores = list(tree_ed.item(item, "values"))
-            valor_actual = valores[4]
+            valor_actual = valores[5]
 
             spin = tk.Spinbox(
                 tree_ed,
@@ -1629,8 +1634,8 @@ def abrir_visor(root):
                     spin.destroy()
                     return
 
-                valores[4] = round(nuevo, 2)
-                valores[5] = round(float(valores[3]) * nuevo, 2)
+                valores[5] = round(nuevo, 2)
+                valores[6] = round(float(valores[4]) * nuevo, 2)
 
                 tree_ed.item(item, values=valores)
 
@@ -1670,8 +1675,8 @@ def abrir_visor(root):
 
             for item in items:
                 vals = list(tree_ed.item(item, "values"))
-                vals[4] = round(nuevo, 2)
-                vals[5] = round(vals[3] * nuevo, 2)
+                vals[5] = round(nuevo, 2)
+                vals[6] = round(vals[4] * nuevo, 2)
                 tree_ed.item(item, values=vals)
 
             recalcular()
@@ -1700,8 +1705,8 @@ def abrir_visor(root):
                 vals = list(tree_ed.item(item, "values"))
 
                 if vals[1].upper() == marca_ctx and vals[2].upper() == hilo_ctx:
-                    vals[4] = round(nuevo, 2)
-                    vals[5] = round(vals[3] * nuevo, 2)
+                    vals[5] = round(nuevo, 2)
+                    vals[6] = round(vals[4] * nuevo, 2)
                     tree_ed.item(item, values=vals)
 
             recalcular()
@@ -2034,10 +2039,22 @@ def editar_cotizacion(win, tree):
             codigo = item["codigo"]
             cantidad = item["cantidad"]
 
-            prod = next((p for p in productos if str(p["codigo"]).strip() == codigo), None)
+            codigo = str(codigo).strip()
+
+            prod = obtener_producto_por_codigo(codigo)
 
             if not prod:
+                messagebox.showerror(
+                    "Error",
+                    f"No existe el producto {codigo}",
+                    parent=ed
+                )
                 continue
+
+            color = prod.get("color")
+
+            if not color:
+                color = prod.get("COLOR", "")
 
             # verificar si ya existe en tabla
             existe = False
@@ -2053,12 +2070,12 @@ def editar_cotizacion(win, tree):
 
                     nueva_cant = int(vals[4]) + cantidad
                     precio = float(vals[5])
-
+                    color = prod.get("color", "")
                     tree_ed.item(i, values=(
                         codigo,
                         prod["marca"],
                         prod["hilo"],
-                        prod.get("color",""),
+                        color,
                         nueva_cant,
                         precio,
                         nueva_cant * precio
@@ -2069,7 +2086,7 @@ def editar_cotizacion(win, tree):
 
             if not existe:
                 precio = obtener_precio_venta(prod["marca"]) or 0
-
+                color = prod.get("color", "")
                 tree_ed.insert(
                     "",
                     "end",
@@ -2077,7 +2094,7 @@ def editar_cotizacion(win, tree):
                         codigo,
                         prod["marca"],
                         prod["hilo"],
-                        prod.get("color",""),
+                        color,
                         cantidad,
                         precio,
                         cantidad * precio
@@ -2225,8 +2242,8 @@ def editar_cotizacion(win, tree):
 
      vals = list(tree_ed.item(item, "values"))
 
-     vals[4] = round(float(nuevo), 2)        # precio
-     vals[5] = round(float(vals[3]) * float(nuevo), 2)  # subtotal
+     vals[5] = round(float(nuevo), 2)
+     vals[6] = round(float(vals[4]) * float(nuevo), 2)
 
      tree_ed.item(item, values=vals)
 
@@ -2253,8 +2270,8 @@ def editar_cotizacion(win, tree):
         for item in items:
             vals = list(tree_ed.item(item, "values"))
 
-            vals[4] = round(float(nuevo), 2)      # precio
-            vals[5] = round(vals[3] * float(nuevo), 2)  # subtotal
+            vals[5] = round(float(nuevo), 2)
+            vals[6] = round(vals[4] * float(nuevo), 2)
 
             tree_ed.item(item, values=vals)
 
@@ -2296,8 +2313,8 @@ def editar_cotizacion(win, tree):
                 vals[1].upper() == marca_ctx and
                 vals[2].upper() == hilo_ctx
             ):
-                vals[4] = round(float(nuevo), 2)
-                vals[5] = round(vals[3] * float(nuevo), 2)
+                vals[5] = round(float(nuevo), 2)
+                vals[6] = round(vals[4] * float(nuevo), 2)
 
                 tree_ed.item(item, values=vals)
                 cambios += 1
@@ -2314,14 +2331,14 @@ def editar_cotizacion(win, tree):
         item = tree_ed.identify_row(event.y)
         col = tree_ed.identify_column(event.x)
 
-        # Solo columna Cantidad (#4)
-        if not item or col != "#4":
+        # Solo columna Cantidad (#5)
+        if not item or col != "#5":
             return
 
         x, y, width, height = tree_ed.bbox(item, col)
 
         valores = list(tree_ed.item(item, "values"))
-        valor_actual = valores[3]
+        valor_actual = valores[4]
 
         # 🔥 Spinbox con flechas
         spin = tk.Spinbox(
@@ -2349,7 +2366,7 @@ def editar_cotizacion(win, tree):
                 return
 
             valores[4] = nueva                         # cantidad
-            valores[6] = round(nueva * float(valores[4]), 2)  # subtotal
+            valores[6] = round(nueva * float(valores[5]), 2)  # subtotal
 
             tree_ed.item(item, values=valores)
 
@@ -2358,6 +2375,16 @@ def editar_cotizacion(win, tree):
 
         spin.bind("<Return>", guardar)
         spin.bind("<FocusOut>", guardar)   
+
+    def editar_celda(event):
+
+        col = tree_ed.identify_column(event.x)
+
+        if col == "#5":        # Cantidad
+            editar_celda_cantidad(event)
+
+        elif col == "#6":      # Precio
+            cambiar_precio()
 
     def guardar():
         nuevos = []
@@ -2382,7 +2409,7 @@ def editar_cotizacion(win, tree):
 
 
     # doble click = cantidad
-    tree_ed.bind("<Double-1>", editar_celda_cantidad)
+    tree_ed.bind("<Double-1>", editar_celda)
 
 
     # ======================================================

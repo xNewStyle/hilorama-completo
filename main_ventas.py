@@ -1927,7 +1927,7 @@ def guardar_cotizacion():
 
     carrito.clear()
     refrescar_carrito()
-    
+
     cliente_actual = None
     lbl_cliente_valor.configure(text="👤 Seleccionar cliente...")
     btn_editar_cliente.pack_forget()
