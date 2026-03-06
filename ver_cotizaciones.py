@@ -2,7 +2,7 @@ import tkinter as tk
 import os
 import shutil
 from tkinter import ttk, simpledialog, messagebox
-from notas import listar_cotizaciones, obtener_cotizacion
+from notas import listar_cotizaciones, obtener_cotizacion, cambiar_cliente_nota
 from notas import actualizar_cotizacion, convertir_cotizacion_a_venta, eliminar_cotizacion, eliminar_nota, guardar_nota_actualizada
 from core.almacen_api import descontar_stock, obtener_producto_por_codigo
 from clientes import cliente_completo, obtener_cliente_por_id, listar_clientes
@@ -21,6 +21,82 @@ from parser_whatsapp import extraer_pedidos
 from core.almacen_api import obtener_todos_los_productos, obtener_producto_por_codigo, obtener_precio_venta
 from auditoria import registrar_cambio
 
+def seleccionar_o_crear_cliente(parent):
+
+    win = ctk.CTkToplevel(parent)
+    win.title("Seleccionar cliente")
+    win.geometry("600x600")
+    win.grab_set()
+
+    resultado = {"cliente": None}
+
+    buscar_var = tk.StringVar()
+
+    entry = ctk.CTkEntry(
+        win,
+        textvariable=buscar_var,
+        placeholder_text="Buscar cliente o escribir nuevo..."
+    )
+    entry.pack(fill="x", padx=10, pady=10)
+
+    tree = ttk.Treeview(
+        win,
+        columns=("ID", "Nombre"),
+        show="headings"
+    )
+
+    tree.heading("ID", text="ID")
+    tree.heading("Nombre", text="Nombre")
+
+    tree.pack(fill="both", expand=True, padx=10, pady=5)
+
+    clientes = listar_clientes()
+
+    def cargar():
+        tree.delete(*tree.get_children())
+
+        texto = buscar_var.get().lower()
+
+        for c in clientes:
+            if texto in c["nombre"].lower():
+                tree.insert(
+                    "",
+                    "end",
+                    values=(c["id"], c["nombre"])
+                )
+
+    cargar()
+
+    buscar_var.trace_add("write", lambda *a: cargar())
+
+    def seleccionar():
+        sel = tree.focus()
+
+        if sel:
+            vals = tree.item(sel)["values"]
+            resultado["cliente"] = obtener_cliente_por_id(vals[0])
+            win.destroy()
+            return
+
+        nombre = buscar_var.get().strip()
+
+        if not nombre:
+            return
+
+        from clientes import obtener_o_crear_cliente
+        resultado["cliente"] = obtener_o_crear_cliente(nombre)
+
+        win.destroy()
+
+    ctk.CTkButton(
+        win,
+        text="Seleccionar / Crear",
+        command=seleccionar
+    ).pack(pady=10)
+
+    win.wait_window()
+
+    return resultado["cliente"]
 
 PASSWORD = "12587987521"
 def pedir_password(parent=None):
@@ -366,7 +442,7 @@ def ver_detalles(tree, parent):
     frame_tabla.pack(side="left", fill="both", expand=True, padx=(10, 5))
 
     # ================= PRODUCTOS =================
-    cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+    cols = ("Código", "Marca", "Hilo", "Color", "Cantidad", "Precio", "Subtotal")
 
 
     tree_det = ttk.Treeview(frame_tabla, columns=cols, show="headings")
@@ -387,6 +463,7 @@ def ver_detalles(tree, parent):
             p["codigo"],
             p["marca"],
             p["hilo"],
+            p.get("color",""),
             p["cantidad"],
             f"${p['precio']:.2f}",
             f"${sub:.2f}"
@@ -438,6 +515,37 @@ def ver_detalles(tree, parent):
 
 
     # ================= BOTONES =================
+
+def cambiar_cliente_nota_desde_lista(tree, win):
+
+    sel = tree.focus()
+    if not sel:
+        return
+
+    id_nota = tree.item(sel, "values")[0]
+
+    cliente = seleccionar_o_crear_cliente(win)
+
+    if not cliente:
+        return
+
+    cambiar_cliente_nota(id_nota, cliente)
+
+    registrar_cambio(
+        id_nota,
+        "Cambio de cliente",
+        f"Cliente cambiado a {cliente['nombre']}"
+    )
+
+    messagebox.showinfo(
+        "Actualizado",
+        f"Cliente cambiado a {cliente['nombre']}",
+        parent=win
+    )
+
+    win.destroy()
+    abrir_visor(win.master)
+
 def exportar_pdf_venta_premium(tree, win):
     sel = tree.focus()
     if not sel:
@@ -993,6 +1101,12 @@ def abrir_visor(root):
 
     ctk.CTkButton(
         side,
+        text="👤 Cambiar cliente",
+        command=lambda: cambiar_cliente_nota_desde_lista(tree, win)
+    ).pack(fill="x", pady=5)
+
+    ctk.CTkButton(
+        side,
         text="💰 Marcar pagada",
         fg_color="#2E7D32",
         command=lambda: marcar_como_pagada(tree, win)
@@ -1368,7 +1482,7 @@ def abrir_visor(root):
            command=agregar_producto
         ).pack(side="right")
 
-        cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+        cols = ("Código", "Marca", "Hilo", "Color", "Cantidad", "Precio", "Subtotal")
 
 
         tree_ed = ttk.Treeview(
@@ -1390,6 +1504,7 @@ def abrir_visor(root):
                 p["codigo"],
                 p["marca"],
                 p["hilo"],
+                p.get("color",""),
                 p["cantidad"],
                 p["precio"],
                 p["cantidad"] * p["precio"]
@@ -1429,13 +1544,13 @@ def abrir_visor(root):
             col = tree_ed.identify_column(event.x)
 
             # Columna Cantidad (#4)
-            if not item or col != "#4":
+            if not item or col != "#5":
                 return
 
             x, y, width, height = tree_ed.bbox(item, col)
 
             valores = list(tree_ed.item(item, "values"))
-            valor_actual = valores[3]
+            valor_actual = valores[4]
 
             spin = tk.Spinbox(
                 tree_ed,
@@ -1664,7 +1779,7 @@ def abrir_visor(root):
             actuales = {}
 
             for i in tree_ed.get_children():
-                codigo, marca, hilo, cantidad, precio, _ = tree_ed.item(i, "values")
+                codigo, marca, hilo, color, cantidad, precio, _ = tree_ed.item(i, "values")
 
 
                 cantidad = int(cantidad)
@@ -1673,6 +1788,7 @@ def abrir_visor(root):
                     "codigo": codigo,
                     "marca": marca,
                     "hilo": hilo,
+                    "color": color,
                     "cantidad": int(cantidad),
                     "precio": float(precio)
                 })
@@ -1935,11 +2051,14 @@ def editar_cotizacion(win, tree):
                     str(vals[2]) == prod["hilo"]
                 ):
 
-                    nueva_cant = int(vals[1]) + cantidad
-                    precio = float(vals[2])
+                    nueva_cant = int(vals[4]) + cantidad
+                    precio = float(vals[5])
 
                     tree_ed.item(i, values=(
                         codigo,
+                        prod["marca"],
+                        prod["hilo"],
+                        prod.get("color",""),
                         nueva_cant,
                         precio,
                         nueva_cant * precio
@@ -1949,7 +2068,7 @@ def editar_cotizacion(win, tree):
                     break
 
             if not existe:
-                precio = prod.get("precio", 0)
+                precio = obtener_precio_venta(prod["marca"]) or 0
 
                 tree_ed.insert(
                     "",
@@ -1958,6 +2077,7 @@ def editar_cotizacion(win, tree):
                         codigo,
                         prod["marca"],
                         prod["hilo"],
+                        prod.get("color",""),
                         cantidad,
                         precio,
                         cantidad * precio
@@ -1985,7 +2105,7 @@ def editar_cotizacion(win, tree):
     frame_tabla.pack(fill="both", expand=True, padx=15, pady=10)
 
 
-    cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+    cols = ("Código", "Marca", "Hilo", "Color", "Cantidad", "Precio", "Subtotal")
 
 
     tree_ed = ttk.Treeview(
@@ -2024,7 +2144,7 @@ def editar_cotizacion(win, tree):
     def recalcular_total():
         total = 0
         for i in tree_ed.get_children():
-            _, _, _, _, _, sub = tree_ed.item(i, "values")
+            _, _, _, _, _, _, sub = tree_ed.item(i, "values")
             total += float(sub)
         lbl_total.configure(text=f"${total:.2f}")
 
@@ -2037,6 +2157,7 @@ def editar_cotizacion(win, tree):
             p["codigo"],
             p["marca"],
             p["hilo"],
+            p.get("color", ""),
             p["cantidad"],
             p["precio"],
             p["cantidad"] * p["precio"]
@@ -2059,8 +2180,8 @@ def editar_cotizacion(win, tree):
             return
 
         vals = list(tree_ed.item(item, "values"))
-        vals[1] = nueva
-        vals[3] = nueva * float(vals[2])
+        vals[4] = nueva
+        vals[6] = nueva * float(vals[5])
 
         tree_ed.item(item, values=vals)
         recalcular_total()
@@ -2103,8 +2224,9 @@ def editar_cotizacion(win, tree):
         return
 
      vals = list(tree_ed.item(item, "values"))
-     vals[2] = round(float(nuevo), 2)
-     vals[3] = round(float(vals[1]) * float(nuevo), 2)
+
+     vals[4] = round(float(nuevo), 2)        # precio
+     vals[5] = round(float(vals[3]) * float(nuevo), 2)  # subtotal
 
      tree_ed.item(item, values=vals)
 
@@ -2226,8 +2348,8 @@ def editar_cotizacion(win, tree):
                 spin.destroy()
                 return
 
-            valores[3] = nueva                         # cantidad
-            valores[5] = round(nueva * float(valores[4]), 2)  # subtotal
+            valores[4] = nueva                         # cantidad
+            valores[6] = round(nueva * float(valores[4]), 2)  # subtotal
 
             tree_ed.item(item, values=valores)
 
@@ -2240,12 +2362,13 @@ def editar_cotizacion(win, tree):
     def guardar():
         nuevos = []
         for i in tree_ed.get_children():
-            c, marca, hilo, q, p, _ = tree_ed.item(i, "values")
+            c, marca, hilo, color, q, p, _ = tree_ed.item(i, "values")
 
             nuevos.append({
                 "codigo": c,
                 "marca": marca,
                 "hilo": hilo,
+                "color": color,
                 "cantidad": int(q),
                 "precio": float(p)
             })
@@ -2290,12 +2413,13 @@ def editar_cotizacion(win, tree):
             # 1️⃣ Recolectar items
             items_finales = []
             for i in tree_ed.get_children():
-                codigo, marca, hilo, cantidad, precio, _ = tree_ed.item(i, "values")
+                codigo, marca, hilo, color, cantidad, precio, _ = tree_ed.item(i, "values")
 
                 items_finales.append({
                     "codigo": codigo,
                     "marca": marca,
                     "hilo": hilo,
+                    "color": color,
                     "cantidad": int(cantidad),
                     "precio": float(precio)
                 })
@@ -2394,12 +2518,13 @@ def editar_cotizacion(win, tree):
         items = []
 
         for i in tree_ed.get_children():
-            codigo, marca, hilo, cantidad, precio, _ = tree_ed.item(i, "values")
+            codigo, marca, hilo, color, cantidad, precio, _ = tree_ed.item(i, "values")
 
             items.append({
                 "codigo": codigo,
                 "marca": marca,
                 "hilo": hilo,
+                "color": color,
                 "cantidad": cantidad,
                 "precio": precio
             })
@@ -2593,7 +2718,7 @@ def mostrar_detalle_nota(nota, parent):
     ttk.Label(det, text=f"Fecha: {nota['fecha']}").pack(anchor="w", padx=10)
     ttk.Label(det, text=f"Estado: {nota['estado']}").pack(anchor="w", padx=10)
 
-    cols = ("Código", "Marca", "Hilo", "Cantidad", "Precio", "Subtotal")
+    cols = ("Código", "Marca", "Hilo", "Color", "Cantidad", "Precio", "Subtotal")
 
     tree = ttk.Treeview(det, columns=cols, show="headings")
 
@@ -2610,6 +2735,7 @@ def mostrar_detalle_nota(nota, parent):
                 p["codigo"],
                 p["marca"],
                 p["hilo"],
+                p.get("color"),
                 p["cantidad"],
                 f"${p['precio']:.2f}",
                 f"${p['cantidad'] * p['precio']:.2f}"

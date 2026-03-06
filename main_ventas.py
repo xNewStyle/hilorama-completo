@@ -29,7 +29,7 @@ import calendar
 from datetime import datetime
 from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido, activar_pedido
 from impresion_etiquetas import etiqueta_remitente, etiqueta_destinatario
-
+from decimal import Decimal
 # ================= CONFIG =================
 PASSWORD = "12587987521"
 
@@ -1927,7 +1927,12 @@ def guardar_cotizacion():
 
     carrito.clear()
     refrescar_carrito()
-
+    
+    cliente_actual = None
+    lbl_cliente_valor.configure(text="👤 Seleccionar cliente...")
+    btn_editar_cliente.pack_forget()
+    telefono_buscar_var.set("")
+    lbl_estado_cliente.configure(text="")
 
 def actualizar_total_con_envio():
     total_productos = sum(p["cantidad"] * p["precio"] for p in carrito)
@@ -3108,7 +3113,7 @@ def agregar_al_carrito(pedido):
 
     for p in productos:
         if p["codigo"] == codigo:
-            precio = p["precio"]
+            precio = float(p["precio"])
 
             for c in carrito:
                 if (
@@ -3125,7 +3130,7 @@ def agregar_al_carrito(pedido):
                 "color": p["color"],  # 🔥 agregar
                 "codigo": codigo,
                 "cantidad": cantidad,
-                "precio": precio,
+                "precio": float(precio),
                 "stock": p["stock"]
             })
 

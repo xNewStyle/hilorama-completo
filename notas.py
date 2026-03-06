@@ -405,3 +405,21 @@ def buscar_nota_por_texto(texto):
 
     return dict(row) if row else None
 
+def cambiar_cliente_nota(id_nota, cliente):
+    conn = get_conn()
+
+    conn.execute("""
+        UPDATE notas
+        SET cliente_id=%s,
+            cliente_nombre=%s
+        WHERE id=%s
+    """, (
+        cliente["id"],
+        cliente["nombre"],
+        id_nota
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return True
