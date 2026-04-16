@@ -219,46 +219,47 @@ def draw_bloque_cliente_compacto(
 from PIL import Image
 import tempfile
 
+from PIL import Image
+import tempfile
+
 def draw_comprobante_pagado(
     c,
     nota,
     x_cm=2,
     y_cm=2,
     w_cm=6,
-    h_cm=None,
+    h_cm=6,
     rotacion=0
 ):
-    """
-    Imagen del comprobante de pago
-    movible, escalable y rotable
-    """
 
     ruta = nota.get("comprobante")
-    if not ruta:
+    if not ruta or not os.path.exists(ruta):
         return
 
-    if not os.path.exists(ruta):
-        print("❌ No existe comprobante:", ruta)
-        return
-
-    # abrir imagen
     img = Image.open(ruta)
 
-    # rotar si aplica
-    if rotacion != 0:
+    # rotar si hace falta
+    if rotacion:
         img = img.rotate(rotacion, expand=True)
+
+    # tamaño máximo en pixeles
+    max_w = int(w_cm * 118)   # cm → px aprox
+    max_h = int(h_cm * 118)
+
+    # 🔥 ajustar proporcionalmente
+    img.thumbnail((max_w, max_h), Image.LANCZOS)
 
     # guardar temporal
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     img.save(tmp.name, "PNG")
 
-    # coordenadas
     x = x_cm * cm
     y = y_cm * cm
-    w = w_cm * cm
-    h = h_cm * cm if h_cm else None
 
-    # dibujar
+    # tamaño final proporcional
+    w = img.width / 118 * cm
+    h = img.height / 118 * cm
+
     c.drawImage(
         tmp.name,
         x,
@@ -268,7 +269,6 @@ def draw_comprobante_pagado(
         preserveAspectRatio=True,
         mask="auto"
     )
-
 
 
 

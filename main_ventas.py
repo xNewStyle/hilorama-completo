@@ -31,7 +31,7 @@ from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido, acti
 from impresion_etiquetas import etiqueta_remitente, etiqueta_destinatario
 from decimal import Decimal
 # ================= CONFIG =================
-PASSWORD = "12587987521"
+PASSWORD = "1"
 
 # ================= CARRITO =================
 carrito = []
@@ -383,7 +383,6 @@ def abrir_panel_asignacion():
 
         conn.commit()
         conn.close()
-
         notas.clear()
         notas.extend(nuevas_notas)
 
@@ -2056,6 +2055,7 @@ def pedir_password(parent=None):
 
 
 def eliminar_producto_carrito():
+    global carrito
     seleccion = tabla_carrito.selection()
 
     if not seleccion:
@@ -2066,16 +2066,18 @@ def eliminar_producto_carrito():
         return
 
     # 🔥 obtener códigos como STRING
-    codigos = []
+    items_seleccionados = []
+
     for item in seleccion:
         valores = tabla_carrito.item(item)["values"]
-        codigos.append(str(valores[2]))
-
-    global carrito
+        items_seleccionados.append((
+            str(valores[2]),
+            str(valores[0])
+        ))
 
     carrito = [
         p for p in carrito
-        if str(p["codigo"]) not in codigos
+        if (str(p["codigo"]), str(p["hilo"])) not in items_seleccionados
     ]
 
     refrescar_carrito()
@@ -2100,13 +2102,17 @@ def editar_cantidad_multiple():
         return
 
     # 🔥 FORZAR STRING
-    codigos = []
+    items_seleccionados = []
+
     for item in seleccion:
         valores = tabla_carrito.item(item)["values"]
-        codigos.append(str(valores[2]))
+        items_seleccionados.append((
+            str(valores[2]),  # codigo
+            str(valores[0])   # hilo
+        ))
 
     for p in carrito:
-        if str(p["codigo"]) in codigos:
+        if (str(p["codigo"]), str(p["hilo"])) in items_seleccionados:
             p["cantidad"] = nueva
 
     refrescar_carrito()
@@ -2132,13 +2138,17 @@ def editar_precio_multiple():
     if nuevo is None:
         return
 
-    codigos = []
+    items_seleccionados = []
+
     for item in seleccion:
         valores = tabla_carrito.item(item)["values"]
-        codigos.append(str(valores[2]))
+        items_seleccionados.append((
+            str(valores[2]),
+            str(valores[0])
+        ))
 
     for p in carrito:
-        if str(p["codigo"]) in codigos:
+        if (str(p["codigo"]), str(p["hilo"])) in items_seleccionados:
             p["precio"] = nuevo
 
     refrescar_carrito()
@@ -2473,7 +2483,7 @@ def editar_celda(event):
     x, y, width, height = tabla_carrito.bbox(row_id, column)
     valores = tabla_carrito.item(row_id)["values"]
     codigo = valores[2]
-
+    hilo = valores[0]
     # Limpiar formato $
     valor_actual = valores[col_index]
     if col_index == 4:
@@ -2533,7 +2543,10 @@ def editar_celda(event):
             return
 
         for p in carrito:
-            if str(p["codigo"]) == str(codigo):
+            if (
+                str(p["codigo"]) == str(codigo)
+                and str(p["hilo"]) == str(hilo)
+            ):
                 if col_index == 3:
                     p["cantidad"] = nuevo_valor
                 else:

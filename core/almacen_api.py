@@ -10,14 +10,13 @@ def obtener_todos_los_productos():
     conn = get_conn()
 
     productos = conn.execute("""
-        SELECT codigo, marca, hilo
+        SELECT codigo, marca, hilo, color
         FROM productos
     """).fetchall()
 
     conn.close()
 
-    return productos
-
+    return [dict(p) for p in productos]
 
 def obtener_marcas():
     conn = get_conn()

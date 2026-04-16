@@ -2041,7 +2041,7 @@ def editar_cotizacion(win, tree):
 
             codigo = str(codigo).strip()
 
-            prod = obtener_producto_por_codigo(codigo)
+            prod = next((p for p in productos if str(p["codigo"]) == codigo), None)
 
             if not prod:
                 messagebox.showerror(
@@ -2271,7 +2271,7 @@ def editar_cotizacion(win, tree):
             vals = list(tree_ed.item(item, "values"))
 
             vals[5] = round(float(nuevo), 2)
-            vals[6] = round(vals[4] * float(nuevo), 2)
+            vals[6] = round(int(vals[4]) * float(nuevo), 2)
 
             tree_ed.item(item, values=vals)
 
@@ -2314,7 +2314,7 @@ def editar_cotizacion(win, tree):
                 vals[2].upper() == hilo_ctx
             ):
                 vals[5] = round(float(nuevo), 2)
-                vals[6] = round(vals[4] * float(nuevo), 2)
+                vals[6] = round(int(vals[4]) * float(nuevo), 2)
 
                 tree_ed.item(item, values=vals)
                 cambios += 1
@@ -2571,8 +2571,17 @@ def editar_cotizacion(win, tree):
             return
 
         nota["envio"] = envio
+
+        # 🔥 recalcular total
+        total_productos = 0
+        for item in items:
+            total_productos += float(item["cantidad"]) * float(item["precio"])
+
+        nota["total"] = round(total_productos + envio["precio"], 2)
+
         guardar_nota_actualizada(nota)
 
+        cargar_envios()
         messagebox.showinfo(
             "Envío guardado",
             f"{envio['paqueteria']} • ${envio['precio']:.2f} • {vol_total:.2f} kg",
@@ -2831,6 +2840,7 @@ def seleccionar_envio(root, volumetrico):
 
     # ===== CHECK GRATIS =====
     gratis_var = tk.BooleanVar()
+    manual_var = tk.BooleanVar()
 
     check = ctk.CTkCheckBox(
         frame,
@@ -2839,6 +2849,12 @@ def seleccionar_envio(root, volumetrico):
     )
     check.pack(pady=5)
 
+    manual_check = ctk.CTkCheckBox(
+        frame,
+        text="Precio manual",
+        variable=manual_var
+    )
+    manual_check.pack(pady=5)
 
     # ===== CALCULAR =====
 
@@ -2847,6 +2863,9 @@ def seleccionar_envio(root, volumetrico):
         if gratis_var.get():
             precio_var.set("$0.00")
             return
+
+        if manual_var.get():
+           return
 
         precio = calcular_envio(
             paq_var.get(),
@@ -2872,11 +2891,11 @@ def seleccionar_envio(root, volumetrico):
     manual_frame.pack(fill="x", padx=20, pady=(0, 8))
 
 
-    manual_var = tk.StringVar()
+    precio_manual_var = tk.StringVar()
 
     entry_manual = ctk.CTkEntry(
         manual_frame,
-        textvariable=manual_var,
+        textvariable=precio_manual_var,
         placeholder_text="Precio $",
         width=120
     )
@@ -2918,12 +2937,27 @@ def seleccionar_envio(root, volumetrico):
 
     # ===== BOTÓN CONFIRMAR =====
     def confirmar():
+
         if gratis_var.get():
             precio = 0
+ 
+        elif manual_var.get():
+
+            try:
+                precio = float(precio_manual_var.get())
+            except:
+                messagebox.showwarning(
+                    "Error",
+                    "Precio manual inválido",
+                    parent=win
+                )
+                return
+
         else:
+
             precio = calcular_envio(
-               paq_var.get(),
-               volumetrico
+                paq_var.get(),
+                volumetrico
             )
 
         resultado.update({

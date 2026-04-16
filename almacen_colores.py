@@ -6,7 +6,7 @@ import os
 # ================= CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-PASSWORD = "12587987521"
+PASSWORD = "1"
 STOCK_MINIMO = 50
 
 

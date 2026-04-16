@@ -238,7 +238,15 @@ def cambiar_estado(nota_id):
 
     nuevo_estado = request.json.get("estado")
 
-    ESTADOS_VALIDOS = ["PAGADA", "EN_PROCESO", "COMPLETA", "INCOMPLETA","ARCHIVADA"]
+    ESTADOS_VALIDOS = [
+    "PAGADA",
+    "EN_PROCESO",
+    "INCOMPLETA",
+    "COMPLETA",
+    "ENVIADO",
+    "ENTREGADO",
+    "ARCHIVADA"
+    ]
 
     if nuevo_estado not in ESTADOS_VALIDOS:
         return jsonify({"error": "Estado inválido"}), 400
@@ -264,9 +272,18 @@ def cambiar_estado(nota_id):
 
         if estado_actual == "PAGADA" and nuevo_estado == "EN_PROCESO":
             transicion_valida = True
+
         elif estado_actual == "EN_PROCESO" and nuevo_estado in ["COMPLETA", "INCOMPLETA"]:
             transicion_valida = True
+
         elif estado_actual == "INCOMPLETA" and nuevo_estado == "EN_PROCESO":
+            transicion_valida = True
+
+        # 👇 NUEVO
+        elif estado_actual == "COMPLETA" and nuevo_estado == "ENVIADO":
+            transicion_valida = True
+
+        elif estado_actual == "ENVIADO" and nuevo_estado == "ENTREGADO":
             transicion_valida = True
 
         if not transicion_valida:
@@ -670,10 +687,12 @@ def seguimiento(nota_id):
     }
 
     progreso_map = {
-        "PAGADA": 25,
-        "EN_PROCESO": 50,
-        "ENVIADO": 75,
-        "ENTREGADO": 100
+       "PAGADA": 25,
+       "EN_PROCESO": 50,
+       "INCOMPLETA": 50,
+       "COMPLETA": 75,
+       "ENVIADO": 90,
+       "ENTREGADO": 100
     }
 
     progreso = progreso_map.get(nota["estado"], 10)
@@ -684,6 +703,44 @@ def seguimiento(nota_id):
         estado_visual=nota["estado"],
         progreso=progreso
     )
+
+@app.route("/notas/<nota_id>/guia", methods=["POST"])
+def agregar_guia(nota_id):
+
+    auth = validar_token(request)
+    if not auth:
+        return jsonify({"error": "No autorizado"}), 401
+
+    data = request.json
+    guia = data.get("guia")
+    paqueteria = data.get("paqueteria")
+
+    if not guia:
+        return jsonify({"error": "Guía requerida"}), 400
+
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE notas
+            SET guia=%s,
+                paqueteria=%s,
+                estado='ENVIADO'   -- 🔥 AQUI ESTA LA MAGIA
+            WHERE id=%s
+        """,(guia, paqueteria, nota_id))
+
+    return jsonify({"ok": True, "estado": "ENVIADO"})
+
+@app.route("/notas/<nota_id>/entregar", methods=["POST"])
+def marcar_entregado(nota_id):
+
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE notas
+            SET estado='ENTREGADO'
+            WHERE id=%s
+        """,(nota_id,))
+
+    return jsonify({"ok": True})
+
 # ==============================
 # IMPRIMIR DESTINATARIO
 # ==============================

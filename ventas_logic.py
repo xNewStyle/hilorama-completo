@@ -41,14 +41,26 @@ def aplicar_venta(marca, hilo, color, cantidad):
     )
 
 def calcular_volumetrico_total(items):
+
     total = 0.0
+
     for i in items:
+
         prod = obtener_producto_por_codigo(i["codigo"])
         if not prod:
             continue
 
-        vol = prod.get("volumetrico", 0)
-        total += vol * i["cantidad"]
+        try:
+            vol = float(prod.get("volumetrico", 0))
+        except:
+            vol = 0.0
+
+        try:
+            cantidad = int(i["cantidad"])
+        except:
+            cantidad = 0
+
+        total += vol * cantidad
 
     return round(total, 2)
     
