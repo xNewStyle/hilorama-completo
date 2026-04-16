@@ -52,7 +52,7 @@
         }
         .timeline {
             display: flex;
-            justify-content: space-between;
+            justify-content: space-around; /* 🔥 en vez de space-between */
             margin-top: 20px;
             font-size: 13px;
         }
@@ -110,9 +110,6 @@
             Enviado
         </div>
 
-        <div class="step {{ 'active' if estado_visual == 'ENTREGADO' else '' }}">
-            Entregado
-        </div>
     </div>
 
 
