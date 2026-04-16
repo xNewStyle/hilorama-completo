@@ -98,10 +98,21 @@
         <div class="progreso" data-width="{{ progreso }}"></div>
     </div>
     <div class="timeline">
-        <div class="step {{ 'active' if progreso >= 25 else '' }}">Pagado</div>
-        <div class="step {{ 'active' if progreso >= 50 else '' }}">Preparando</div>
-        <div class="step {{ 'active' if progreso >= 75 else '' }}">Enviado</div>
-        <div class="step {{ 'active' if progreso >= 100 else '' }}">Entregado</div>
+        <div class="step {{ 'active' if estado_visual in ['PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA','ENVIADO'] else '' }}">
+            Pagado
+        </div>
+
+        <div class="step {{ 'active' if estado_visual in ['EN_PROCESO','INCOMPLETA','COMPLETA','ENVIADO'] else '' }}">
+            Preparando
+        </div>
+
+        <div class="step {{ 'active' if estado_visual in ['ENVIADO'] else '' }}">
+            Enviado
+        </div>
+
+        <div class="step {{ 'active' if estado_visual == 'ENTREGADO' else '' }}">
+            Entregado
+        </div>
     </div>
 
 
@@ -122,13 +133,15 @@
         const progreso = barra.getAttribute("data-width") || 0;
 
         // Cambiar color según estado
-        if (estado.includes("PENDIENTE")) {
-            barra.style.background = "#F59E0B";
-        } else if (estado.includes("PROCESO")) {
+        if (estado.includes("PAGADA")) {
             barra.style.background = "#1976D2";
+        } else if (estado.includes("PROCESO") || estado.includes("INCOMPLETA")) {
+            barra.style.background = "#1976D2";
+        } else if (estado.includes("COMPLETA")) {
+            barra.style.background = "#F59E0B";
         } else if (estado.includes("ENVIADO")) {
             barra.style.background = "#7C3AED";
-        } else if (estado.includes("ENTREGADO") || estado.includes("PAGADA")) {
+        } else if (estado.includes("ENTREGADO")) {
             barra.style.background = "#1B5E20";
         }
 

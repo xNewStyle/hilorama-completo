@@ -690,7 +690,9 @@ def seguimiento(nota_id):
 
     estado = nota["estado"]
 
-    # 🔥 REGLA INTELIGENTE
+    if estado == "ENTREGADO":
+        estado = "ENVIADO"
+
     if estado == "ENVIADO" and not nota["guia"]:
         estado_visual = "COMPLETA"
     else:
