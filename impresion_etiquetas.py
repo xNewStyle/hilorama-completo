@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageFont
 import barcode
 from barcode.writer import ImageWriter
 from auditoria import registrar_evento
+import qrcode
 
 PRINTER_IP = "192.168.100.71"
 PRINTER_PORT = 9100
@@ -190,17 +191,17 @@ def generar_etiqueta(cliente, nota_id, tipo="DESTINATARIO", envio=None):
     # ==================================================
     # CÓDIGO DE BARRAS DISCRETO (ESQUINA INFERIOR DERECHA)
     # ==================================================
-    codigo = barcode.get("code128", str(nota_id), writer=ImageWriter())
-    codigo_img = codigo.render(writer_options={
-        "module_width": 0.18,
-        "module_height": 30,
-        "font_size": 0,
-        "quiet_zone": 1
-    })
+    qr = qrcode.QRCode(
+        version=2,
+        box_size=10,
+        border=2
+    )
+    qr.add_data(str(nota_id))
+    qr.make(fit=True)
 
-    codigo_img = codigo_img.resize((320, 100))
-    img.paste(codigo_img, (ANCHO - 380, ALTO - 160))
-
+    qr_img = qr.make_image(fill="black", back_color="white")
+    qr_img = qr_img.resize((250, 250))
+    img.paste(qr_img, (ANCHO - 320, ALTO - 320))
     return img
     
 
