@@ -193,15 +193,16 @@ def generar_etiqueta(cliente, nota_id, tipo="DESTINATARIO", envio=None):
     # ==================================================
     qr = qrcode.QRCode(
         version=2,
-        box_size=10,
+        box_size=4,
         border=2
     )
+
     qr.add_data(str(nota_id))
     qr.make(fit=True)
 
-    qr_img = qr.make_image(fill="black", back_color="white")
-    qr_img = qr_img.resize((250, 250))
-    img.paste(qr_img, (ANCHO - 320, ALTO - 320))
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+    img.paste(qr_img, (ANCHO - 300, ALTO - 250))
     return img
     
 
