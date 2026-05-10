@@ -39,9 +39,22 @@ def calcular_ganancia_total(productos):
 
 # ================= TABLA =================
 def refrescar_tabla(filtro=None):
+
+    abiertos = []
+
+    # Guardar nodos abiertos
+    for item in tabla.get_children():
+        if tabla.item(item, "open"):
+            abiertos.append(tabla.item(item, "text"))
+
+            for sub in tabla.get_children(item):
+                if tabla.item(sub, "open"):
+                    abiertos.append((tabla.item(item, "text"), tabla.item(sub, "text")))
+
     tabla.delete(*tabla.get_children())
 
     conn = get_conn()
+
     productos = conn.execute("""
         SELECT 
             p.marca,
@@ -57,29 +70,46 @@ def refrescar_tabla(filtro=None):
         FROM productos p
         LEFT JOIN precios pr 
             ON pr.marca = p.marca
-        """).fetchall()
+    """).fetchall()
 
     conn.close()
 
     datos = {}
 
     for p in productos:
+
         texto = f"{p['marca']} {p['hilo']} {p['color']} {p['codigo']}"
-        if filtro and filtro.upper() not in texto:
+
+        if filtro and filtro.upper() not in texto.upper():
             continue
 
         datos.setdefault(p["marca"], {}).setdefault(p["hilo"], []).append(p)
 
     for marca in sorted(datos):
+
         marca_id = tabla.insert("", "end", text=marca, tags=("marca",))
 
+        # Restaurar apertura de marca
+        if marca in abiertos:
+            tabla.item(marca_id, open=True)
 
         for hilo in sorted(datos[marca]):
-            hilo_id = tabla.insert(marca_id, "end", text=hilo, tags=("hilo",))
 
+            hilo_id = tabla.insert(
+                marca_id,
+                "end",
+                text=hilo,
+                tags=("hilo",)
+            )
+
+            # Restaurar apertura de hilo
+            if (marca, hilo) in abiertos:
+                tabla.item(hilo_id, open=True)
 
             for p in datos[marca][hilo]:
+
                 tag = "ok" if p["estado"] == "OK" else "bajo"
+
                 tabla.insert(
                     hilo_id,
                     "end",
@@ -96,7 +126,6 @@ def refrescar_tabla(filtro=None):
                     ),
                     tags=(tag,)
                 )
-
 
     calcular_ganancia_total(productos)
 
@@ -204,111 +233,233 @@ def eliminar_tono():
     refrescar_tabla()
 
 
+def doble_click_editar(event):
 
-def editar_producto(event):
+    item = tabla.identify_row(event.y)
+
+    columna = tabla.identify_column(event.x)
+    
+    if columna == "#1":
+        return
+    if not item:
+        return
+
+    tabla.selection_set(item)
+    tabla.focus(item)
+
+    item_data = tabla.item(item)
+
+    # Evitar editar marcas/hilos
+    if not item_data["values"]:
+        return
+
+    # Columnas:
+    # #1 = árbol
+    # #2 = Hilo
+    # #3 = Color
+    # #4 = Código
+    # #5 = Stock
+    # #6 = Barras
+    # #7 = Precio
+    # #8 = Volumétrico
+
+    if columna == "#4":
+        editar_celda(3, "stock")
+
+    elif columna == "#5":
+        editar_celda(4, "codigo_barras")
+
+    elif columna == "#6":
+        editar_celda(5, "precio")
+
+    elif columna == "#7":
+        editar_celda(6, "volumetrico")
+
+autorizado = False
+editor_activo = None
+
+def editar_celda(columna, campo):
+
     item = tabla.focus()
+
     if not item:
         return
 
     item_data = tabla.item(item)
 
-    # Si no tiene values, es marca o hilo
     if not item_data["values"]:
         return
 
-    valores = item_data["values"]
+    global autorizado
+    global editor_activo
 
-    # Seguridad extra
-    if len(valores) < 4:
-        return
+    if editor_activo and editor_activo.winfo_exists():
+        editor_activo.destroy()
+    if not autorizado:
 
-    pwd = simpledialog.askstring("Contraseña", "Contraseña:", show="*")
-    if pwd != PASSWORD:
-        return
-
-    opcion = simpledialog.askstring(
-        "Editar",
-        "¿Qué deseas editar?\n\n"
-        "1 = Stock\n"
-        "2 = Código de barras\n"
-        "3 = Precio\n"
-        "4 = Volumétrico"
-    )
-
-    # valores ahora son:
-    # [Hilo, Color, Código, Stock, Codigo_Barras, Estado]
-
-    hilo = valores[0]
-    color = valores[1]
-    codigo = str(valores[2])
-    stock_actual = valores[3]
-
-    # Marca ahora está en el padre
-    parent_hilo = tabla.parent(item)
-    parent_marca = tabla.parent(parent_hilo)
-    marca = tabla.item(parent_marca)["text"]
-
-    if opcion == "1":
-        nuevo_stock = simpledialog.askinteger("Stock", "Nuevo stock:")
-        if nuevo_stock is None:
-            return
-
-        estado = "OK" if nuevo_stock >= STOCK_MINIMO else "RESURTIR"
-
-        conn = get_conn()
-        conn.execute("""
-            UPDATE productos
-            SET stock=%s, estado=%s
-            WHERE marca=%s AND hilo=%s AND codigo=%s
-        """,(nuevo_stock,estado,marca,hilo,codigo))
-        conn.commit()
-        conn.close()
-
-    elif opcion == "2":
-        nuevo_barras = simpledialog.askstring("Código de barras", "Nuevo código:")
-        if not nuevo_barras:
-            return
-
-        conn = get_conn()
-        conn.execute("""
-            UPDATE productos
-            SET codigo_barras=%s
-            WHERE marca=%s AND hilo=%s AND codigo=%s
-        """,(nuevo_barras,marca,hilo,codigo))
-        conn.commit()
-        conn.close()
-    elif opcion == "3":
-        nuevo_precio = simpledialog.askfloat("Precio", "Nuevo precio de venta:")
-        if nuevo_precio is None:
-            return
-
-        conn = get_conn()
-        conn.execute("""
-            UPDATE productos
-            SET precio=%s
-            WHERE marca=%s AND hilo=%s AND codigo=%s
-        """,(nuevo_precio,marca,hilo,codigo))
-        conn.commit()
-        conn.close()
-    elif opcion == "4":
-        nuevo_vol = simpledialog.askfloat(
-            "Volumétrico",
-            "Nuevo peso volumétrico:",
-            minvalue=0.01
+        pwd = simpledialog.askstring(
+            "Contraseña",
+            "Contraseña:",
+            show="*"
         )
 
-        if nuevo_vol is None:
+        if pwd != PASSWORD:
             return
 
+        autorizado = True
+
+    bbox = tabla.bbox(item, f"#{columna + 1}")
+
+    if not bbox:
+        return
+
+    x, y, width, height = bbox
+
+    valor_actual = item_data["values"][columna]
+
+    entry = tk.Entry(
+        tabla,
+        font=("Segoe UI", 10),
+        justify="center",
+        bd=2,
+        relief="solid"
+    )
+    editor_activo = entry
+    entry.place(x=x, y=y, width=width, height=height)
+
+    entry.insert(0, str(valor_actual).replace("$", ""))
+
+    entry.focus()
+    entry.select_range(0, tk.END)
+    def guardar(event=None):
+        global editor_activo
+        if not entry.winfo_exists():
+            return
+        nuevo_valor = entry.get()
+        if nuevo_valor == "":
+            entry.destroy()
+            return   
+        valores = item_data["values"]
+
+        hilo = valores[0]
+        codigo = str(valores[2])
+
+        parent_hilo = tabla.parent(item)
+        parent_marca = tabla.parent(parent_hilo)
+
+        marca = tabla.item(parent_marca)["text"]
+
         conn = get_conn()
-        conn.execute("""
-            UPDATE productos
-            SET volumetrico=%s
-            WHERE marca=%s AND hilo=%s AND codigo=%s
-        """,(nuevo_vol,marca,hilo,codigo))
+
+        if campo == "stock":
+
+            try:
+                nuevo_valor = int(nuevo_valor)
+            except:
+                messagebox.showerror("Error", "Stock inválido")
+                return
+
+            estado = "OK" if nuevo_valor >= STOCK_MINIMO else "RESURTIR"
+
+            conn.execute("""
+                UPDATE productos
+                SET stock=%s, estado=%s
+                WHERE marca=%s AND hilo=%s AND codigo=%s
+            """, (
+                nuevo_valor,
+                estado,
+                marca,
+                hilo,
+                codigo
+            ))
+
+        else:
+
+            if campo == "precio":
+
+                try:
+                    nuevo_valor = float(nuevo_valor)
+                except:
+                    messagebox.showerror("Error", "Precio inválido")
+                    return
+
+                conn.execute("""
+                    UPDATE productos
+                    SET precio=%s
+                    WHERE marca=%s AND hilo=%s AND codigo=%s
+                """, (
+                    nuevo_valor,
+                    marca,
+                    hilo,
+                    codigo
+                ))
+
+            elif campo == "volumetrico":
+
+                try:
+                    nuevo_valor = float(nuevo_valor)
+                except:
+                    messagebox.showerror("Error", "Volumétrico inválido")
+                    return
+
+                conn.execute("""
+                    UPDATE productos
+                    SET volumetrico=%s
+                    WHERE marca=%s AND hilo=%s AND codigo=%s
+                """, (
+                    nuevo_valor,
+                    marca,
+                    hilo,
+                    codigo
+                ))
+
+            elif campo == "codigo_barras":
+
+                conn.execute("""
+                    UPDATE productos
+                    SET codigo_barras=%s
+                    WHERE marca=%s AND hilo=%s AND codigo=%s
+                """, (
+                    nuevo_valor,
+                    marca,
+                    hilo,
+                    codigo
+                ))
+
         conn.commit()
-        conn.close()    
-    refrescar_tabla()
+        conn.close()
+        # Actualizar visualmente solo la fila
+
+        valores_actuales = list(tabla.item(item, "values"))
+
+        if campo == "precio":
+            valores_actuales[columna] = f"${float(nuevo_valor):.2f}"
+
+        elif campo == "volumetrico":
+            valores_actuales[columna] = f"{float(nuevo_valor):.2f}"
+
+        else:
+            valores_actuales[columna] = str(nuevo_valor)
+
+        # Actualizar estado visual
+        if campo == "stock":
+
+            valores_actuales[7] = estado
+
+            nuevo_tag = "ok" if estado == "OK" else "bajo"
+
+            tabla.item(item, tags=(nuevo_tag,))
+
+        tabla.item(item, values=valores_actuales)
+
+        entry.destroy()
+
+        editor_activo = None
+
+    entry.bind("<Return>", guardar)
+
+    entry.bind("<FocusOut>", guardar)   
+    entry.bind("<Escape>", lambda e: entry.destroy())
 
 
 
@@ -400,6 +551,78 @@ def obtener_producto_por_codigo(codigo):
     """,(codigo,)).fetchone()
     conn.close()
     return r
+
+def actualizar_precio_hilo():
+
+    marca = combo_marca.get().strip().upper()
+    hilo = entry_hilo.get().strip().upper()
+
+    if not marca or not hilo:
+
+        messagebox.showerror(
+            "Error",
+            "Selecciona marca y escribe hilo"
+        )
+        return
+
+    pwd = simpledialog.askstring(
+        "Autorización",
+        "Contraseña:",
+        show="*"
+    )
+
+    if pwd != PASSWORD:
+
+        messagebox.showerror(
+            "Error",
+            "Contraseña incorrecta"
+        )
+        return
+
+    nuevo_precio = simpledialog.askfloat(
+        "Precio múltiple",
+        f"Nuevo precio para {marca} / {hilo}:",
+        minvalue=0.01
+    )
+
+    if nuevo_precio is None:
+        return
+
+    conn = get_conn()
+
+    conn.execute("""
+        UPDATE productos
+        SET precio=%s
+        WHERE UPPER(marca)=UPPER(%s)
+        AND UPPER(hilo)=UPPER(%s)
+    """, (
+        nuevo_precio,
+        marca,
+        hilo
+    ))
+
+    r = conn.execute("""
+        SELECT COUNT(*) AS total
+        FROM productos
+        WHERE UPPER(marca)=UPPER(%s)
+        AND UPPER(hilo)=UPPER(%s)
+    """, (
+        marca,
+        hilo
+    )).fetchone()
+
+    afectados = r["total"] if r else 0
+
+    conn.commit()
+    conn.close()
+
+    refrescar_tabla()
+
+    messagebox.showinfo(
+        "Actualizado",
+        f"Se actualizaron {afectados} productos"
+    )
+
 def asignar_volumetrico_multiple():
     marca = simpledialog.askstring("Marca", "Marca (ej: KARINA):")
     if not marca:
@@ -467,13 +690,22 @@ if __name__ == "__main__":
 
     entry_buscar = tk.Entry(frame_buscar)
     entry_buscar.pack(side="left", padx=5)
+    buscar_job = None
 
-    tk.Button(
-        frame_buscar,
-        text="Buscar",
-        command=lambda: refrescar_tabla(entry_buscar.get())
-    ).pack(side="left")
-    
+    def buscar_diferido(event=None):
+
+        global buscar_job
+ 
+        if buscar_job:
+            root.after_cancel(buscar_job)
+
+        buscar_job = root.after(
+            250,
+            lambda: refrescar_tabla(entry_buscar.get())
+        )
+
+    entry_buscar.bind("<KeyRelease>", buscar_diferido)
+
 
     # Formulario
     frame_form = tk.Frame(root)
@@ -509,16 +741,9 @@ if __name__ == "__main__":
     tk.Button(frame_form, text="Agregar", command=agregar_producto).grid(row=1, column=8)
     tk.Button(frame_form, text="Eliminar tono", command=eliminar_tono).grid(row=1, column=9)
     tk.Button(frame_form, text="$ Precios marca", command=editar_precios_marca).grid(row=1, column=10)
-    tk.Button(
-    frame_form,
-    text="📦 Volumétrico por hilo",
-    command=asignar_volumetrico_hilo
-    ).grid(row=1, column=11, padx=5)
-    tk.Button(
-        frame_form,
-        text="⚖ Volumétrico múltiple",
-        command=asignar_volumetrico_multiple
-    ).grid(row=1, column=12, padx=5)
+    tk.Button(frame_form, text="💲 Precio por hilo", command=actualizar_precio_hilo).grid(row=1, column=13, padx=5)
+    tk.Button(frame_form, text="📦 Volumétrico por hilo", command=asignar_volumetrico_hilo).grid(row=1, column=11, padx=5)
+    tk.Button(frame_form, text="⚖ Volumétrico múltiple", command=asignar_volumetrico_multiple).grid(row=1, column=12, padx=5)
 
 
     # Tabla
@@ -542,7 +767,7 @@ if __name__ == "__main__":
         "Treeview",
         background="white",
         foreground="black",
-        rowheight=32,
+        rowheight=38,
         fieldbackground="white",
         borderwidth=0,
         font=("Segoe UI", 11)
@@ -595,8 +820,14 @@ if __name__ == "__main__":
     tabla.column("Estado", width=100, anchor="center")
 
 
-    tabla.pack(fill="both", expand=True, padx=15, pady=15)
-    tabla.bind("<Double-1>", editar_producto)
+    scroll_y = ttk.Scrollbar(card_tabla, orient="vertical", command=tabla.yview)
+
+    tabla.configure(yscrollcommand=scroll_y.set)
+
+    tabla.pack(side="left", fill="both", expand=True, padx=15, pady=15)
+
+    scroll_y.pack(side="right", fill="y")
+    tabla.bind("<Double-1>", doble_click_editar)
 
 
     tabla.tag_configure("marca", background="#BBDEFB", font=("Segoe UI", 10, "bold"))
@@ -613,6 +844,15 @@ if __name__ == "__main__":
 
     combo_marca["values"] = marcas_existentes()
     refrescar_tabla()
+
+    def cerrar():
+
+        global autorizado
+        autorizado = False
+
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", cerrar)
 
     root.mainloop()
 
