@@ -1,6 +1,9 @@
 import tkinter as tk
 import os
 import shutil
+import json
+import urllib.request
+import urllib.error
 from tkinter import ttk, simpledialog, messagebox
 from notas import listar_cotizaciones, obtener_cotizacion, cambiar_cliente_nota
 from notas import actualizar_cotizacion, convertir_cotizacion_a_venta, eliminar_cotizacion, eliminar_nota, guardar_nota_actualizada
@@ -1112,6 +1115,13 @@ def abrir_visor(root):
         command=lambda: marcar_como_pagada(tree, win)
     ).pack(fill="x", pady=5)
 
+    ctk.CTkButton(
+        side,
+        text="🔄 Sincronizar ingresos",
+        fg_color="#1976D2",
+        command=lambda: sincronizar_pendientes_contabilidad(win, silencioso=False)
+    ).pack(fill="x", pady=5)
+
     btn_exportar = ctk.CTkButton(side, text="📄 Exportar")
     btn_exportar.pack(fill="x", pady=5)
 
@@ -1147,6 +1157,7 @@ def abrir_visor(root):
     tree.bind("<<TreeviewSelect>>", actualizar_exportar)
 
     cargar_notas()
+    win.after(1200, lambda: sincronizar_pendientes_contabilidad(win, silencioso=True))
     # ===# ======================================================
 # 🔵 BOTÓN CONVERTIR FLOTANTE MODERNO (IZQ-CENTRO)
 # ======================================================
@@ -2673,8 +2684,194 @@ def editar_cotizacion(win, tree):
 
     
 
+
 from tkinter import filedialog
 import shutil
+
+CONTABILIDAD_API_URL = os.environ.get(
+    "CONTABILIDAD_API_URL",
+    "https://contabilidad-api-oxdb.onrender.com"
+)
+
+PENDIENTES_CONTABILIDAD_FILE = "contabilidad_pendientes.json"
+
+
+def construir_payload_ingreso_contabilidad(nota, comprobante=None):
+    """Construye el ingreso que se enviará a Mi Control de Dinero."""
+    nota_id = str(nota.get("id") or "").strip()
+    if not nota_id:
+        return None, "La nota no tiene ID"
+
+    try:
+        monto = float(nota.get("total") or 0)
+    except Exception:
+        monto = 0
+
+    if monto <= 0:
+        return None, "La nota no tiene total válido"
+
+    cliente_nombre = nota.get("cliente_nombre") or ""
+    if not cliente_nombre:
+        try:
+            cliente = obtener_cliente_por_id(nota.get("cliente_id"))
+            if cliente:
+                cliente_nombre = cliente.get("nombre", "")
+        except Exception:
+            cliente_nombre = ""
+
+    return {
+        "nota_id": nota_id,
+        "cliente": cliente_nombre,
+        "monto": monto,
+        "comprobante": comprobante or nota.get("comprobante", "")
+    }, None
+
+
+def cargar_pendientes_contabilidad():
+    if not os.path.exists(PENDIENTES_CONTABILIDAD_FILE):
+        return []
+
+    try:
+        with open(PENDIENTES_CONTABILIDAD_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def guardar_pendientes_contabilidad(pendientes):
+    with open(PENDIENTES_CONTABILIDAD_FILE, "w", encoding="utf-8") as f:
+        json.dump(pendientes, f, ensure_ascii=False, indent=2)
+
+
+def encolar_ingreso_contabilidad(payload, motivo=""):
+    """Guarda un ingreso pendiente localmente para enviarlo cuando vuelva internet."""
+    if not payload or not payload.get("nota_id"):
+        return False
+
+    pendientes = cargar_pendientes_contabilidad()
+    nota_id = str(payload.get("nota_id"))
+
+    # Evitar duplicar la misma nota en pendientes.
+    for p in pendientes:
+        if str(p.get("nota_id")) == nota_id:
+            p.update(payload)
+            p["ultimo_motivo"] = motivo
+            guardar_pendientes_contabilidad(pendientes)
+            return True
+
+    payload = dict(payload)
+    payload["ultimo_motivo"] = motivo
+    pendientes.append(payload)
+    guardar_pendientes_contabilidad(pendientes)
+    return True
+
+
+def enviar_payload_ingreso_contabilidad(payload):
+    """Envía un payload ya construido a la API de contabilidad."""
+    url = CONTABILIDAD_API_URL.rstrip("/") + "/api/ingreso-nota"
+    data = json.dumps(payload).encode("utf-8")
+
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        raw = resp.read().decode("utf-8")
+
+    respuesta = json.loads(raw)
+
+    if respuesta.get("ok"):
+        if respuesta.get("duplicado"):
+            return True, "La nota ya tenía ingreso registrado"
+        return True, "Ingreso registrado automáticamente en Mi Control de Dinero"
+
+    return False, respuesta.get("error") or "La API no aceptó el ingreso"
+
+
+def sincronizar_pendientes_contabilidad(parent=None, silencioso=True):
+    """Intenta enviar todos los ingresos pendientes guardados localmente."""
+    pendientes = cargar_pendientes_contabilidad()
+
+    if not pendientes:
+        if not silencioso:
+            messagebox.showinfo(
+                "Sin pendientes",
+                "No hay ingresos pendientes por sincronizar.",
+                parent=parent
+            )
+        return True, "No hay pendientes"
+
+    restantes = []
+    enviados = 0
+    errores = []
+
+    for payload in pendientes:
+        try:
+            ok, msg = enviar_payload_ingreso_contabilidad(payload)
+            if ok:
+                enviados += 1
+            else:
+                payload["ultimo_motivo"] = msg
+                restantes.append(payload)
+                errores.append(msg)
+        except Exception as e:
+            payload["ultimo_motivo"] = str(e)
+            restantes.append(payload)
+            errores.append(str(e))
+
+    guardar_pendientes_contabilidad(restantes)
+
+    if not silencioso:
+        if restantes:
+            messagebox.showwarning(
+                "Sincronización parcial",
+                f"Se enviaron {enviados} ingreso(s).\n"
+                f"Quedan {len(restantes)} pendiente(s).\n\n"
+                f"Último error: {errores[-1] if errores else 'No disponible'}",
+                parent=parent
+            )
+        else:
+            messagebox.showinfo(
+                "Sincronizado",
+                f"Se enviaron {enviados} ingreso(s) pendiente(s).",
+                parent=parent
+            )
+
+    return len(restantes) == 0, f"Enviados: {enviados}, pendientes: {len(restantes)}"
+
+
+def enviar_ingreso_contabilidad_por_nota(nota, comprobante=None):
+    """
+    Envía el ingreso automático al sistema Mi Control de Dinero.
+    Si no hay internet/API, guarda el ingreso como pendiente local.
+    La API evita duplicados usando nota_id.
+    """
+    payload, error = construir_payload_ingreso_contabilidad(nota, comprobante)
+    if error:
+        return False, error
+
+    # Antes de enviar el actual, intenta vaciar pendientes anteriores.
+    sincronizar_pendientes_contabilidad(silencioso=True)
+
+    try:
+        ok, msg = enviar_payload_ingreso_contabilidad(payload)
+        if ok:
+            return True, msg
+
+        encolar_ingreso_contabilidad(payload, msg)
+        return False, f"{msg}. El ingreso quedó guardado como pendiente y se enviará cuando vuelva la conexión"
+
+    except urllib.error.URLError as e:
+        encolar_ingreso_contabilidad(payload, str(e))
+        return False, "No hay conexión con la API. El ingreso quedó guardado como pendiente y se enviará cuando vuelva la conexión"
+    except Exception as e:
+        encolar_ingreso_contabilidad(payload, str(e))
+        return False, f"Error temporal: {e}. El ingreso quedó guardado como pendiente y se intentará reenviar después"
+
 
 def marcar_como_pagada(tree, win):
     sel = tree.focus()
@@ -2705,16 +2902,34 @@ def marcar_como_pagada(tree, win):
         nota["comprobante"] = destino
         guardar_nota_actualizada(nota)
 
-        messagebox.showinfo(
-            "Pago confirmado",
-            "La venta fue marcada como PAGADA",
-            parent=win
-        )
         registrar_cambio(
             id_nota,
             "Cambio de estado",
             "VENTA_PENDIENTE → PAGADA"
         )
+
+        ok_contabilidad, msg_contabilidad = enviar_ingreso_contabilidad_por_nota(
+            nota,
+            comprobante=destino
+        )
+
+        if ok_contabilidad:
+            messagebox.showinfo(
+                "Pago confirmado",
+                "La venta fue marcada como PAGADA.\n\n"
+                f"{msg_contabilidad}.",
+                parent=win
+            )
+        else:
+            messagebox.showwarning(
+                "Pago confirmado con aviso",
+                "La venta fue marcada como PAGADA, pero no se pudo enviar "
+                "el ingreso automático a Mi Control de Dinero en este momento.\n\n"
+                f"Motivo: {msg_contabilidad}\n\n"
+                "No lo registres manualmente todavía: quedó como pendiente y se intentará enviar automáticamente cuando vuelva la conexión.",
+                parent=win
+            )
+
         win.destroy()
         abrir_visor(win.master)
 
