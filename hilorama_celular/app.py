@@ -33,6 +33,11 @@ def json_api_errors(e):
             err = str(e) or e.__class__.__name__
         except Exception:
             err = e.__class__.__name__
+        try:
+            # Esto sí aparece en los logs de Render y permite encontrar la causa real.
+            print("ERROR API", request.path, traceback.format_exc(), flush=True)
+        except Exception:
+            pass
         return jsonify({
             "ok": False,
             "error": f"Error interno en {request.path}: {err}",
@@ -1632,6 +1637,27 @@ def _extract_data_url_bytes(data_url):
     return base64.b64decode(data_url)
 
 
+def _optimizar_data_url_imagen(data_url, max_side=1400, quality=86):
+    """
+    Reduce fotos grandes antes de mandarlas a la IA.
+    Sin esto, Render/Gunicorn puede cortar el request y regresar HTML 500.
+    """
+    if not data_url:
+        return data_url
+    try:
+        raw = _extract_data_url_bytes(data_url)
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        w, h = img.size
+        if max(w, h) > max_side:
+            scale = max_side / max(w, h)
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+        bio = io.BytesIO()
+        img.save(bio, format="JPEG", quality=quality, optimize=True)
+        return _image_bytes_to_data_url(bio.getvalue(), "image/jpeg")
+    except Exception:
+        return data_url
+
+
 def _image_reference_summary(texto):
     t = _strip_acc(texto)
     out = {'numbers': [], 'positions': [], 'marks': [], 'raw_text': texto or ''}
@@ -1989,7 +2015,7 @@ def _analizar_catalogo_grid_openai(data_url, comentario, contexto, productos_con
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
 
     catalogo = _productos_contexto_para_vision(productos_contexto, max_items=300)
 
@@ -2181,7 +2207,7 @@ def _analizar_imagen_con_openai_lens(data_url, comentario, contexto, productos_c
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
 
     catalogo = _productos_contexto_para_vision(productos_contexto)
     schema_text = """
@@ -2309,7 +2335,7 @@ def _analizar_catalogo_por_fases_openai(data_url, original_data_url, comentario,
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
 
     catalogo = _productos_contexto_para_vision(productos_contexto, max_items=350)
 
@@ -2633,7 +2659,7 @@ def _analizar_celdas_anotadas_openai(data_url_original, raw, comentario, context
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
 
     cols, rows = _infer_rows_cols_para_catalogo(raw, productos_contexto)
     annotated_raw, grid_info = _crear_imagen_grid_anotada(raw, cols=cols, rows=rows)
@@ -2958,9 +2984,14 @@ def _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentar
     if not api_key:
         return None, 'sin_openai_api_key'
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
 
-    catalogo = _productos_contexto_para_vision(productos_contexto, max_items=500)
+    # Evita mandar fotos enormes; mantiene suficiente calidad para leer códigos.
+    data_url = _optimizar_data_url_imagen(data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "1400")))
+    if original_data_url:
+        original_data_url = _optimizar_data_url_imagen(original_data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "1400")))
+
+    catalogo = _productos_contexto_para_vision(productos_contexto, max_items=int(os.environ.get("OPENAI_CATALOG_MAX_ITEMS", "250")))
     overlay_url = None
     try:
         overlay_url = _crear_overlay_marcas_data_url(raw)
@@ -3263,6 +3294,20 @@ def analizar_imagen_referencia():
         vision_notes.append('openai_pura_error:' + str(e)[:220])
         advertencias.append('Falló la IA visual: ' + str(e)[:180])
 
+    # Diagnóstico rápido sin IA: detecta trazos rojos para que el botón no quede ciego
+    # si OpenAI tarda, falla o no hay API key. Solo se usa automático con Marca e Hilo elegidos.
+    try:
+        fb_add, fb_exclude, fb_debug = _infer_visual_codes_grid(raw, productos_contexto, comentario)
+        grid_debug = fb_debug
+        if not add_codes and marca and hilo and (fb_add or fb_exclude):
+            add_codes = fb_add
+            exclude_codes = list(dict.fromkeys(list(exclude_codes) + list(fb_exclude)))
+            quantities = {c: quantities.get(c, 1) for c in add_codes}
+            vision_notes.append('fallback_marcas_rojas')
+            advertencias.append('Usé respaldo de marcas rojas porque la IA no respondió con productos. Revisa el carrito antes de guardar.')
+    except Exception as e:
+        vision_notes.append('fallback_marcas_rojas_error:' + str(e)[:160])
+
     try:
         img = Image.open(io.BytesIO(raw))
         try:
@@ -3342,7 +3387,7 @@ def transcribir_audio():
                 tmp.write(raw)
                 temp_path = tmp.name
             try:
-                client = OpenAI(api_key=api_key)
+                client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
                 with open(temp_path, 'rb') as f:
                     resp = client.audio.transcriptions.create(model=os.environ.get('OPENAI_TRANSCRIBE_MODEL', 'whisper-1'), file=f)
                 transcript = getattr(resp, 'text', '') or (resp.get('text') if isinstance(resp, dict) else '') or ''
