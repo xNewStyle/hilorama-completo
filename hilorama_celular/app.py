@@ -283,7 +283,7 @@ def health():
     return jsonify({
         "ok": True,
         "service": "Hilorama Celular API",
-        "version": "fase2",
+        "version": "fase3",
         "time": now_mexico().isoformat(sep=" ", timespec="seconds"),
         "pin_enabled": bool(os.environ.get("MOBILE_PIN", "").strip()),
     })
@@ -577,6 +577,119 @@ def actualizar_producto(codigo):
     return jsonify(json_safe({"ok": True, "producto": dict(row)}))
 
 
+
+@app.route("/api/catalogo/marcas")
+def catalogo_marcas():
+    with DB() as db:
+        rows = db.execute("""
+            SELECT DISTINCT marca
+            FROM productos
+            WHERE marca IS NOT NULL AND TRIM(marca) <> ''
+            ORDER BY marca
+        """).fetchall()
+    return jsonify([r["marca"] for r in rows])
+
+
+@app.route("/api/catalogo/hilos")
+def catalogo_hilos():
+    marca = (request.args.get("marca") or "").strip()
+    params = []
+    where = ["hilo IS NOT NULL", "TRIM(hilo) <> ''"]
+    if marca:
+        where.append("marca=%s")
+        params.append(marca)
+    with DB() as db:
+        rows = db.execute(f"""
+            SELECT DISTINCT hilo
+            FROM productos
+            WHERE {' AND '.join(where)}
+            ORDER BY hilo
+        """, params).fetchall()
+    return jsonify([r["hilo"] for r in rows])
+
+
+@app.route("/api/parser-whatsapp", methods=["POST"])
+def parser_whatsapp_mobile():
+    """
+    Interpreta texto libre tipo WhatsApp usando la misma lógica del programa de PC.
+    Recibe contexto opcional de marca/hilo para que los números se interpreten dentro
+    del hilo correcto, igual que el combo de contexto en la PC.
+    """
+    from parser_whatsapp import extraer_pedidos
+
+    data = request.get_json(force=True) or {}
+    texto = data.get("texto") or ""
+    marca = (data.get("marca") or "").strip()
+    hilo = (data.get("hilo") or "").strip()
+
+    if not texto.strip():
+        return jsonify({"ok": False, "error": "Pega o escribe un pedido primero"}), 400
+
+    params = []
+    where = ["1=1"]
+    if marca:
+        where.append("UPPER(COALESCE(p.marca,''))=UPPER(%s)")
+        params.append(marca)
+    if hilo:
+        where.append("UPPER(COALESCE(p.hilo,''))=UPPER(%s)")
+        params.append(hilo)
+
+    with DB() as db:
+        rows = db.execute(f"""
+            SELECT
+                p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                COALESCE(p.stock,0) AS stock,
+                COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+                COALESCE(pr.venta, p.precio, 0) AS precio_venta
+            FROM productos p
+            LEFT JOIN precios pr ON pr.marca = p.marca
+            WHERE {' AND '.join(where)}
+            ORDER BY p.marca, p.hilo, p.codigo
+            LIMIT 10000
+        """, params).fetchall()
+
+    productos = [dict(r) for r in rows]
+    resultado = extraer_pedidos(texto, productos)
+
+    por_codigo = {}
+    for p in productos:
+        codigo_norm = str(p.get("codigo") or "").strip().lstrip("0") or "0"
+        por_codigo[codigo_norm] = p
+        cb = str(p.get("codigo_barras") or "").strip().lstrip("0") or "0"
+        if cb != "0":
+            por_codigo[cb] = p
+
+    pedidos = []
+    errores = []
+    for ped in resultado.get("pedidos", []):
+        codigo_norm = str(ped.get("codigo") or "").strip().lstrip("0") or "0"
+        prod = por_codigo.get(codigo_norm)
+        if not prod:
+            errores.append(codigo_norm)
+            continue
+        pedidos.append({
+            "codigo": prod.get("codigo"),
+            "marca": prod.get("marca") or "",
+            "hilo": prod.get("hilo") or "",
+            "color": prod.get("color") or "",
+            "stock": int(prod.get("stock") or 0),
+            "precio_venta": float(prod.get("precio_venta") or 0),
+            "cantidad": int(ped.get("cantidad") or 1),
+            "es_inventariable": prod.get("es_inventariable"),
+        })
+
+    errores.extend(resultado.get("errores") or [])
+
+    return jsonify(json_safe({
+        "ok": True,
+        "modo": resultado.get("modo"),
+        "contexto": {"marca": marca, "hilo": hilo, "productos_contexto": len(productos)},
+        "pedidos": pedidos,
+        "errores": sorted(set(str(e) for e in errores if e)),
+        "sugerencias": resultado.get("sugerencias") or {},
+    }))
+
+
 # =========================
 # Cotizaciones / notas
 # =========================
@@ -637,11 +750,33 @@ def obtener_pedido_default(db):
 
 
 def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
+    """
+    Normaliza y consolida productos.
+    Esto evita que al editar desde celular se guarden filas duplicadas del mismo código
+    y parezca que se suman 1, luego 2, luego 3 incorrectamente.
+    """
+    agrupados = {}
+    for raw in items_req:
+        codigo = str(raw.get("codigo") or "").strip()
+        try:
+            cantidad = int(float(raw.get("cantidad") or 0))
+        except Exception:
+            cantidad = 0
+        if not codigo or cantidad <= 0:
+            continue
+        precio_manual = raw.get("precio")
+        key = codigo
+        if key not in agrupados:
+            agrupados[key] = {"codigo": codigo, "cantidad": 0, "precio": precio_manual}
+        agrupados[key]["cantidad"] += cantidad
+        if precio_manual is not None:
+            agrupados[key]["precio"] = precio_manual
+
     items_finales = []
     errores = []
     total = 0.0
 
-    for raw in items_req:
+    for raw in agrupados.values():
         codigo = str(raw.get("codigo") or "").strip()
         cantidad = int(raw.get("cantidad") or 0)
         precio_manual = raw.get("precio")
@@ -675,7 +810,7 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
             errores.append(f"Stock insuficiente {prod['codigo']} ({stock} disponibles)")
             continue
 
-        precio = float(precio_manual if precio_manual is not None else (prod.get("precio_venta") or 0))
+        precio = float(precio_manual if precio_manual not in (None, "") else (prod.get("precio_venta") or 0))
         subtotal = cantidad * precio
         total += subtotal
         items_finales.append({

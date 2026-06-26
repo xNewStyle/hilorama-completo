@@ -1,4 +1,4 @@
-const CACHE_NAME = "hilorama-celular-v1";
+const CACHE_NAME = "hilorama-celular-v3";
 
 self.addEventListener("install", event => {
   self.skipWaiting();
