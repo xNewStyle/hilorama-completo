@@ -138,7 +138,13 @@ def require_pin():
     expected = os.environ.get("MOBILE_PIN", "").strip()
     if not expected:
         return None
-    got = request.headers.get("X-Mobile-Pin", "").strip()
+    # La app manda el PIN por header.
+    # Para revisar endpoints manualmente en navegador, también aceptamos ?pin=TU_PIN.
+    got = (
+        request.headers.get("X-Mobile-Pin", "").strip()
+        or request.args.get("pin", "").strip()
+        or request.args.get("debug_pin", "").strip()
+    )
     if got != expected:
         return jsonify({"ok": False, "error": "PIN incorrecto"}), 401
     return None
@@ -1608,25 +1614,31 @@ def _extract_data_url_bytes(data_url):
 
 def _image_reference_summary(texto):
     t = _strip_acc(texto)
-    out = {'numbers': [], 'positions': [], 'marks': []}
-    out['numbers'] = [int(x) for x in re.findall(r'(\d{1,3})', t)]
+    out = {'numbers': [], 'positions': [], 'marks': [], 'raw_text': texto or ''}
+    out['numbers'] = [int(x) for x in re.findall(r'\b(\d{1,3})\b', t)]
     mapping = [
         ('arriba_derecha', r'arriba\s+(?:a\s+la\s+)?derecha'),
         ('arriba_izquierda', r'arriba\s+(?:a\s+la\s+)?izquierda'),
         ('abajo_derecha', r'abajo\s+(?:a\s+la\s+)?derecha'),
         ('abajo_izquierda', r'abajo\s+(?:a\s+la\s+)?izquierda'),
-        ('arriba', r'arriba'), ('abajo', r'abajo'), ('derecha', r'derecha'),
-        ('izquierda', r'izquierda'), ('medio', r'en medio|del medio|centro'), ('primero', r'primero'),
-        ('segundo', r'segundo'), ('tercero', r'tercero'), ('ultimo', r'ultimo|ultima'),
+        ('arriba', r'\barriba\b'),
+        ('abajo', r'\babajo\b'),
+        ('derecha', r'\bderecha\b'),
+        ('izquierda', r'\bizquierda\b'),
+        ('medio', r'en medio|del medio|de en medio|centro'),
+        ('primero', r'primero|primera'),
+        ('segundo', r'segundo|segunda'),
+        ('tercero', r'tercero|tercera'),
+        ('ultimo', r'ultimo|ultima'),
     ]
     for name, pat in mapping:
         if re.search(pat, t):
             out['positions'].append(name)
-    if 'circulo' in t or 'encerrado' in t or 'rodeado' in t:
+    if 'circulo' in t or 'encerrado' in t or 'rodeado' in t or 'marcado' in t:
         out['marks'].append('circulo')
-    if 'flecha' in t or 'senalado' in t or 'señalado' in t:
+    if 'flecha' in t or 'senalado' in t or 'señalado' in t or 'apunta' in t:
         out['marks'].append('flecha')
-    if 'tachado' in t or 'tachon' in t or 'tacha' in t:
+    if 'tachado' in t or 'tachon' in t or 'tacha' in t or 'tachame' in t:
         out['marks'].append('tachado')
     out['numbers'] = list(dict.fromkeys(out['numbers']))
     out['positions'] = list(dict.fromkeys(out['positions']))
@@ -1634,17 +1646,74 @@ def _image_reference_summary(texto):
     return out
 
 
+def _safe_json_from_text(txt):
+    if not txt:
+        return None
+    try:
+        return json.loads(txt)
+    except Exception:
+        pass
+    m = re.search(r'\{.*\}', txt, re.S)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except Exception:
+            return None
+    return None
+
+
 @app.route('/api/analizar-imagen-referencia', methods=['POST'])
 def analizar_imagen_referencia():
     data = request.get_json(force=True) or {}
     data_url = data.get('image_base64') or ''
     comentario = (data.get('comentario') or '').strip()
+    contexto = (data.get('contexto') or '').strip()
     if not data_url:
         return jsonify({'ok': False, 'error': 'No se recibió imagen'}), 400
+
     raw = _extract_data_url_bytes(data_url)
     ocr_text = ''
+    vision_text = ''
+    vision_json = None
     vision_notes = []
     circles = 0
+
+    # 1) Visión con OpenAI si hay API key.
+    api_key = os.environ.get('OPENAI_API_KEY')
+    if api_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key)
+            prompt = (
+                "Eres asistente de ventas de una mercería. Analiza esta imagen enviada por una clienta. "
+                "La clienta puede marcar tonos con círculos, flechas, tachones, números escritos o posiciones. "
+                "Devuelve JSON estricto con: "
+                "numbers: lista de números visibles o mencionados, "
+                "positions: lista como arriba_derecha, arriba_izquierda, abajo_derecha, abajo_izquierda, medio, arriba, abajo, derecha, izquierda, "
+                "marks: circulo, flecha, tachado, subrayado, "
+                "exclude: números/zonas tachadas o que diga que no quiere, "
+                "description: resumen corto en español, "
+                "suggested_text: una frase corta para pasar al parser, por ejemplo 'de ese 2 por favor', 'numero 55', 'posicion arriba_derecha'. "
+                f"Comentario de la clienta: {comentario}. Contexto: {contexto}."
+            )
+            resp = client.chat.completions.create(
+                model=os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o-mini'),
+                messages=[{
+                    'role': 'user',
+                    'content': [
+                        {'type': 'text', 'text': prompt},
+                        {'type': 'image_url', 'image_url': {'url': data_url}},
+                    ]
+                }],
+                temperature=0,
+            )
+            vision_text = resp.choices[0].message.content or ''
+            vision_json = _safe_json_from_text(vision_text)
+            vision_notes.append('openai_vision')
+        except Exception as e:
+            vision_notes.append('openai_vision_error:' + str(e)[:120])
+
+    # 2) Fallback OCR / detección simple.
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(raw))
@@ -1661,7 +1730,7 @@ def analizar_imagen_referencia():
             arr = cv2.cvtColor(np.array(img.convert('RGB')), cv2.COLOR_RGB2BGR)
             gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
             gray = cv2.medianBlur(gray, 5)
-            found = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1.2, 35, param1=80, param2=24, minRadius=10, maxRadius=140)
+            found = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1.2, 35, param1=80, param2=24, minRadius=10, maxRadius=160)
             if found is not None:
                 circles = int(found.shape[1])
                 vision_notes.append(f'circulos:{circles}')
@@ -1670,21 +1739,51 @@ def analizar_imagen_referencia():
     except Exception:
         pass
 
-    joined = ' '.join(x for x in [comentario, ocr_text] if x).strip()
+    joined = ' '.join(x for x in [comentario, ocr_text, vision_text] if x).strip()
     resumen = _image_reference_summary(joined)
+
+    if vision_json:
+        for key in ['numbers', 'positions', 'marks']:
+            vals = vision_json.get(key) or []
+            if isinstance(vals, (str, int)):
+                vals = [vals]
+            if key == 'numbers':
+                for v in vals:
+                    try:
+                        n = int(v)
+                        if n not in resumen['numbers']:
+                            resumen['numbers'].append(n)
+                    except Exception:
+                        pass
+            else:
+                for v in vals:
+                    v = str(v).strip()
+                    if v and v not in resumen[key]:
+                        resumen[key].append(v)
+        if vision_json.get('exclude'):
+            resumen['exclude'] = vision_json.get('exclude')
+        if vision_json.get('description'):
+            resumen['description'] = vision_json.get('description')
+
     if circles and 'circulo' not in resumen['marks']:
         resumen['marks'].append('circulo')
-    suggested = []
-    if resumen['numbers']:
-        suggested.append('numero ' + ' '.join(str(n) for n in resumen['numbers']))
-    if resumen['positions']:
-        suggested.append('posicion ' + ' '.join(resumen['positions']))
-    if resumen['marks']:
-        suggested.append('marca ' + ' '.join(resumen['marks']))
-    suggested_text = ('referencia visual ' + ' '.join(suggested)).strip() if suggested else comentario
+
+    if vision_json and vision_json.get('suggested_text'):
+        suggested_text = str(vision_json.get('suggested_text')).strip()
+    else:
+        suggested = []
+        if resumen['numbers']:
+            suggested.append('numero ' + ' '.join(str(n) for n in resumen['numbers']))
+        if resumen['positions']:
+            suggested.append('posicion ' + ' '.join(resumen['positions']))
+        if resumen['marks']:
+            suggested.append('marca ' + ' '.join(resumen['marks']))
+        suggested_text = ('referencia visual ' + ' '.join(suggested)).strip() if suggested else comentario
+
     return jsonify(json_safe({
         'ok': True,
         'ocr_text': ocr_text,
+        'vision_text': vision_text,
         'summary': resumen,
         'vision_notes': vision_notes,
         'suggested_text': suggested_text,
@@ -1774,13 +1873,47 @@ def _nota_full(db, nota_id):
     if not nota:
         return None
 
-    items = db.execute("""
-        SELECT i.*, COALESCE(i.precio,0) AS precio_unit,
-               COALESCE(i.marca, p.marca) AS marca_final,
-               COALESCE(i.hilo, p.hilo) AS hilo_final,
-               COALESCE(i.color, p.color) AS color_final
+    # Solución definitiva contra duplicados en PDF:
+    # NO hacemos JOIN directo a productos porque en tu almacén existen códigos repetidos,
+    # incluso filas repetidas del mismo código/color con distinto stock.
+    # Usamos LEFT JOIN LATERAL con LIMIT 1 para que cada renglón de items encuentre
+    # máximo 1 producto de referencia y no se multiplique.
+    rows = db.execute("""
+        SELECT
+            i.id,
+            i.nota_id,
+            i.codigo,
+            COALESCE(i.cantidad, 1) AS cantidad,
+            COALESCE(i.precio, p.precio, pr.venta, 0) AS precio_unit,
+            COALESCE(NULLIF(i.marca,''), p.marca, '') AS marca_final,
+            COALESCE(NULLIF(i.hilo,''), p.hilo, '') AS hilo_final,
+            COALESCE(NULLIF(i.color,''), p.color, '') AS color_final
         FROM items i
-        LEFT JOIN productos p ON p.codigo = i.codigo
+        LEFT JOIN LATERAL (
+            SELECT p2.*
+            FROM productos p2
+            WHERE p2.codigo = i.codigo
+              AND (
+                    COALESCE(NULLIF(i.marca,''),'') = ''
+                    OR UPPER(COALESCE(p2.marca,'')) = UPPER(COALESCE(i.marca,''))
+                  )
+              AND (
+                    COALESCE(NULLIF(i.hilo,''),'') = ''
+                    OR UPPER(COALESCE(p2.hilo,'')) = UPPER(COALESCE(i.hilo,''))
+                  )
+              AND (
+                    COALESCE(NULLIF(i.color,''),'') = ''
+                    OR UPPER(COALESCE(p2.color,'')) = UPPER(COALESCE(i.color,''))
+                  )
+            ORDER BY
+                CASE WHEN UPPER(COALESCE(p2.marca,'')) = UPPER(COALESCE(i.marca,'')) THEN 0 ELSE 1 END,
+                CASE WHEN UPPER(COALESCE(p2.hilo,'')) = UPPER(COALESCE(i.hilo,'')) THEN 0 ELSE 1 END,
+                CASE WHEN UPPER(COALESCE(p2.color,'')) = UPPER(COALESCE(i.color,'')) THEN 0 ELSE 1 END,
+                COALESCE(p2.stock,0) DESC,
+                p2.id ASC
+            LIMIT 1
+        ) p ON TRUE
+        LEFT JOIN precios pr ON pr.marca = COALESCE(NULLIF(i.marca,''), p.marca)
         WHERE i.nota_id=%s
         ORDER BY i.id
     """, (nota_id,)).fetchall()
@@ -1790,29 +1923,45 @@ def _nota_full(db, nota_id):
     n["direccion"] = _parse_json_field(n.get("direccion"), {})
     n["cliente_nombre"] = n.get("cliente_nombre") or n.get("cliente_nombre_real") or ""
     n["telefono"] = n.get("telefono") or ""
-    n["items"] = []
 
-    for x in items:
+    # Consolida SOLO items reales repetidos, no duplicados generados por JOIN.
+    # Como el LATERAL ya no multiplica, sumar aquí sí es seguro.
+    consolidados = {}
+    orden = []
+    for x in rows:
         d = dict(x)
-        precio = d.get("precio") if d.get("precio") is not None else d.get("precio_unit")
-        cantidad = d.get("cantidad") or 0
         try:
-            precio = float(precio or 0)
+            precio = float(d.get("precio_unit") or 0)
         except Exception:
             precio = 0.0
         try:
-            cantidad = int(cantidad or 0)
+            cantidad = int(d.get("cantidad") or 0)
         except Exception:
             cantidad = 0
-        n["items"].append({
+
+        item = {
             "id": d.get("id"),
             "codigo": str(d.get("codigo") or ""),
-            "marca": d.get("marca_final") or d.get("marca") or "",
-            "hilo": d.get("hilo_final") or d.get("hilo") or "",
-            "color": d.get("color_final") or d.get("color") or "",
+            "marca": d.get("marca_final") or "",
+            "hilo": d.get("hilo_final") or "",
+            "color": d.get("color_final") or "",
             "cantidad": cantidad,
             "precio": precio,
-        })
+        }
+        key = (
+            item["codigo"].strip(),
+            item["marca"].strip().upper(),
+            item["hilo"].strip().upper(),
+            item["color"].strip().upper(),
+            item["precio"],
+        )
+        if key not in consolidados:
+            consolidados[key] = item
+            orden.append(key)
+        else:
+            consolidados[key]["cantidad"] += cantidad
+
+    n["items"] = [consolidados[k] for k in orden]
     return n
 
 
@@ -1835,6 +1984,38 @@ def _generate_pc_pdf_file(nota):
     if not os.path.exists(ruta_pdf):
         raise RuntimeError("No se pudo generar el PDF")
     return ruta_pdf, nombre
+
+
+@app.route('/api/debug-nota-items/<nota_id>')
+def debug_nota_items(nota_id):
+    with DB() as db:
+        nota = _nota_full(db, nota_id)
+    if not nota:
+        return jsonify({'ok': False, 'error': 'Nota no encontrada'}), 404
+    return jsonify(json_safe({
+        'ok': True,
+        'nota_id': nota_id,
+        'items_count': len(nota.get('items') or []),
+        'items': nota.get('items') or [],
+    }))
+
+
+@app.route('/debug-nota-items/<nota_id>')
+def debug_nota_items_browser(nota_id):
+    expected = os.environ.get("MOBILE_PIN", "").strip()
+    got = request.args.get("pin", "").strip() or request.args.get("debug_pin", "").strip()
+    if expected and got != expected:
+        return jsonify({'ok': False, 'error': 'PIN incorrecto. Abre esta URL agregando ?pin=TU_PIN'}), 401
+    with DB() as db:
+        nota = _nota_full(db, nota_id)
+    if not nota:
+        return jsonify({'ok': False, 'error': 'Nota no encontrada'}), 404
+    return jsonify(json_safe({
+        'ok': True,
+        'nota_id': nota_id,
+        'items_count': len(nota.get('items') or []),
+        'items': nota.get('items') or [],
+    }))
 
 
 @app.route('/nota-pdf/<nota_id>')

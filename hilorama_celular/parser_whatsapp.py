@@ -291,10 +291,13 @@ def _quitar_intro_cantidad(linea):
     - 6 piezas de estos
     """
     l = linea.strip()
+    # No tomar "dame 2 del 55" como cantidad global; eso es cantidad + código.
+    if re.search(rf"\b(?:dame|quiero|quisiera|ocupo|necesito|ponme|agrega|agregame|mandame|pasame|echame|apartame|anotame)?\s*\d+\s*(?:{UNIDADES})?\s*(?:del|de|d|tono|codigo|cod)\s*#?\s*\d+\b", l):
+        return None, linea
     intro = "|".join(re.escape(_sin_acentos(x)) for x in INTRO_PALABRAS)
 
     patrones = [
-        rf"^(?:.*?\b)?(?:{intro})?\s*(\d+)\s*(?:{UNIDADES})?\s*(?:de|del|de\s+los|de\s+las|de\s+estos|de\s+estas)\s*[:\-]*\s*(.*)$",
+        rf"^(?:.*?\b)?(?:{intro})?\s*(\d+)\s*(?:{UNIDADES})?\s*(?:del|de\s+los|de\s+las|de\s+estos|de\s+estas|de)\s*[:\-]*\s*(.*)$",
         r"^(?:de|para)\s+estos\s*(\d+)\s*[:\-]*\s*(.*)$",
         r"^(?:cada\s+uno|c/u|cada)\s*(\d+)\s*[:\-]*\s*(.*)$",
     ]
@@ -397,6 +400,105 @@ def _extraer_pares_color_cantidad(linea, color_a_codigos, alias_ordenados):
     return resultados
 
 
+
+# ======================================================
+# PARSER NUMÉRICO INTELIGENTE
+# ======================================================
+def _cantidad_token(tok):
+    tok = _sin_acentos(tok)
+    if tok.isdigit():
+        return int(tok)
+    return NUM_PALABRA.get(tok) or CANTIDAD_ALIAS.get(tok)
+
+
+def _cantidad_pat():
+    palabras = sorted(list(NUM_PALABRA.keys()) + list(CANTIDAD_ALIAS.keys()), key=len, reverse=True)
+    return r"(?:\d+|" + "|".join(re.escape(p) for p in palabras) + r")"
+
+
+def _split_partes_pedido(linea):
+    # Divide pedidos mixtos: "del 55 dame 2, 3 56 y un 310"
+    # pero evita romper frases con "de arriba y derecha" porque esas son visuales.
+    partes = re.split(r"\s*(?:,|\+|/|\by\b|\be\b)\s*", linea)
+    return [p.strip() for p in partes if p and p.strip()]
+
+
+def _parsear_segmento_codigo_cantidad(seg, codigos_validos):
+    seg = seg.strip().lower()
+    if not seg:
+        return []
+    cant = _cantidad_pat()
+    verbos = r"(?:dame|dames|quiero|quisiera|ocupo|necesito|ponme|agrega|agregame|mandame|pasame|echame|apartame|anotame)?"
+
+    # "del 55 dame 2", "de 55 ponme dos", "tono 310 uno"
+    m = re.search(rf"\b(?:del|de|d|tono|codigo|cod)\s*#?\s*(\d+)\b\s*(?:{verbos})\s*(?:de\s*)?({cant})\b", seg)
+    if m:
+        codigo = norm_codigo(m.group(1))
+        cantidad = _cantidad_token(m.group(2))
+        if codigo in codigos_validos and cantidad:
+            return [(codigo, cantidad)]
+
+    # "55 dame 2", "55 ponme dos", "55 de 2"
+    # OJO: no debe convertir "3 56" en código 3 cantidad 56.
+    m = re.search(rf"^\s*(\d+)\b\s+(?:dame|quiero|quisiera|ocupo|necesito|ponme|agrega|agregame|mandame|pasame|echame|apartame|anotame|de)\s+({cant})\b", seg)
+    if m:
+        codigo = norm_codigo(m.group(1))
+        cantidad = _cantidad_token(m.group(2))
+        if codigo in codigos_validos and cantidad:
+            return [(codigo, cantidad)]
+
+    # "dame 2 del 55", "2 pz tono 310", "un 310", "3 56"
+    m = re.search(rf"\b({cant})\b\s*(?:{UNIDADES})?\s*(?:del|de|d|tono|codigo|cod)?\s*#?\s*(\d+)\b", seg)
+    if m:
+        cantidad = _cantidad_token(m.group(1))
+        codigo = norm_codigo(m.group(2))
+        # Evita leer "55 2" como 55 piezas del código 2.
+        # Si la cantidad parece demasiado grande, dejamos que la regla de dos números decida.
+        if codigo in codigos_validos and cantidad and 1 <= cantidad <= 50:
+            return [(codigo, cantidad)]
+
+    # "55 x 2", "55:2", "55=2"
+    m = re.search(r"^\s*(\d+)\s*(?:x|\*|:|=|->)\s*(\d+)\s*$", seg)
+    if m:
+        codigo = norm_codigo(m.group(1))
+        cantidad = int(m.group(2))
+        if codigo in codigos_validos:
+            return [(codigo, cantidad)]
+
+    nums = _numeros(seg)
+    if len(nums) == 2:
+        a, b = nums
+        a_es = a in codigos_validos
+        b_es = b in codigos_validos
+        ia = int(a)
+        ib = int(b)
+        # "3 56" = 3 piezas del 56, aunque el 3 exista como código.
+        if 1 <= ia <= 50 and b_es and len(b) >= 2 and not seg.strip().startswith(("tono", "codigo", "cod", "del", "de ")):
+            return [(b, ia)]
+        # "55 2" = código 55 cantidad 2.
+        if a_es and 1 <= ib <= 50:
+            return [(a, ib)]
+        if a_es and b_es:
+            return [(a, 1), (b, 1)]
+
+    if len(nums) == 1:
+        c = nums[0]
+        if c in codigos_validos:
+            return [(c, 1)]
+
+    return []
+
+
+def _parsear_linea_mixta(linea, codigos_validos):
+    resultados = []
+    for seg in _split_partes_pedido(linea):
+        resultados.extend(_parsear_segmento_codigo_cantidad(seg, codigos_validos))
+    # Si partir no funcionó, intenta toda la línea.
+    if not resultados:
+        resultados.extend(_parsear_segmento_codigo_cantidad(linea, codigos_validos))
+    return resultados
+
+
 def extraer_pedidos(texto, productos):
     texto = limpiar_texto(texto)
     codigos_validos = _producto_map(productos)
@@ -416,7 +518,13 @@ def extraer_pedidos(texto, productos):
         for n in _numeros(m.group(1)):
             excluidos.add(n)
 
-    modo_gama = bool(re.search(r"\b(dame|de|quiero|ocupo)?\s*(toda|todos|una)\s+(?:la\s+)?gama\b|\bde\s+todos\s+uno\b|\buno\s+de\s+cada\b|\buna\s+de\s+cada\b", texto_limpio))
+    modo_gama = bool(re.search(
+        r"\b(dame|de|quiero|ocupo)?\s*(toda|todos|una)\s+(?:la\s+)?gama\b|"
+        r"\bde\s+todos\s+uno\b|\buno\s+de\s+cada\b|\buna\s+de\s+cada\b|"
+        r"\b1\s+de\s+cada\s+(?:uno|color|tono)?\b|\bdame\s+1\s+de\s+cada\s+(?:uno|color|tono)?\b|"
+        r"\bquiero\s+1\s+de\s+cada\s+(?:uno|color|tono)?\b|\bcada\s+uno\b|\bc/u\b",
+        texto_limpio
+    ))
     if modo_gama:
         for c in codigos_validos:
             if c not in excluidos:
@@ -447,6 +555,15 @@ def extraer_pedidos(texto, productos):
             linea = resto
             if not linea:
                 continue
+
+        # ================= parser mixto avanzado =================
+        # Ejemplos: "del 55 dame 2, 3 56 y un 310"
+        pares_mixtos = _parsear_linea_mixta(linea, codigos_validos)
+        if pares_mixtos:
+            usar_bloque = bool(cantidad_bloque and all(int(cant or 0) == 1 for _, cant in pares_mixtos))
+            for codigo, cantidad in pares_mixtos:
+                _add(pedidos, codigo, cantidad_bloque if usar_bloque else cantidad)
+            continue
 
         # ================= formatos explícitos por código =================
         patrones = [
