@@ -1809,6 +1809,7 @@ def _classify_red_mark_component(comp):
 def _infer_visual_codes_grid(raw, productos_contexto, comentario=''):
     """
     Intenta deducir códigos por posición de marcas rojas usando el orden del contexto.
+    Mejora la clasificación entre círculo (sí agregar) y tachado (no agregar).
     Requiere que el usuario haya seleccionado marca/hilo correctos.
     """
     comps, (w, h) = _red_components_from_image_bytes(raw)
@@ -1816,7 +1817,6 @@ def _infer_visual_codes_grid(raw, productos_contexto, comentario=''):
         return [], [], {"components": len(comps), "grid": None}
 
     n = len(productos_contexto)
-    # Catálogos de tonos casi siempre vienen en 5 columnas; si son pocos, usar 4/3.
     if n >= 15:
         cols = 5
     elif n >= 9:
@@ -1825,25 +1825,24 @@ def _infer_visual_codes_grid(raw, productos_contexto, comentario=''):
         cols = 3
     rows = max(1, math.ceil(n / cols))
 
-    # Zona visual útil aproximada del catálogo: deja márgenes de imagen y textos.
-    # Ajustada para catálogos tipo Komfy/Velluto con tonos por cuadrícula.
+    # Zona útil aproximada del catálogo.
     left, right = w * 0.13, w * 0.87
     top, bottom = h * 0.16, h * 0.86
-    x_centers = [left + (right-left) * (i/(cols-1 if cols > 1 else 1)) for i in range(cols)]
-    y_centers = [top + (bottom-top) * (j/(rows-1 if rows > 1 else 1)) for j in range(rows)]
+    cell_w = (right - left) / max(cols, 1)
+    cell_h = (bottom - top) / max(rows, 1)
+    x_centers = [left + cell_w * (i + 0.5) for i in range(cols)]
+    y_centers = [top + cell_h * (j + 0.5) for j in range(rows)]
 
-    add = []
-    ex = []
+    cell_marks = {}
     assigned = []
 
     for comp in comps:
         cx, cy = comp["center"]
-        # Descartar marcas demasiado cerca de bordes o controles de app.
-        if cy < h*0.08 or cy > h*0.94:
+        if cy < h * 0.08 or cy > h * 0.94:
             continue
 
-        col = min(range(cols), key=lambda i: abs(x_centers[i]-cx))
-        row = min(range(rows), key=lambda j: abs(y_centers[j]-cy))
+        col = min(range(cols), key=lambda i: abs(x_centers[i] - cx))
+        row = min(range(rows), key=lambda j: abs(y_centers[j] - cy))
         idx = row * cols + col
         if idx < 0 or idx >= n:
             continue
@@ -1852,22 +1851,67 @@ def _infer_visual_codes_grid(raw, productos_contexto, comentario=''):
         if not codigo:
             continue
 
-        kind = _classify_red_mark_component(comp)
-        assigned.append({"codigo": codigo, "row": row+1, "col": col+1, "kind": kind, "bbox": comp["bbox"]})
+        # Posición relativa dentro de la celda asignada
+        cell_top = top + row * cell_h
+        rel_y = (cy - cell_top) / max(cell_h, 1)
 
-        if kind == "tachado":
-            if codigo not in ex:
-                ex.append(codigo)
+        x1, y1, x2, y2 = comp["bbox"]
+        bw, bh = x2 - x1 + 1, y2 - y1 + 1
+
+        # Heurística:
+        # - Círculos de selección suelen estar alrededor de código/nombre o parte baja del tono.
+        # - Tachones/X suelen quedar más arriba, sobre la madeja.
+        is_lower = rel_y >= 0.50
+        is_tall = bh >= cell_h * 0.38
+        is_wide = bw >= cell_w * 0.30
+
+        if is_lower:
+            kind = "circulo"
+        elif (not is_lower) and is_tall and is_wide:
+            kind = "tachado"
         else:
+            kind = "tachado"
+
+        item = {
+            "codigo": codigo,
+            "row": row + 1,
+            "col": col + 1,
+            "kind": kind,
+            "bbox": comp["bbox"],
+            "rel_y": round(rel_y, 3),
+            "size": [bw, bh],
+        }
+        assigned.append(item)
+        cell_marks.setdefault((row, col, codigo), []).append(item)
+
+    add = []
+    ex = []
+    # Resolver por celda:
+    # si en una celda hay al menos una marca baja/círculo -> agregar.
+    # si solo hay marcas altas/tachado -> excluir.
+    for (row, col, codigo), marks in cell_marks.items():
+        has_circle = any(m["kind"] == "circulo" for m in marks)
+        has_tachado = any(m["kind"] == "tachado" for m in marks)
+        if has_circle:
             if codigo not in add:
                 add.append(codigo)
+        elif has_tachado:
+            if codigo not in ex:
+                ex.append(codigo)
 
-    # Si el comentario dice tachados no, los tachados quedan fuera.
-    # Si todo quedó como tachado por heurística, no eliminar todos: mandarlos como revisión manual.
-    if add:
-        add = [c for c in add if c not in ex]
-    return add, ex, {"components": len(comps), "grid": {"cols": cols, "rows": rows, "assigned": assigned}}
+    # Si por alguna razón un código salió en ambos, priorizar agregar si hay círculo.
+    ex = [c for c in ex if c not in add]
 
+    return add, ex, {
+        "components": len(comps),
+        "grid": {
+            "cols": cols,
+            "rows": rows,
+            "assigned": assigned,
+            "cell_w": round(cell_w, 1),
+            "cell_h": round(cell_h, 1),
+        }
+    }
 
 def _extract_codes_from_free_text(texto):
     """
