@@ -1662,6 +1662,212 @@ def _safe_json_from_text(txt):
     return None
 
 
+
+def _codigos_contexto_productos(db, marca='', hilo=''):
+    params = []
+    where = ["1=1"]
+    if marca:
+        where.append("UPPER(COALESCE(p.marca,''))=UPPER(%s)")
+        params.append(marca)
+    if hilo:
+        where.append("UPPER(COALESCE(p.hilo,''))=UPPER(%s)")
+        params.append(hilo)
+    rows = db.execute(f"""
+        SELECT p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+               COALESCE(p.stock,0) AS stock,
+               COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+               COALESCE(pr.venta, p.precio, 0) AS precio_venta
+        FROM productos p
+        LEFT JOIN precios pr ON pr.marca = p.marca
+        WHERE {' AND '.join(where)}
+        ORDER BY
+            p.marca,
+            p.hilo,
+            CASE WHEN p.codigo ~ '^[0-9]+$' THEN p.codigo::int ELSE 999999 END,
+            p.codigo
+        LIMIT 10000
+    """, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _productos_a_pedidos_por_codigos(productos, add_codes, exclude_codes=None, quantities=None):
+    exclude_codes = set(str(c).strip().lstrip('0') for c in (exclude_codes or []))
+    quantities = quantities or {}
+    por_codigo = {}
+    for p in productos:
+        c = str(p.get('codigo') or '').strip().lstrip('0') or '0'
+        por_codigo.setdefault(c, []).append(p)
+        cb = str(p.get('codigo_barras') or '').strip().lstrip('0') or '0'
+        if cb != '0':
+            por_codigo.setdefault(cb, []).append(p)
+    pedidos = []
+    no_encontrados = []
+    for c in add_codes:
+        c = str(c).strip().lstrip('0') or '0'
+        if c in exclude_codes:
+            continue
+        opciones = por_codigo.get(c) or []
+        if not opciones:
+            no_encontrados.append(c)
+            continue
+        prod = opciones[0]
+        pedidos.append({
+            'producto_id': prod.get('id'),
+            'codigo': prod.get('codigo'),
+            'marca': prod.get('marca') or '',
+            'hilo': prod.get('hilo') or '',
+            'color': prod.get('color') or '',
+            'stock': int(prod.get('stock') or 0),
+            'precio_venta': float(prod.get('precio_venta') or 0),
+            'cantidad': int(quantities.get(c, 1) or 1),
+            'es_inventariable': prod.get('es_inventariable', True),
+        })
+    return pedidos, no_encontrados
+
+
+def _red_components_from_image_bytes(raw):
+    """
+    Fallback visual sin OpenAI/OCR: detecta manchas rojas de círculos/tachones.
+    No lee texto de la imagen; mapea las marcas a la cuadrícula del contexto.
+    """
+    from PIL import Image
+    img = Image.open(io.BytesIO(raw)).convert("RGB")
+    w, h = img.size
+    pix = img.load()
+    mask = set()
+    # muestreo completo; las imágenes de catálogo no suelen ser enormes tras WhatsApp
+    for y in range(h):
+        for x in range(w):
+            r, g, b = pix[x, y]
+            # rojo fuerte de marcador/whatsapp
+            if r > 150 and g < 105 and b < 105 and r > g * 1.45 and r > b * 1.45:
+                mask.add((x, y))
+    if not mask:
+        return [], (w, h)
+
+    # componentes conectados, con salto 2 para unir trazos cercanos
+    seen = set()
+    comps = []
+    neigh = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(1,1),(-1,1),(1,-1)]
+    for p in list(mask):
+        if p in seen:
+            continue
+        stack = [p]
+        seen.add(p)
+        xs = []
+        ys = []
+        count = 0
+        while stack:
+            qx, qy = stack.pop()
+            xs.append(qx); ys.append(qy); count += 1
+            for dx, dy in neigh:
+                nq = (qx + dx, qy + dy)
+                if nq in mask and nq not in seen:
+                    seen.add(nq)
+                    stack.append(nq)
+        if count < max(30, (w*h)//20000):
+            continue
+        x1, x2, y1, y2 = min(xs), max(xs), min(ys), max(ys)
+        bw, bh = x2-x1+1, y2-y1+1
+        # ignorar subrayados muy pequeños o puntos aislados
+        if bw < w*0.035 and bh < h*0.035:
+            continue
+        comps.append({"bbox": [x1, y1, x2, y2], "area": count, "center": [(x1+x2)/2, (y1+y2)/2]})
+    return comps, (w, h)
+
+
+def _classify_red_mark_component(comp):
+    x1,y1,x2,y2 = comp["bbox"]
+    bw, bh = x2-x1+1, y2-y1+1
+    ratio = bw / max(bh, 1)
+    # Los tachones suelen ser más compactos o diagonales sobre la madeja.
+    # Los círculos alrededor del código/nombre suelen ser más altos/ovalados.
+    if 0.65 <= ratio <= 1.55 and comp["area"] > (bw*bh*0.10):
+        return "tachado"
+    return "circulo"
+
+
+def _infer_visual_codes_grid(raw, productos_contexto, comentario=''):
+    """
+    Intenta deducir códigos por posición de marcas rojas usando el orden del contexto.
+    Requiere que el usuario haya seleccionado marca/hilo correctos.
+    """
+    comps, (w, h) = _red_components_from_image_bytes(raw)
+    if not comps or not productos_contexto:
+        return [], [], {"components": len(comps), "grid": None}
+
+    n = len(productos_contexto)
+    # Catálogos de tonos casi siempre vienen en 5 columnas; si son pocos, usar 4/3.
+    if n >= 15:
+        cols = 5
+    elif n >= 9:
+        cols = 4
+    else:
+        cols = 3
+    rows = max(1, math.ceil(n / cols))
+
+    # Zona visual útil aproximada del catálogo: deja márgenes de imagen y textos.
+    # Ajustada para catálogos tipo Komfy/Velluto con tonos por cuadrícula.
+    left, right = w * 0.13, w * 0.87
+    top, bottom = h * 0.16, h * 0.86
+    x_centers = [left + (right-left) * (i/(cols-1 if cols > 1 else 1)) for i in range(cols)]
+    y_centers = [top + (bottom-top) * (j/(rows-1 if rows > 1 else 1)) for j in range(rows)]
+
+    add = []
+    ex = []
+    assigned = []
+
+    for comp in comps:
+        cx, cy = comp["center"]
+        # Descartar marcas demasiado cerca de bordes o controles de app.
+        if cy < h*0.08 or cy > h*0.94:
+            continue
+
+        col = min(range(cols), key=lambda i: abs(x_centers[i]-cx))
+        row = min(range(rows), key=lambda j: abs(y_centers[j]-cy))
+        idx = row * cols + col
+        if idx < 0 or idx >= n:
+            continue
+
+        codigo = str(productos_contexto[idx].get("codigo") or "").strip().lstrip("0")
+        if not codigo:
+            continue
+
+        kind = _classify_red_mark_component(comp)
+        assigned.append({"codigo": codigo, "row": row+1, "col": col+1, "kind": kind, "bbox": comp["bbox"]})
+
+        if kind == "tachado":
+            if codigo not in ex:
+                ex.append(codigo)
+        else:
+            if codigo not in add:
+                add.append(codigo)
+
+    # Si el comentario dice tachados no, los tachados quedan fuera.
+    # Si todo quedó como tachado por heurística, no eliminar todos: mandarlos como revisión manual.
+    if add:
+        add = [c for c in add if c not in ex]
+    return add, ex, {"components": len(comps), "grid": {"cols": cols, "rows": rows, "assigned": assigned}}
+
+
+def _extract_codes_from_free_text(texto):
+    """
+    Extrae códigos explícitos de frases tipo:
+    39, 68, 78 / agregar 39 68 78 / de ese 39
+    No debe tomar el "1" de 'los círculos 1' como código.
+    """
+    t = _strip_acc(texto or "")
+    if not t:
+        return []
+    if re.search(r"circulos?\s+1\b|circulos?\s+y\b|tachados?\s+no", t):
+        # evitar que la frase "los círculos y los tachados no" se vuelva código 1
+        nums = [n for n in re.findall(r"\b\d{2,4}\b", t)]
+    else:
+        nums = re.findall(r"\b\d{1,4}\b", t)
+    # en Hilorama los códigos reales visuales normalmente son 2-4 dígitos;
+    # ignorar 1 cuando viene de "uno" o instrucción visual.
+    return list(dict.fromkeys(str(int(n)) for n in nums if int(n) > 1))
+
 @app.route('/api/analizar-imagen-referencia', methods=['POST'])
 def analizar_imagen_referencia():
     data = request.get_json(force=True) or {}
@@ -1680,7 +1886,13 @@ def analizar_imagen_referencia():
     vision_text = ''
     vision_json = None
     vision_notes = []
-    circles = 0
+    add_codes = []
+    exclude_codes = []
+    quantities = {}
+
+    # Cargar productos del mismo contexto del parser.
+    with DB() as db:
+        productos_contexto = _codigos_contexto_productos(db, marca, hilo)
 
     # 1) Visión con OpenAI si hay API key.
     api_key = os.environ.get('OPENAI_API_KEY')
@@ -1689,30 +1901,23 @@ def analizar_imagen_referencia():
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             prompt = (
-                "Eres asistente de ventas de una mercería llamada Hilorama. Analiza esta imagen de catálogo enviada por una clienta. "
-                "La clienta marca tonos con círculos rojos, flechas, subrayados o tachones. "
-                "Los números debajo de cada madeja son CÓDIGOS DE PRODUCTO. "
-                "Tu tarea es devolver únicamente JSON estricto, sin markdown, con estas llaves: "
-                "add_codes: lista de códigos que estén encerrados, señalados, subrayados o seleccionados; "
-                "exclude_codes: lista de códigos tachados o claramente cancelados; "
-                "quantities: objeto opcional codigo->cantidad; si no hay cantidad usa 1; "
-                "numbers: todos los números/códigos visibles relevantes; "
-                "positions: posiciones seleccionadas si aplica; "
-                "marks: tipos detectados como circulo, flecha, tachado, subrayado; "
-                "description: resumen corto en español; "
-                "suggested_text: frase para parser, por ejemplo '39 1, 68 1, 78 1'. "
-                "MUY IMPORTANTE: si un número está tachado con una X roja, debe ir en exclude_codes, NO en add_codes. "
-                f"Comentario de la clienta: {comentario}. Contexto marca/hilo: {contexto}."
+                "Analiza esta imagen de catálogo de hilos/estambres. "
+                "Los números impresos bajo cada producto son CÓDIGOS. "
+                "La clienta selecciona con círculos rojos, subrayados o flechas; cancela con X/tachón rojo. "
+                "Devuelve SOLO JSON estricto con: "
+                "add_codes: códigos seleccionados, exclude_codes: códigos tachados, "
+                "quantities: objeto codigo->cantidad si se menciona, numbers: todos los códigos visibles relevantes, "
+                "positions, marks, description, suggested_text. "
+                "Si un código está tachado con X roja, va en exclude_codes y nunca en add_codes. "
+                "Si el comentario dice 'los círculos y los tachados no', agrega SOLO los circulados y excluye tachados. "
+                f"Comentario de clienta: {comentario}. Contexto: {contexto}."
             )
             resp = client.chat.completions.create(
                 model=os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o-mini'),
-                messages=[{
-                    'role': 'user',
-                    'content': [
-                        {'type': 'text', 'text': prompt},
-                        {'type': 'image_url', 'image_url': {'url': data_url}},
-                    ]
-                }],
+                messages=[{'role': 'user', 'content': [
+                    {'type': 'text', 'text': prompt},
+                    {'type': 'image_url', 'image_url': {'url': data_url}},
+                ]}],
                 temperature=0,
             )
             vision_text = resp.choices[0].message.content or ''
@@ -1721,7 +1926,7 @@ def analizar_imagen_referencia():
         except Exception as e:
             vision_notes.append('openai_vision_error:' + str(e)[:160])
 
-    # 2) Fallback OCR / detección simple.
+    # 2) OCR opcional si existe pytesseract.
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(raw))
@@ -1732,46 +1937,13 @@ def analizar_imagen_referencia():
                 vision_notes.append('ocr')
         except Exception:
             pass
-        try:
-            import cv2
-            import numpy as np
-            arr = cv2.cvtColor(np.array(img.convert('RGB')), cv2.COLOR_RGB2BGR)
-            gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
-            gray = cv2.medianBlur(gray, 5)
-            found = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1.2, 35, param1=80, param2=24, minRadius=10, maxRadius=160)
-            if found is not None:
-                circles = int(found.shape[1])
-                vision_notes.append(f'circulos:{circles}')
-        except Exception:
-            pass
     except Exception:
         pass
 
     joined = ' '.join(x for x in [comentario, ocr_text, vision_text] if x).strip()
     resumen = _image_reference_summary(joined)
 
-    add_codes = []
-    exclude_codes = []
-    quantities = {}
-
     if vision_json:
-        for key in ['numbers', 'positions', 'marks']:
-            vals = vision_json.get(key) or []
-            if isinstance(vals, (str, int)):
-                vals = [vals]
-            if key == 'numbers':
-                for v in vals:
-                    try:
-                        n = int(v)
-                        if n not in resumen['numbers']:
-                            resumen['numbers'].append(n)
-                    except Exception:
-                        pass
-            else:
-                for v in vals:
-                    v = str(v).strip()
-                    if v and v not in resumen[key]:
-                        resumen[key].append(v)
         raw_add = vision_json.get('add_codes') or vision_json.get('selected_codes') or []
         raw_ex = vision_json.get('exclude_codes') or vision_json.get('exclude') or []
         raw_q = vision_json.get('quantities') or {}
@@ -1798,80 +1970,64 @@ def analizar_imagen_referencia():
                 try:
                     quantities[str(int(k))] = int(v)
                 except Exception:
-                    try:
-                        quantities[str(k).strip().lstrip('0')] = int(v)
-                    except Exception:
-                        pass
-        if vision_json.get('description'):
-            resumen['description'] = vision_json.get('description')
+                    pass
 
-    if circles and 'circulo' not in resumen['marks']:
-        resumen['marks'].append('circulo')
+    # 3) Si OpenAI no devolvió códigos, usar fallback por marcas rojas + cuadrícula del contexto.
+    grid_debug = None
+    if not add_codes:
+        inferred_add, inferred_ex, grid_debug = _infer_visual_codes_grid(raw, productos_contexto, comentario)
+        if inferred_add or inferred_ex:
+            vision_notes.append('fallback_red_grid')
+            add_codes = inferred_add
+            exclude_codes = inferred_ex
 
-    # Si OpenAI no devolvió add_codes, no inventamos códigos con solo OCR débil.
-    # Pero si el comentario trae códigos explícitos, esos sí se mandan al parser.
+    # 4) Si el comentario trae códigos explícitos, añadirlos.
+    explicit_codes = _extract_codes_from_free_text(comentario)
+    if explicit_codes:
+        for c in explicit_codes:
+            if c not in add_codes and c not in exclude_codes:
+                add_codes.append(c)
+
+    # No agregar tachados.
+    add_codes = [c for c in add_codes if c not in set(exclude_codes)]
+
+    pedidos, no_encontrados = _productos_a_pedidos_por_codigos(productos_contexto, add_codes, exclude_codes, quantities)
+
+    # Si el contexto estaba mal y hay códigos pero no encontró productos, reintenta sin contexto.
+    retried_all = False
+    if add_codes and not pedidos:
+        with DB() as db:
+            productos_all = _codigos_contexto_productos(db, '', '')
+        pedidos, no_encontrados = _productos_a_pedidos_por_codigos(productos_all, add_codes, exclude_codes, quantities)
+        if pedidos:
+            retried_all = True
+            vision_notes.append('fallback_sin_contexto')
+
     if vision_json and vision_json.get('suggested_text'):
         suggested_text = str(vision_json.get('suggested_text')).strip()
     elif add_codes:
         suggested_text = ', '.join(f"{c} {quantities.get(c,1)}" for c in add_codes if c not in exclude_codes)
+    elif explicit_codes:
+        suggested_text = ', '.join(f"{c} 1" for c in explicit_codes)
     else:
         suggested = []
-        if resumen['numbers']:
+        if resumen.get('numbers'):
             suggested.append('numero ' + ' '.join(str(n) for n in resumen['numbers']))
-        if resumen['positions']:
+        if resumen.get('positions'):
             suggested.append('posicion ' + ' '.join(resumen['positions']))
-        if resumen['marks']:
+        if resumen.get('marks'):
             suggested.append('marca ' + ' '.join(resumen['marks']))
         suggested_text = ('referencia visual ' + ' '.join(suggested)).strip() if suggested else comentario
 
-    # Convertir add_codes a productos reales usando el mismo contexto del parser.
-    pedidos = []
-    if add_codes:
-        params = []
-        where = ["1=1"]
-        if marca:
-            where.append("UPPER(COALESCE(p.marca,''))=UPPER(%s)")
-            params.append(marca)
-        if hilo:
-            where.append("UPPER(COALESCE(p.hilo,''))=UPPER(%s)")
-            params.append(hilo)
-        with DB() as db:
-            rows = db.execute(f"""
-                SELECT p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
-                       COALESCE(p.stock,0) AS stock,
-                       COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
-                       COALESCE(pr.venta, p.precio, 0) AS precio_venta
-                FROM productos p
-                LEFT JOIN precios pr ON pr.marca = p.marca
-                WHERE {' AND '.join(where)}
-                ORDER BY p.marca, p.hilo, p.codigo
-                LIMIT 10000
-            """, params).fetchall()
-        por_codigo = {}
-        for p in [dict(r) for r in rows]:
-            c = str(p.get('codigo') or '').strip().lstrip('0') or '0'
-            por_codigo.setdefault(c, []).append(p)
-            cb = str(p.get('codigo_barras') or '').strip().lstrip('0') or '0'
-            if cb != '0':
-                por_codigo.setdefault(cb, []).append(p)
-        for c in add_codes:
-            if c in exclude_codes:
-                continue
-            opciones = por_codigo.get(c) or []
-            if not opciones:
-                continue
-            prod = opciones[0]
-            pedidos.append({
-                'producto_id': prod.get('id'),
-                'codigo': prod.get('codigo'),
-                'marca': prod.get('marca') or '',
-                'hilo': prod.get('hilo') or '',
-                'color': prod.get('color') or '',
-                'stock': int(prod.get('stock') or 0),
-                'precio_venta': float(prod.get('precio_venta') or 0),
-                'cantidad': int(quantities.get(c, 1) or 1),
-                'es_inventariable': prod.get('es_inventariable', True),
-            })
+    advertencias = []
+    if not pedidos and not add_codes:
+        advertencias.append("No pude convertir la imagen a productos. Selecciona marca/hilo correcto o escribe los códigos detectados abajo.")
+    if retried_all:
+        advertencias.append("El contexto seleccionado no encontró productos; busqué los códigos en todo el almacén.")
+    if marca and hilo and len(productos_contexto) > 40:
+        advertencias.append("El contexto tiene muchos productos; para imágenes conviene elegir marca e hilo exactos.")
+    if not marca or not hilo:
+        advertencias.append("Para que imagen→carrito sea preciso, elige Marca e Hilo antes de analizar.")
 
     return jsonify(json_safe({
         'ok': True,
@@ -1884,8 +2040,11 @@ def analizar_imagen_referencia():
         'exclude_codes': exclude_codes,
         'quantities': quantities,
         'pedidos': pedidos,
+        'no_encontrados': no_encontrados,
+        'contexto': {'marca': marca, 'hilo': hilo, 'productos_contexto': len(productos_contexto), 'retry_all': retried_all},
+        'grid_debug': grid_debug,
+        'advertencias': advertencias,
     }))
-
 
 @app.route('/api/transcribir-audio', methods=['POST'])
 def transcribir_audio():

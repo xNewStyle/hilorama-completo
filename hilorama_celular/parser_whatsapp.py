@@ -578,6 +578,31 @@ def extraer_pedidos(texto, productos):
                 _add(pedidos, codigo, cantidad_bloque if usar_bloque else cantidad)
             continue
 
+
+        # ================= frases compuestas muy humanas =================
+        # Ej: "del 55 dame 2, 3 56 y un 310"
+        patrones_frase_compuesta = [
+            r"(?:del|de|d)\s*#?(\d+)\s*(?:dame|quiero|ponme|agrega|pasame|pásame)?\s*(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)",
+            r"\b(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:del|de|d)?\s*#?(\d+)\b",
+        ]
+        found_comp = False
+        for patc in patrones_frase_compuesta:
+            for mc in re.finditer(patc, linea, re.I):
+                a = str(mc.group(1)).lower()
+                b = str(mc.group(2)).lower()
+                # Si empieza con "del 55 dame 2", a=codigo, b=cantidad.
+                if a.isdigit() and norm_codigo(a) in codigos_validos:
+                    codigo = norm_codigo(a)
+                    cantidad = _cantidad_texto(b) or (int(b) if b.isdigit() else 1)
+                else:
+                    cantidad = _cantidad_texto(a) or (int(a) if a.isdigit() else 1)
+                    codigo = norm_codigo(b)
+                if codigo in codigos_validos:
+                    _add(pedidos, codigo, cantidad)
+                    found_comp = True
+        if found_comp:
+            continue
+
         # ================= formatos explícitos por código =================
         patrones = [
             (rf"\b(\d+)\s*[\.\-]?\s*\(\s*(?:x|\*)?\s*(\d+)\s*(?:{UNIDADES})?\s*\)", "codigo_cantidad"),
