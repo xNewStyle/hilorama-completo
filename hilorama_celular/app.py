@@ -283,7 +283,7 @@ def health():
     return jsonify({
         "ok": True,
         "service": "Hilorama Celular API",
-        "version": "fase3",
+        "version": "fase4",
         "time": now_mexico().isoformat(sep=" ", timespec="seconds"),
         "pin_enabled": bool(os.environ.get("MOBILE_PIN", "").strip()),
     })
@@ -401,20 +401,40 @@ def detalle_nota(nota_id):
 
         items = db.execute("""
             SELECT
-                i.id, i.codigo,
-                COALESCE(i.marca, p.marca, '') AS marca,
-                COALESCE(i.hilo, p.hilo, '') AS hilo,
-                COALESCE(i.color, p.color, '') AS color,
-                COALESCE(i.cantidad,0) AS cantidad,
-                COALESCE(i.empacadas,0) AS empacadas,
-                COALESCE(i.precio, pr.venta, p.precio, 0) AS precio,
-                COALESCE(p.stock,0) AS stock,
-                COALESCE(p.es_inventariable, TRUE) AS es_inventariable
+                MIN(i.id) AS id,
+                i.codigo,
+                COALESCE(NULLIF(i.marca,''), p.marca, '') AS marca,
+                COALESCE(NULLIF(i.hilo,''), p.hilo, '') AS hilo,
+                COALESCE(NULLIF(i.color,''), p.color, '') AS color,
+                SUM(COALESCE(i.cantidad,0)) AS cantidad,
+                SUM(COALESCE(i.empacadas,0)) AS empacadas,
+                COALESCE(NULLIF(MAX(i.precio),0), MAX(pr.venta), MAX(p.precio), 0) AS precio,
+                COALESCE(MAX(p.stock),0) AS stock,
+                COALESCE(BOOL_OR(COALESCE(p.es_inventariable, TRUE)), TRUE) AS es_inventariable
             FROM items i
-            LEFT JOIN productos p ON p.codigo=i.codigo
-            LEFT JOIN precios pr ON pr.marca = COALESCE(i.marca, p.marca)
+            LEFT JOIN LATERAL (
+                SELECT p2.*
+                FROM productos p2
+                WHERE (p2.codigo=i.codigo OR p2.codigo_barras=i.codigo)
+                  AND (NULLIF(i.marca,'') IS NULL OR UPPER(p2.marca)=UPPER(i.marca))
+                  AND (NULLIF(i.hilo,'') IS NULL OR UPPER(p2.hilo)=UPPER(i.hilo))
+                ORDER BY
+                    CASE
+                        WHEN UPPER(COALESCE(p2.marca,''))=UPPER(COALESCE(i.marca,''))
+                         AND UPPER(COALESCE(p2.hilo,''))=UPPER(COALESCE(i.hilo,'')) THEN 0
+                        ELSE 1
+                    END,
+                    p2.id
+                LIMIT 1
+            ) p ON TRUE
+            LEFT JOIN precios pr ON pr.marca = COALESCE(NULLIF(i.marca,''), p.marca)
             WHERE i.nota_id=%s
-            ORDER BY i.id
+            GROUP BY
+                i.codigo,
+                COALESCE(NULLIF(i.marca,''), p.marca, ''),
+                COALESCE(NULLIF(i.hilo,''), p.hilo, ''),
+                COALESCE(NULLIF(i.color,''), p.color, '')
+            ORDER BY MIN(i.id)
         """, (nota_id,)).fetchall()
 
     n = dict(nota)
@@ -577,6 +597,38 @@ def actualizar_producto(codigo):
     return jsonify(json_safe({"ok": True, "producto": dict(row)}))
 
 
+@app.route("/api/productos/id/<int:producto_id>", methods=["PATCH"])
+def actualizar_producto_por_id(producto_id):
+    data = request.get_json(force=True) or {}
+    allowed = []
+    params = []
+
+    if "color" in data:
+        allowed.append("color=%s")
+        params.append((data.get("color") or "").strip())
+    if "stock" in data:
+        try:
+            stock = int(data.get("stock"))
+        except Exception:
+            return jsonify({"ok": False, "error": "Stock inválido"}), 400
+        allowed.append("stock=%s")
+        params.append(stock)
+
+    if not allowed:
+        return jsonify({"ok": False, "error": "No hay cambios"}), 400
+
+    params.append(producto_id)
+    with DB() as db:
+        row = db.execute(f"""
+            UPDATE productos
+            SET {', '.join(allowed)}
+            WHERE id=%s
+            RETURNING id, codigo, marca, hilo, color, stock
+        """, params).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
+    return jsonify(json_safe({"ok": True, "producto": dict(row)}))
+
 
 @app.route("/api/catalogo/marcas")
 def catalogo_marcas():
@@ -654,20 +706,25 @@ def parser_whatsapp_mobile():
     por_codigo = {}
     for p in productos:
         codigo_norm = str(p.get("codigo") or "").strip().lstrip("0") or "0"
-        por_codigo[codigo_norm] = p
+        por_codigo.setdefault(codigo_norm, []).append(p)
         cb = str(p.get("codigo_barras") or "").strip().lstrip("0") or "0"
         if cb != "0":
-            por_codigo[cb] = p
+            por_codigo.setdefault(cb, []).append(p)
 
     pedidos = []
     errores = []
+    advertencias = []
     for ped in resultado.get("pedidos", []):
         codigo_norm = str(ped.get("codigo") or "").strip().lstrip("0") or "0"
-        prod = por_codigo.get(codigo_norm)
-        if not prod:
+        opciones = por_codigo.get(codigo_norm) or []
+        if not opciones:
             errores.append(codigo_norm)
             continue
+        if len(opciones) > 1 and not (marca or hilo):
+            advertencias.append(f"El código {codigo_norm} existe en varias marcas/hilos. Usa contexto para evitar errores.")
+        prod = opciones[0]
         pedidos.append({
+            "producto_id": prod.get("id"),
             "codigo": prod.get("codigo"),
             "marca": prod.get("marca") or "",
             "hilo": prod.get("hilo") or "",
@@ -686,6 +743,7 @@ def parser_whatsapp_mobile():
         "contexto": {"marca": marca, "hilo": hilo, "productos_contexto": len(productos)},
         "pedidos": pedidos,
         "errores": sorted(set(str(e) for e in errores if e)),
+        "advertencias": sorted(set(str(a) for a in advertencias if a)),
         "sugerencias": resultado.get("sugerencias") or {},
     }))
 
@@ -749,28 +807,46 @@ def obtener_pedido_default(db):
         return None
 
 
+def _item_key(raw):
+    return "|".join([
+        str(raw.get("codigo") or "").strip(),
+        str(raw.get("marca") or "").strip().upper(),
+        str(raw.get("hilo") or "").strip().upper(),
+        str(raw.get("color") or "").strip().upper(),
+    ])
+
+
 def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
     """
-    Normaliza y consolida productos.
-    Esto evita que al editar desde celular se guarden filas duplicadas del mismo código
-    y parezca que se suman 1, luego 2, luego 3 incorrectamente.
+    Normaliza y consolida productos por código + marca + hilo + color.
+    Esto evita duplicados raros cuando un mismo código existe en varios hilos/marcas
+    y conserva el contexto seleccionado en el celular.
     """
     agrupados = {}
     for raw in items_req:
         codigo = str(raw.get("codigo") or "").strip()
+        marca = str(raw.get("marca") or "").strip()
+        hilo = str(raw.get("hilo") or "").strip()
+        color = str(raw.get("color") or "").strip()
         try:
             cantidad = int(float(raw.get("cantidad") or 0))
         except Exception:
             cantidad = 0
         if not codigo or cantidad <= 0:
             continue
-        precio_manual = raw.get("precio")
-        key = codigo
+        key = _item_key({"codigo": codigo, "marca": marca, "hilo": hilo, "color": color})
         if key not in agrupados:
-            agrupados[key] = {"codigo": codigo, "cantidad": 0, "precio": precio_manual}
+            agrupados[key] = {
+                "codigo": codigo,
+                "marca": marca,
+                "hilo": hilo,
+                "color": color,
+                "cantidad": 0,
+                "precio": raw.get("precio"),
+            }
         agrupados[key]["cantidad"] += cantidad
-        if precio_manual is not None:
-            agrupados[key]["precio"] = precio_manual
+        if raw.get("precio") not in (None, ""):
+            agrupados[key]["precio"] = raw.get("precio")
 
     items_finales = []
     errores = []
@@ -778,6 +854,9 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
 
     for raw in agrupados.values():
         codigo = str(raw.get("codigo") or "").strip()
+        marca = str(raw.get("marca") or "").strip()
+        hilo = str(raw.get("hilo") or "").strip()
+        color = str(raw.get("color") or "").strip()
         cantidad = int(raw.get("cantidad") or 0)
         precio_manual = raw.get("precio")
         if not codigo or cantidad <= 0:
@@ -785,19 +864,34 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
 
         prod = db.execute("""
             SELECT
-                p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
                 COALESCE(p.stock,0) AS stock,
                 COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
                 COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
                 COALESCE(pr.venta, p.precio, 0) AS precio_venta
             FROM productos p
             LEFT JOIN precios pr ON pr.marca = p.marca
-            WHERE p.codigo=%s OR p.codigo_barras=%s
+            WHERE (p.codigo=%s OR p.codigo_barras=%s)
+              AND (%s='' OR UPPER(COALESCE(p.marca,''))=UPPER(%s))
+              AND (%s='' OR UPPER(COALESCE(p.hilo,''))=UPPER(%s))
+              AND (%s='' OR UPPER(COALESCE(p.color,''))=UPPER(%s))
+            ORDER BY
+                CASE
+                    WHEN %s<>'' AND UPPER(COALESCE(p.marca,''))=UPPER(%s)
+                     AND %s<>'' AND UPPER(COALESCE(p.hilo,''))=UPPER(%s) THEN 0
+                    WHEN %s<>'' AND UPPER(COALESCE(p.marca,''))=UPPER(%s) THEN 1
+                    ELSE 2
+                END,
+                p.id
             LIMIT 1
-        """, (codigo, codigo)).fetchone()
+        """, (codigo, codigo, marca, marca, hilo, hilo, color, color,
+              marca, marca, hilo, hilo, marca, marca)).fetchone()
 
         if not prod:
-            errores.append(f"No existe el producto {codigo}")
+            contexto = ""
+            if marca or hilo:
+                contexto = f" en contexto {marca or 'todas'} / {hilo or 'todos'}"
+            errores.append(f"No existe el producto {codigo}{contexto}")
             continue
 
         prod = dict(prod)
@@ -807,13 +901,14 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
 
         stock = int(prod.get("stock") or 0)
         if validar_stock and es_inventariable and stock < cantidad:
-            errores.append(f"Stock insuficiente {prod['codigo']} ({stock} disponibles)")
+            errores.append(f"Stock insuficiente {prod['codigo']} {prod.get('marca','')}/{prod.get('hilo','')} ({stock} disponibles)")
             continue
 
         precio = float(precio_manual if precio_manual not in (None, "") else (prod.get("precio_venta") or 0))
         subtotal = cantidad * precio
         total += subtotal
         items_finales.append({
+            "producto_id": prod.get("id"),
             "codigo": prod["codigo"],
             "marca": prod.get("marca") or "",
             "hilo": prod.get("hilo") or "",
@@ -821,6 +916,7 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
             "cantidad": cantidad,
             "precio": precio,
             "subtotal": subtotal,
+            "stock": stock,
             "es_inventariable": bool(es_inventariable),
         })
 
