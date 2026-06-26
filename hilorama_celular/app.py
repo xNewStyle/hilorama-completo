@@ -1913,6 +1913,172 @@ def _infer_visual_codes_grid(raw, productos_contexto, comentario=''):
         }
     }
 
+
+def _safe_json_from_text(texto):
+    """
+    Limpia respuestas de IA que vengan con ```json ...```
+    y devuelve dict seguro.
+    """
+    if not texto:
+        return {}
+    s = str(texto).strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?", "", s.strip(), flags=re.I).strip()
+        s = re.sub(r"```$", "", s.strip()).strip()
+    try:
+        return json.loads(s)
+    except Exception:
+        m = re.search(r"\{.*\}", s, flags=re.S)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except Exception:
+                return {}
+    return {}
+
+
+def _norm_code_list(values):
+    out = []
+    if values is None:
+        return out
+    if isinstance(values, (str, int, float)):
+        values = [values]
+    if isinstance(values, dict):
+        values = list(values.values())
+    for v in values:
+        try:
+            c = str(int(float(str(v).strip())))
+        except Exception:
+            c = re.sub(r"\D+", "", str(v or ""))
+            c = str(int(c)) if c else ""
+        if c and c not in out:
+            out.append(c)
+    return out
+
+
+def _productos_contexto_para_vision(productos_contexto, max_items=120):
+    """
+    Lista compacta para que la IA visual valide códigos contra catálogo.
+    """
+    items = []
+    for p in productos_contexto[:max_items]:
+        items.append({
+            "codigo": str(p.get("codigo") or "").strip(),
+            "color": str(p.get("color") or "").strip(),
+            "marca": str(p.get("marca") or "").strip(),
+            "hilo": str(p.get("hilo") or "").strip(),
+        })
+    return items
+
+
+def _analizar_imagen_con_openai_lens(data_url, comentario, contexto, productos_contexto):
+    """
+    Analizador principal estilo Lens:
+    1) Lee la imagen completa.
+    2) Lee números/texto.
+    3) Ubica marcas rojas: círculos, flechas, subrayados, tachones/X.
+    4) Devuelve JSON estructurado.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None, "sin_openai_api_key"
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+
+    catalogo = _productos_contexto_para_vision(productos_contexto)
+    schema_text = """
+Devuelve SOLO JSON válido, sin markdown:
+{
+  "add_codes": ["39","68"],
+  "exclude_codes": ["73"],
+  "quantities": {"39": 1},
+  "all_visible_codes": ["39","54"],
+  "explanation": "breve"
+}
+"""
+
+    prompt = f"""
+Eres un analizador visual de pedidos de mercería, parecido a Google Lens pero especializado en catálogos de hilos.
+
+TAREA:
+Analiza la imagen. Debes detectar qué productos marcó la clienta.
+
+REGLAS IMPORTANTES:
+- Los números impresos debajo de cada madeja son CÓDIGOS de producto.
+- Círculo rojo, encierro, subrayado fuerte o flecha roja = AGREGAR.
+- X roja, tachón rojo o producto cruzado = EXCLUIR.
+- Si el comentario dice "los círculos sí y los tachados no", agrega solo los circulados y excluye los tachados.
+- No inventes códigos. Usa únicamente códigos visibles en la imagen o en la lista de contexto.
+- Si ves una marca roja rodeando el texto del código/nombre, cuenta como seleccionado.
+- Si hay marca roja arriba pero no cruza el producto, revisa si es parte del círculo; no lo excluyas automáticamente.
+- Si un producto está claramente con X roja grande sobre la madeja, va en exclude_codes.
+- Devuelve códigos como texto sin ceros extra.
+
+CONTEXTO ELEGIDO EN LA APP:
+{contexto}
+
+PRODUCTOS DEL CONTEXTO, para validar:
+{json.dumps(catalogo, ensure_ascii=False)}
+
+COMENTARIO DE LA CLIENTA:
+{comentario}
+
+FORMATO:
+{schema_text}
+"""
+
+    model = os.environ.get("OPENAI_VISION_MODEL", "gpt-4o-mini")
+
+    # Chat Completions es más compatible con versiones viejas del SDK que Responses.
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "Responde siempre JSON válido. No uses markdown."},
+            {"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
+            ]},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+
+    content = resp.choices[0].message.content or "{}"
+    parsed = _safe_json_from_text(content)
+    return parsed, "openai_lens"
+
+
+def _validar_resultado_lens(parsed, productos_contexto):
+    codigos_validos = set()
+    for p in productos_contexto:
+        c = str(p.get("codigo") or "").strip().lstrip("0")
+        if c:
+            codigos_validos.add(c)
+        cb = str(p.get("codigo_barras") or "").strip().lstrip("0")
+        if cb:
+            codigos_validos.add(cb)
+
+    add = _norm_code_list(parsed.get("add_codes") or parsed.get("selected_codes") or parsed.get("add"))
+    ex = _norm_code_list(parsed.get("exclude_codes") or parsed.get("excluded_codes") or parsed.get("exclude"))
+    quantities_raw = parsed.get("quantities") or {}
+    quantities = {}
+    if isinstance(quantities_raw, dict):
+        for k, v in quantities_raw.items():
+            ck = _norm_code_list([k])
+            if not ck:
+                continue
+            try:
+                quantities[ck[0]] = int(v)
+            except Exception:
+                quantities[ck[0]] = 1
+
+    # Si el modelo encontró códigos visibles que no están en contexto, los dejamos,
+    # porque luego el endpoint puede reintentar contra todo el almacén.
+    add = [c for c in add if c not in ex]
+    return add, ex, quantities
+
+
 def _extract_codes_from_free_text(texto):
     """
     Extrae códigos explícitos de frases tipo:
@@ -1941,58 +2107,40 @@ def analizar_imagen_referencia():
     contexto = (data.get('contexto') or '').strip()
     if not contexto:
         contexto = f"{marca} / {hilo}".strip(" / ")
+
     if not data_url:
         return jsonify({'ok': False, 'error': 'No se recibió imagen'}), 400
 
     try:
         raw = _extract_data_url_bytes(data_url)
     except Exception:
-        return jsonify({'ok': False, 'error': 'No pude leer la imagen. Intenta subirla otra vez o usa una imagen más pequeña.'}), 400
+        return jsonify({'ok': False, 'error': 'No pude leer la imagen. Intenta subirla otra vez.'}), 400
+
     ocr_text = ''
     vision_text = ''
-    vision_json = None
     vision_notes = []
     add_codes = []
     exclude_codes = []
     quantities = {}
+    grid_debug = None
+    advertencias = []
 
-    # Cargar productos del mismo contexto del parser.
     with DB() as db:
         productos_contexto = _codigos_contexto_productos(db, marca, hilo)
 
-    # 1) Visión con OpenAI si hay API key.
-    api_key = os.environ.get('OPENAI_API_KEY')
-    if api_key:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=api_key)
-            prompt = (
-                "Analiza esta imagen de catálogo de hilos/estambres. "
-                "Los números impresos bajo cada producto son CÓDIGOS. "
-                "La clienta selecciona con círculos rojos, subrayados o flechas; cancela con X/tachón rojo. "
-                "Devuelve SOLO JSON estricto con: "
-                "add_codes: códigos seleccionados, exclude_codes: códigos tachados, "
-                "quantities: objeto codigo->cantidad si se menciona, numbers: todos los códigos visibles relevantes, "
-                "positions, marks, description, suggested_text. "
-                "Si un código está tachado con X roja, va en exclude_codes y nunca en add_codes. "
-                "Si el comentario dice 'los círculos y los tachados no', agrega SOLO los circulados y excluye tachados. "
-                f"Comentario de clienta: {comentario}. Contexto: {contexto}."
-            )
-            resp = client.chat.completions.create(
-                model=os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o-mini'),
-                messages=[{'role': 'user', 'content': [
-                    {'type': 'text', 'text': prompt},
-                    {'type': 'image_url', 'image_url': {'url': data_url}},
-                ]}],
-                temperature=0,
-            )
-            vision_text = resp.choices[0].message.content or ''
-            vision_json = _safe_json_from_text(vision_text)
-            vision_notes.append('openai_vision')
-        except Exception as e:
-            vision_notes.append('openai_vision_error:' + str(e)[:160])
+    # 1) Analizador principal tipo Lens: visión multimodal + JSON.
+    lens_result = None
+    try:
+        parsed, provider = _analizar_imagen_con_openai_lens(data_url, comentario, contexto, productos_contexto)
+        vision_notes.append(provider)
+        if parsed:
+            lens_result = parsed
+            vision_text = json.dumps(parsed, ensure_ascii=False)
+            add_codes, exclude_codes, quantities = _validar_resultado_lens(parsed, productos_contexto)
+    except Exception as e:
+        vision_notes.append("openai_lens_error:" + str(e)[:180])
 
-    # 2) OCR opcional si existe pytesseract.
+    # 2) OCR opcional local como ayuda, no como fuente principal.
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(raw))
@@ -2006,60 +2154,27 @@ def analizar_imagen_referencia():
     except Exception:
         pass
 
-    joined = ' '.join(x for x in [comentario, ocr_text, vision_text] if x).strip()
-    resumen = _image_reference_summary(joined)
+    # 3) Si no hay OpenAI o no devolvió códigos, fallback de rojo/cuadrícula.
+    if not add_codes and not exclude_codes:
+        try:
+            inferred_add, inferred_ex, grid_debug = _infer_visual_codes_grid(raw, productos_contexto, comentario)
+            if inferred_add or inferred_ex:
+                vision_notes.append('fallback_red_grid')
+                add_codes = inferred_add
+                exclude_codes = inferred_ex
+        except Exception as e:
+            vision_notes.append("fallback_grid_error:" + str(e)[:180])
 
-    if vision_json:
-        raw_add = vision_json.get('add_codes') or vision_json.get('selected_codes') or []
-        raw_ex = vision_json.get('exclude_codes') or vision_json.get('exclude') or []
-        raw_q = vision_json.get('quantities') or {}
-        if isinstance(raw_add, (str, int)):
-            raw_add = [raw_add]
-        if isinstance(raw_ex, (str, int)):
-            raw_ex = [raw_ex]
-        for v in raw_add:
-            try:
-                c = str(int(v))
-            except Exception:
-                c = str(v).strip().lstrip('0')
-            if c and c not in add_codes:
-                add_codes.append(c)
-        for v in raw_ex:
-            try:
-                c = str(int(v))
-            except Exception:
-                c = str(v).strip().lstrip('0')
-            if c and c not in exclude_codes:
-                exclude_codes.append(c)
-        if isinstance(raw_q, dict):
-            for k, v in raw_q.items():
-                try:
-                    quantities[str(int(k))] = int(v)
-                except Exception:
-                    pass
-
-    # 3) Si OpenAI no devolvió códigos, usar fallback por marcas rojas + cuadrícula del contexto.
-    grid_debug = None
-    if not add_codes:
-        inferred_add, inferred_ex, grid_debug = _infer_visual_codes_grid(raw, productos_contexto, comentario)
-        if inferred_add or inferred_ex:
-            vision_notes.append('fallback_red_grid')
-            add_codes = inferred_add
-            exclude_codes = inferred_ex
-
-    # 4) Si el comentario trae códigos explícitos, añadirlos.
+    # 4) Códigos explícitos escritos en el comentario.
     explicit_codes = _extract_codes_from_free_text(comentario)
-    if explicit_codes:
-        for c in explicit_codes:
-            if c not in add_codes and c not in exclude_codes:
-                add_codes.append(c)
+    for c in explicit_codes:
+        if c not in add_codes and c not in exclude_codes:
+            add_codes.append(c)
 
-    # No agregar tachados.
     add_codes = [c for c in add_codes if c not in set(exclude_codes)]
 
     pedidos, no_encontrados = _productos_a_pedidos_por_codigos(productos_contexto, add_codes, exclude_codes, quantities)
 
-    # Si el contexto estaba mal y hay códigos pero no encontró productos, reintenta sin contexto.
     retried_all = False
     if add_codes and not pedidos:
         with DB() as db:
@@ -2069,31 +2184,24 @@ def analizar_imagen_referencia():
             retried_all = True
             vision_notes.append('fallback_sin_contexto')
 
-    if vision_json and vision_json.get('suggested_text'):
-        suggested_text = str(vision_json.get('suggested_text')).strip()
-    elif add_codes:
-        suggested_text = ', '.join(f"{c} {quantities.get(c,1)}" for c in add_codes if c not in exclude_codes)
-    elif explicit_codes:
-        suggested_text = ', '.join(f"{c} 1" for c in explicit_codes)
-    else:
-        suggested = []
-        if resumen.get('numbers'):
-            suggested.append('numero ' + ' '.join(str(n) for n in resumen['numbers']))
-        if resumen.get('positions'):
-            suggested.append('posicion ' + ' '.join(resumen['positions']))
-        if resumen.get('marks'):
-            suggested.append('marca ' + ' '.join(resumen['marks']))
-        suggested_text = ('referencia visual ' + ' '.join(suggested)).strip() if suggested else comentario
+    joined = ' '.join(x for x in [comentario, ocr_text, vision_text] if x).strip()
+    resumen = _image_reference_summary(joined)
 
-    advertencias = []
-    if not pedidos and not add_codes:
-        advertencias.append("No pude convertir la imagen a productos. Selecciona marca/hilo correcto o escribe los códigos detectados abajo.")
-    if retried_all:
-        advertencias.append("El contexto seleccionado no encontró productos; busqué los códigos en todo el almacén.")
-    if marca and hilo and len(productos_contexto) > 40:
-        advertencias.append("El contexto tiene muchos productos; para imágenes conviene elegir marca e hilo exactos.")
+    if add_codes:
+        suggested_text = ', '.join(f"{c} {quantities.get(c,1)}" for c in add_codes)
+    elif lens_result and lens_result.get("suggested_text"):
+        suggested_text = str(lens_result.get("suggested_text"))
+    else:
+        suggested_text = comentario
+
+    if not os.environ.get("OPENAI_API_KEY"):
+        advertencias.append("No hay OPENAI_API_KEY en Render. Estoy usando fallback visual básico; para que funcione como Lens necesitas configurar la API key.")
     if not marca or not hilo:
-        advertencias.append("Para que imagen→carrito sea preciso, elige Marca e Hilo antes de analizar.")
+        advertencias.append("Selecciona Marca e Hilo exactos antes de analizar para que coincida con el catálogo.")
+    if retried_all:
+        advertencias.append("El contexto no encontró productos; busqué en todo el almacén.")
+    if add_codes and no_encontrados:
+        advertencias.append("Detecté códigos, pero algunos no existen en el contexto: " + ", ".join(no_encontrados))
 
     return jsonify(json_safe({
         'ok': True,
@@ -2110,6 +2218,7 @@ def analizar_imagen_referencia():
         'contexto': {'marca': marca, 'hilo': hilo, 'productos_contexto': len(productos_contexto), 'retry_all': retried_all},
         'grid_debug': grid_debug,
         'advertencias': advertencias,
+        'lens_result': lens_result,
     }))
 
 @app.route('/api/transcribir-audio', methods=['POST'])

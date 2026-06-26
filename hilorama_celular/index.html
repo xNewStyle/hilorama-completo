@@ -107,7 +107,7 @@
           <div class="small">Para fotos alteradas: “de ese 2”, “arriba derecha”, “tachado no”.</div>
           <textarea id="pedidoImagenTexto" placeholder="Comentario sobre la foto: de ese 2 por favor / el de arriba a la derecha / el tachado no"></textarea>
           <div id="pedidoImagenPreview" class="hidden" style="margin-top:8px"></div>
-          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia()">Analizar imagen</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
+          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia()">Analizar imagen tipo Lens</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
           <div id="pedidoImagenAnalisis" class="small" style="margin-top:8px"></div>
         </details>
         <details class="ai-block"><summary>👤 Historial de cliente opcional</summary>
@@ -213,7 +213,7 @@ async function analizarImagenReferencia(){
       state.parserPedidos=r.pedidos;
       addAllParsed(true);
       renderCart();
-      $('pedidoImagenAnalisis').innerHTML=`<div class="banner">Imagen analizada y ${r.pedidos.length} producto(s) agregados al carrito con contexto ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}.<br>${escapeHtml(extras.join(' · ')||'sin resumen')}<br>Revisa el carrito antes de guardar.</div>`;
+      $('pedidoImagenAnalisis').innerHTML=`<div class="banner">Imagen analizada tipo Lens y ${r.pedidos.length} producto(s) agregados al carrito con contexto ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}.<br>${escapeHtml(extras.join(' · ')||'sin resumen')}<br>Revisa el carrito antes de guardar.</div>`;
       crearScroll('crearCarritoSec');
     }else{
       $('pedidoImagenAnalisis').innerHTML=`<div class="banner warning">Analicé la imagen pero no pude convertirla automáticamente a productos.<br>OCR: ${escapeHtml((r.ocr_text||'').slice(0,180)||'sin texto visible')}<br>Resumen: ${escapeHtml(extras.join(' · ')||'sin hallazgos claros')}<br>Sugerencia: <b>${escapeHtml(r.suggested_text||'')}</b></div>`;
