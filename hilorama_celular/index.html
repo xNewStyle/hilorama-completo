@@ -31,6 +31,7 @@
     .toolbar{display:grid;grid-template-columns:1fr;gap:9px}.toolbar .inline{display:grid;grid-template-columns:1fr 1fr;gap:8px}.group-head{position:sticky;top:0;background:#eaf1fb;border:1px solid #cbd5e1;border-radius:14px;padding:9px 11px;margin:12px 0 8px;font-weight:900;z-index:1}.pillrow{display:flex;gap:8px;overflow:auto;padding-bottom:4px}.pill{white-space:nowrap;width:auto;padding:9px 12px;background:#f1f5f9;color:#334155;border:1px solid var(--line);border-radius:999px}.pill.active{background:#0f766e;color:white}
 
     .create-nav{position:sticky;top:72px;z-index:18;display:flex;gap:8px;overflow-x:auto;padding:8px 2px 10px;margin:0 -2px;background:linear-gradient(180deg,#fbfdff 82%,rgba(251,253,255,0));scrollbar-width:none}.create-nav::-webkit-scrollbar{display:none}.create-nav button{min-width:112px;width:auto;padding:10px 12px;border-radius:999px;background:#eaf1fb;color:#0f172a;border:1px solid var(--line);box-shadow:none}.create-nav button.primary{background:#0f766e;color:white}.create-panel{scroll-margin-top:142px}.compact-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.chips{display:flex;gap:7px;overflow-x:auto;padding:6px 0;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chip{width:auto;white-space:nowrap;padding:8px 10px;border-radius:999px;background:#f1f5f9;color:#334155;border:1px solid var(--line);font-size:12px}.mini-title{font-weight:900;margin:10px 0 4px;color:#334155}details.ai-block{border:1px solid var(--line);background:white;border-radius:16px;padding:10px 12px;margin:9px 0}details.ai-block summary{font-weight:900;cursor:pointer}.parser-result-scroll{max-height:310px;overflow:auto;margin-top:8px;padding-right:2px}.sticky-cart-actions{position:sticky;bottom:78px;background:rgba(251,253,255,.96);backdrop-filter:blur(10px);padding:10px 0 0}.speech-live{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:8px;margin-top:6px;color:#475569;font-size:12px;min-height:34px}
+    #viewCrear{max-height:calc(100vh - 150px);display:flex;flex-direction:column;overflow:hidden}.create-workspace{overflow:auto;overscroll-behavior:contain;padding:2px 4px 90px 2px}.create-panel{padding:12px;margin:8px 0}.quick-savebar{position:sticky;bottom:0;background:rgba(251,253,255,.96);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:9px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px;z-index:5}.speech-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}.speech-controls button{min-height:48px}.focus-scroll{scroll-margin-top:12px}
     @media(max-width:640px){.compact-actions{grid-template-columns:1fr 1fr}.create-nav{top:70px}.app{padding-left:10px;padding-right:10px}.grid2,.grid3{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.note-title,.product{grid-template-columns:1fr}h1{font-size:25px}.card{padding:14px}.footer-inner{grid-template-columns:repeat(4,1fr);gap:6px}.footer button{font-size:12px}.scroll-list{max-height:62vh}}
   </style>
 </head>
@@ -77,6 +78,7 @@
         <button onclick="crearScroll('crearManualSec')">Manual</button>
         <button onclick="crearScroll('crearCarritoSec')">Carrito</button>
       </div>
+      <div id="crearWorkspace" class="create-workspace">
       <div id="crearClienteSec" class="card inner create-panel"><h2>1. Cliente</h2><input id="buscarCliente" placeholder="Buscar cliente o teléfono"><div id="clientesList" class="scroll-list" style="max-height:220px"></div><div id="clienteSeleccionado" class="banner hidden"></div><div class="grid2"><input id="nuevoClienteNombre" placeholder="Nombre nuevo"><input id="nuevoClienteTel" placeholder="Teléfono"></div><button class="light" style="margin-top:8px" onclick="crearClienteRapido()">Crear cliente rápido</button></div>
       <div id="crearPedidoSec" class="card inner create-panel"><h2>2. Pedido y envío</h2><div class="grid2"><div><label>Pedido</label><select id="pedidoSelect"></select></div><div><label>Paquetería</label><select id="envioSelect"></select></div></div><label>Precio de envío cobrado al cliente</label><input id="envioPrecio" type="number" step="0.01" value="0"></div>
       <div id="crearIASec" class="card inner create-panel"><div class="section-title"><h2>3. IA / WhatsApp</h2><span class="badge green">Rápido</span></div>
@@ -94,8 +96,8 @@
           <button class="light" type="button" onclick="limpiarPedidoTexto()">Limpiar</button>
         </div>
         <details class="ai-block"><summary>🎤 Voz y audios</summary>
-          <div class="grid2" style="margin-top:8px"><button class="secondary" id="btnStartDictado" type="button" onclick="startDictadoPedido()">Iniciar dictado</button><button class="red" id="btnStopDictado" type="button" onclick="stopDictadoPedido()">Detener dictado</button></div>
-          <div id="pedidoDictadoStatus" class="speech-live">Dictado: detenido.</div>
+          <div class="speech-controls" style="margin-top:8px"><button class="secondary" id="btnStartDictado" type="button" onclick="startDictadoPedido()">🎙️ Iniciar dictado</button><button class="red" id="btnStopDictado" type="button" onclick="stopDictadoPedido()">⏹ Detener dictado</button></div>
+          <div id="pedidoDictadoStatus" class="speech-live">Dictado: detenido. Habla una frase corta y revisa antes de interpretar.</div>
           <label>Audio de WhatsApp</label><input id="pedidoAudio" type="file" accept="audio/*">
           <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="transcribirAudioSubido()">Transcribir audio</button><button class="light" onclick="limpiarAudioSubido()">Limpiar audio</button></div>
           <div id="pedidoAudioStatus" class="small" style="margin-top:8px">Audio: sin transcribir.</div>
@@ -115,6 +117,8 @@
       </div>
       <div id="crearManualSec" class="card inner create-panel"><h2>4. Buscar producto manual</h2><div class="grid2"><div><label>Marca</label><select id="marcaManual"><option value="">Todas</option></select></div><div><label>Hilo</label><select id="hiloManual"><option value="">Todos</option></select></div></div><input id="buscarProducto" placeholder="Código, color o tono"><div id="productosList" class="scroll-list" style="max-height:360px"></div></div>
       <div id="crearCarritoSec" class="card inner create-panel"><div class="section-title"><h2>Carrito</h2><strong id="cartTotal">$0.00</strong></div><div id="cartList"></div><div class="grid2 sticky-cart-actions" style="margin-top:10px"><button class="light" onclick="limpiarCarrito()">Vaciar</button><button id="guardarCotBtn" class="green" onclick="guardarCotizacion()">Guardar cotización</button></div></div>
+      </div>
+      <div class="quick-savebar"><button class="secondary" onclick="crearScroll('crearIASec')">IA / productos</button><button class="green" onclick="guardarCotizacion()">Guardar cotización</button></div>
     </section>
 
     <section id="viewAlmacen" class="card hidden">
@@ -137,7 +141,7 @@ async function apiFetch(url,opt={}){const res=await fetch(url,{...opt,headers:{.
 async function startApp(){if(!state.pin)return;$('loginCard').classList.add('hidden');$('mainApp').classList.remove('hidden');showView('notas',false);await loadAll()}
 function showView(name,push=true){if(push&&state.currentView!==name){state.viewStack.push(state.currentView);history.pushState({view:name},'',`#${name}`)}state.currentView=name;['Notas','Detalle','Crear','Almacen','Empacador'].forEach(v=>$('view'+v).classList.add('hidden'));const el=$('view'+cap(name));if(el)el.classList.remove('hidden');['Notas','Crear','Almacen','Empacador'].forEach(t=>{const b=$('tab'+t);if(b)b.classList.remove('active-tab')});const tab=$('tab'+cap(name));if(tab)tab.classList.add('active-tab');if(name==='empacador')loadEmpacador();if(name==='almacen')loadAlmacen()}
 window.addEventListener('popstate',()=>{const prev=state.viewStack.pop()||'notas';showView(prev,false)});
-function crearScroll(id){const el=$(id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'})}
+function crearScroll(id){const el=$(id);const box=$('crearWorkspace');if(el&&box){box.scrollTo({top:el.offsetTop-box.offsetTop-6,behavior:'smooth'});el.classList.add('focus-scroll');}else if(el){el.scrollIntoView({behavior:'smooth',block:'start'})}}
 function usarEjemploPedido(txt){const e=$('pedidoTexto');e.value=(e.value?e.value+'\n':'')+txt;crearScroll('crearIASec')}
 
 async function loadAll(){try{setStatus('Sincronizando...');await Promise.all([loadResumen(),loadCatalogos(),loadNotas(),loadPedidos(),loadEnvios()]);setStatus(`Sincronizado · ${state.notas.length} notas cargadas`);updatePendingStatus();syncPending()}catch(e){setStatus('Error: '+e.message)}}
@@ -150,39 +154,73 @@ async function loadEnvios(){const e=await apiFetch('/api/envios');$('envioSelect
 function syncParserCliente(){const c=state.cliente||{};if($('parserCliente'))$('parserCliente').value=c.nombre||$('nuevoClienteNombre').value||'';if($('parserTelefono'))$('parserTelefono').value=c.telefono||$('nuevoClienteTel').value||''}
 function limpiarPedidoTexto(){if($('pedidoTexto'))$('pedidoTexto').value='';if($('pedidoImagenTexto'))$('pedidoImagenTexto').value='';if($('parserResult'))$('parserResult').innerHTML='';state.parserPedidos=[];state.pedidoImagenActiva=false;state.pedidoImagenAnalizada='';state.audioTranscript='';if($('pedidoImagen'))$('pedidoImagen').value='';if($('pedidoImagenPreview')){$('pedidoImagenPreview').innerHTML='';$('pedidoImagenPreview').classList.add('hidden')}if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML='';if($('pedidoAudio'))$('pedidoAudio').value='';if($('pedidoAudioStatus'))$('pedidoAudioStatus').textContent='Audio: sin transcribir.';if($('pedidoDictadoStatus'))$('pedidoDictadoStatus').textContent='Dictado: detenido.'}
 function onPedidoImagenChange(ev){const f=ev.target.files&&ev.target.files[0];const box=$('pedidoImagenPreview');if(!f){state.pedidoImagenActiva=false;box.innerHTML='';box.classList.add('hidden');return}state.pedidoImagenActiva=true;const url=URL.createObjectURL(f);box.classList.remove('hidden');box.innerHTML=`<div class="banner"><strong>Imagen cargada:</strong> ${escapeHtml(f.name)}<div style="margin-top:8px"><img src="${url}" style="max-width:100%;border-radius:14px;border:1px solid var(--line)"></div></div>`}
+function _normalizaDictadoTexto(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9ñ\s]/g,'').replace(/\s+/g,' ').trim()}
+function _appendDictadoTexto(txt){txt=String(txt||'').replace(/\s+/g,' ').trim();if(!txt)return;const norm=_normalizaDictadoTexto(txt);if(!norm)return;if(!state.speechSeen)state.speechSeen=[];if(state.speechSeen.includes(norm))return;const last=state.speechSeen[state.speechSeen.length-1]||'';if(last&&(_normalizaDictadoTexto(last)===norm||last.includes(norm)||norm.includes(last)))return;state.speechSeen.push(norm);if(state.speechSeen.length>20)state.speechSeen=state.speechSeen.slice(-20);const e=$('pedidoTexto');const actual=e.value.trim();e.value=(actual?actual+' ':'')+txt;}
 function startDictadoPedido(){
   const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!Speech){alert('Tu navegador no soporta transcripción por voz automática.');return}
-  if(state.speechOn){$('pedidoDictadoStatus').textContent='Dictado ya está activo. Usa Detener dictado.';return}
+  if(!Speech){alert('Tu navegador no soporta dictado. Usa subir audio de WhatsApp para mejor resultado.');return}
+  if(state.speechOn){$('pedidoDictadoStatus').textContent='Dictado activo. Presiona Detener dictado para apagarlo.';return}
+  state.speechManualStop=false;
+  state.speechSeen=state.speechSeen||[];
   const rec=new Speech();
-  state.speechRec=rec;state.speechOn=true;state.speechManualStop=false;state.speechBase=$('pedidoTexto').value.trim();state.speechFinals=[];state.lastSpeechFinal='';
-  rec.lang='es-MX';rec.continuous=true;rec.interimResults=true;
-  rec.onstart=()=>{$('pedidoDictadoStatus').textContent='Escuchando... toca Detener dictado cuando termines.'};
+  state.speechRec=rec;
+  rec.lang='es-MX';
+  rec.continuous=false;
+  rec.interimResults=false;
+  rec.maxAlternatives=1;
+  rec.onstart=()=>{state.speechOn=true;$('pedidoDictadoStatus').textContent='Escuchando una frase... Presiona Detener si quieres cortar.'};
   rec.onresult=(ev)=>{
-    let interim='';
+    let txt='';
     for(let i=ev.resultIndex;i<ev.results.length;i++){
-      const txt=(ev.results[i][0].transcript||'').trim();
-      if(!txt)continue;
-      if(ev.results[i].isFinal){
-        if(txt!==state.lastSpeechFinal){state.speechFinals.push(txt);state.lastSpeechFinal=txt}
-      }else{interim=txt}
+      if(ev.results[i].isFinal)txt+=ev.results[i][0].transcript+' ';
     }
-    const finalText=[state.speechBase,...state.speechFinals].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
-    $('pedidoTexto').value=finalText;
-    $('pedidoDictadoStatus').textContent=interim?'Escuchando: '+interim:'Escuchando...';
+    txt=txt.trim();
+    if(txt){_appendDictadoTexto(txt);$('pedidoDictadoStatus').textContent='Agregado: '+txt+' · Puedes iniciar otra frase o interpretar.'}
+    else {$('pedidoDictadoStatus').textContent='No detecté frase clara. Intenta hablar más cerca del celular.'}
   };
-  rec.onerror=(ev)=>{$('pedidoDictadoStatus').textContent='Error de dictado: '+(ev.error||'desconocido')+'. Puedes iniciar de nuevo.';state.speechOn=false};
-  rec.onend=()=>{state.speechOn=false;if(!state.speechManualStop){$('pedidoDictadoStatus').textContent='Dictado pausado por el navegador. Presiona Iniciar dictado para continuar.'}else{$('pedidoDictadoStatus').textContent='Dictado detenido.'}};
-  rec.start();
+  rec.onerror=(ev)=>{state.speechOn=false;$('pedidoDictadoStatus').textContent='Error de dictado: '+(ev.error||'desconocido')+'. Para mejor resultado, sube audio de WhatsApp.'};
+  rec.onend=()=>{state.speechOn=false;if(state.speechManualStop){$('pedidoDictadoStatus').textContent='Dictado detenido.'}else if(!$('pedidoDictadoStatus').textContent.startsWith('Agregado:')){$('pedidoDictadoStatus').textContent='Dictado terminó. Presiona Iniciar para dictar otra frase.'}};
+  try{rec.start()}catch(e){state.speechOn=false;$('pedidoDictadoStatus').textContent='No pude iniciar dictado. Cierra y vuelve a abrir la app.'}
 }
-function stopDictadoPedido(){state.speechManualStop=true;if(state.speechRec){try{state.speechRec.stop()}catch(e){}}state.speechOn=false;$('pedidoDictadoStatus').textContent='Dictado detenido.'}
+function stopDictadoPedido(){state.speechManualStop=true;if(state.speechRec){try{state.speechRec.abort()}catch(e){try{state.speechRec.stop()}catch(_){}}}state.speechOn=false;$('pedidoDictadoStatus').textContent='Dictado detenido.'}
 function toggleDictadoPedido(){if(state.speechOn)stopDictadoPedido();else startDictadoPedido()}
-
 function abrirPdfNota(id){window.open('/nota-pdf/'+encodeURIComponent(id),'_blank')}
 async function fileToDataUrl(file){return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(new Error('No pude leer el archivo'));r.readAsDataURL(file)})}
 function limpiarAnalisisImagen(){state.pedidoImagenAnalizada='';if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML=''}
 function limpiarAudioSubido(){state.audioTranscript='';if($('pedidoAudio'))$('pedidoAudio').value='';if($('pedidoAudioStatus'))$('pedidoAudioStatus').textContent='Audio: sin transcribir.'}
-async function analizarImagenReferencia(){const f=$('pedidoImagen').files&&$('pedidoImagen').files[0];if(!f)return alert('Primero selecciona una imagen.');$('pedidoImagenAnalisis').innerHTML='Analizando imagen...';try{const image_base64=await fileToDataUrl(f);const comentario=$('pedidoImagenTexto').value.trim();const r=await apiFetch('/api/analizar-imagen-referencia',{method:'POST',body:JSON.stringify({image_base64,comentario,contexto:($('marcaCtx').value||'')+' / '+($('hiloCtx').value||'')})});state.pedidoImagenAnalizada=r.suggested_text||'';const extras=[];if(r.summary&&r.summary.numbers&&r.summary.numbers.length)extras.push('números: '+r.summary.numbers.join(', '));if(r.summary&&r.summary.positions&&r.summary.positions.length)extras.push('posiciones: '+r.summary.positions.join(', '));if(r.summary&&r.summary.marks&&r.summary.marks.length)extras.push('marcas: '+r.summary.marks.join(', '));$('pedidoImagenAnalisis').innerHTML=`<div class="banner">OCR detectado: ${escapeHtml((r.ocr_text||'').slice(0,180)||'sin texto visible')}<br>Resumen: ${escapeHtml(extras.join(' · ')||'sin hallazgos claros')}<br>Sugerencia para parser: <b>${escapeHtml(r.suggested_text||'')}</b></div>`;if(!$('pedidoImagenTexto').value.trim()&&r.suggested_text){$('pedidoImagenTexto').value=r.suggested_text}}catch(e){$('pedidoImagenAnalisis').innerHTML=`<span class="danger-text">${escapeHtml(e.message)}</span>`}}
+async function analizarImagenReferencia(){
+  const f=$('pedidoImagen').files&&$('pedidoImagen').files[0];
+  if(!f)return alert('Primero selecciona una imagen.');
+  $('pedidoImagenAnalisis').innerHTML='Analizando imagen con el mismo contexto de marca/hilo...';
+  try{
+    const image_base64=await fileToDataUrl(f);
+    const comentario=$('pedidoImagenTexto').value.trim();
+    const r=await apiFetch('/api/analizar-imagen-referencia',{method:'POST',body:JSON.stringify({
+      image_base64,
+      comentario,
+      marca:$('marcaCtx').value,
+      hilo:$('hiloCtx').value,
+      contexto:($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos')
+    })});
+    state.pedidoImagenAnalizada=r.suggested_text||'';
+    const extras=[];
+    if(r.add_codes&&r.add_codes.length)extras.push('agregar: '+r.add_codes.join(', '));
+    if(r.exclude_codes&&r.exclude_codes.length)extras.push('excluir: '+r.exclude_codes.join(', '));
+    if(r.summary&&r.summary.numbers&&r.summary.numbers.length)extras.push('números: '+r.summary.numbers.join(', '));
+    if(r.summary&&r.summary.positions&&r.summary.positions.length)extras.push('posiciones: '+r.summary.positions.join(', '));
+    if(r.summary&&r.summary.marks&&r.summary.marks.length)extras.push('marcas: '+r.summary.marks.join(', '));
+    if(r.pedidos&&r.pedidos.length){
+      state.parserPedidos=r.pedidos;
+      addAllParsed(true);
+      renderCart();
+      $('pedidoImagenAnalisis').innerHTML=`<div class="banner">Imagen analizada y ${r.pedidos.length} producto(s) agregados al carrito con contexto ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}.<br>${escapeHtml(extras.join(' · ')||'sin resumen')}<br>Revisa el carrito antes de guardar.</div>`;
+      crearScroll('crearCarritoSec');
+    }else{
+      $('pedidoImagenAnalisis').innerHTML=`<div class="banner warning">Analicé la imagen pero no pude convertirla automáticamente a productos.<br>OCR: ${escapeHtml((r.ocr_text||'').slice(0,180)||'sin texto visible')}<br>Resumen: ${escapeHtml(extras.join(' · ')||'sin hallazgos claros')}<br>Sugerencia: <b>${escapeHtml(r.suggested_text||'')}</b></div>`;
+      if(!$('pedidoImagenTexto').value.trim()&&r.suggested_text){$('pedidoImagenTexto').value=r.suggested_text}
+    }
+  }catch(e){$('pedidoImagenAnalisis').innerHTML=`<span class="danger-text">${escapeHtml(e.message)}</span>`}
+}
 async function transcribirAudioSubido(){const f=$('pedidoAudio').files&&$('pedidoAudio').files[0];if(!f)return alert('Primero selecciona un audio.');$('pedidoAudioStatus').textContent='Transcribiendo audio...';try{const audio_base64=await fileToDataUrl(f);const r=await apiFetch('/api/transcribir-audio',{method:'POST',body:JSON.stringify({audio_base64,filename:f.name})});state.audioTranscript=r.transcript||'';$('pedidoAudioStatus').textContent='Audio transcrito.';const base=$('pedidoTexto').value.trim();$('pedidoTexto').value=(base+' '+state.audioTranscript).replace(/\s+/g,' ').trim()}catch(e){$('pedidoAudioStatus').textContent='Error al transcribir: '+e.message}}
 
 

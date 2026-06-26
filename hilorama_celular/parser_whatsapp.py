@@ -65,6 +65,11 @@ def norm_codigo(v):
 
 def limpiar_texto(texto):
     texto = _sin_acentos(texto)
+    # Normaliza errores comunes de escritura de WhatsApp: "de del 55", "de de 55".
+    texto = re.sub(r"\bde\s+del\b", "del", texto)
+    texto = re.sub(r"\bde\s+de\b", "de", texto)
+    texto = re.sub(r"\bdel\s+del\b", "del", texto)
+    texto = re.sub(r"\b(?:tambien|también|aparte|ademas|además|mas|más)\b", ",", texto)
     texto = re.sub(r"\[.*?\]", " ", texto)
     texto = re.sub(r"\+?\d{9,}", " ", texto)  # teléfonos
     texto = texto.replace("—>", "->").replace("–>", "->").replace("→", "->")
@@ -419,7 +424,7 @@ def _cantidad_pat():
 def _split_partes_pedido(linea):
     # Divide pedidos mixtos: "del 55 dame 2, 3 56 y un 310"
     # pero evita romper frases con "de arriba y derecha" porque esas son visuales.
-    partes = re.split(r"\s*(?:,|\+|/|\by\b|\be\b)\s*", linea)
+    partes = re.split(r"\s*(?:,|\+|/|\by\b|\be\b|\bluego\b|\botro\b|\botra\b)\s*", linea)
     return [p.strip() for p in partes if p and p.strip()]
 
 
@@ -480,6 +485,14 @@ def _parsear_segmento_codigo_cantidad(seg, codigos_validos):
             return [(a, ib)]
         if a_es and b_es:
             return [(a, 1), (b, 1)]
+
+    # Frases muy humanas: "el 55 dos piezas", "55 me das dos", "55 van 2"
+    m = re.search(rf"\b(?:el|tono|codigo|cod)?\s*#?(\d+)\b.*?\b(?:me\s+das|dame|van|serian|serían|son|quiero|ponme)?\s*({cant})\b", seg)
+    if m:
+        codigo = norm_codigo(m.group(1))
+        cantidad = _cantidad_token(m.group(2))
+        if codigo in codigos_validos and cantidad and 1 <= cantidad <= 50:
+            return [(codigo, cantidad)]
 
     if len(nums) == 1:
         c = nums[0]

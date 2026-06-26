@@ -1667,7 +1667,11 @@ def analizar_imagen_referencia():
     data = request.get_json(force=True) or {}
     data_url = data.get('image_base64') or ''
     comentario = (data.get('comentario') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    hilo = (data.get('hilo') or '').strip()
     contexto = (data.get('contexto') or '').strip()
+    if not contexto:
+        contexto = f"{marca} / {hilo}".strip(" / ")
     if not data_url:
         return jsonify({'ok': False, 'error': 'No se recibió imagen'}), 400
 
@@ -1685,16 +1689,20 @@ def analizar_imagen_referencia():
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             prompt = (
-                "Eres asistente de ventas de una mercería. Analiza esta imagen enviada por una clienta. "
-                "La clienta puede marcar tonos con círculos, flechas, tachones, números escritos o posiciones. "
-                "Devuelve JSON estricto con: "
-                "numbers: lista de números visibles o mencionados, "
-                "positions: lista como arriba_derecha, arriba_izquierda, abajo_derecha, abajo_izquierda, medio, arriba, abajo, derecha, izquierda, "
-                "marks: circulo, flecha, tachado, subrayado, "
-                "exclude: números/zonas tachadas o que diga que no quiere, "
-                "description: resumen corto en español, "
-                "suggested_text: una frase corta para pasar al parser, por ejemplo 'de ese 2 por favor', 'numero 55', 'posicion arriba_derecha'. "
-                f"Comentario de la clienta: {comentario}. Contexto: {contexto}."
+                "Eres asistente de ventas de una mercería llamada Hilorama. Analiza esta imagen de catálogo enviada por una clienta. "
+                "La clienta marca tonos con círculos rojos, flechas, subrayados o tachones. "
+                "Los números debajo de cada madeja son CÓDIGOS DE PRODUCTO. "
+                "Tu tarea es devolver únicamente JSON estricto, sin markdown, con estas llaves: "
+                "add_codes: lista de códigos que estén encerrados, señalados, subrayados o seleccionados; "
+                "exclude_codes: lista de códigos tachados o claramente cancelados; "
+                "quantities: objeto opcional codigo->cantidad; si no hay cantidad usa 1; "
+                "numbers: todos los números/códigos visibles relevantes; "
+                "positions: posiciones seleccionadas si aplica; "
+                "marks: tipos detectados como circulo, flecha, tachado, subrayado; "
+                "description: resumen corto en español; "
+                "suggested_text: frase para parser, por ejemplo '39 1, 68 1, 78 1'. "
+                "MUY IMPORTANTE: si un número está tachado con una X roja, debe ir en exclude_codes, NO en add_codes. "
+                f"Comentario de la clienta: {comentario}. Contexto marca/hilo: {contexto}."
             )
             resp = client.chat.completions.create(
                 model=os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o-mini'),
@@ -1711,7 +1719,7 @@ def analizar_imagen_referencia():
             vision_json = _safe_json_from_text(vision_text)
             vision_notes.append('openai_vision')
         except Exception as e:
-            vision_notes.append('openai_vision_error:' + str(e)[:120])
+            vision_notes.append('openai_vision_error:' + str(e)[:160])
 
     # 2) Fallback OCR / detección simple.
     try:
@@ -1742,6 +1750,10 @@ def analizar_imagen_referencia():
     joined = ' '.join(x for x in [comentario, ocr_text, vision_text] if x).strip()
     resumen = _image_reference_summary(joined)
 
+    add_codes = []
+    exclude_codes = []
+    quantities = {}
+
     if vision_json:
         for key in ['numbers', 'positions', 'marks']:
             vals = vision_json.get(key) or []
@@ -1760,16 +1772,48 @@ def analizar_imagen_referencia():
                     v = str(v).strip()
                     if v and v not in resumen[key]:
                         resumen[key].append(v)
-        if vision_json.get('exclude'):
-            resumen['exclude'] = vision_json.get('exclude')
+        raw_add = vision_json.get('add_codes') or vision_json.get('selected_codes') or []
+        raw_ex = vision_json.get('exclude_codes') or vision_json.get('exclude') or []
+        raw_q = vision_json.get('quantities') or {}
+        if isinstance(raw_add, (str, int)):
+            raw_add = [raw_add]
+        if isinstance(raw_ex, (str, int)):
+            raw_ex = [raw_ex]
+        for v in raw_add:
+            try:
+                c = str(int(v))
+            except Exception:
+                c = str(v).strip().lstrip('0')
+            if c and c not in add_codes:
+                add_codes.append(c)
+        for v in raw_ex:
+            try:
+                c = str(int(v))
+            except Exception:
+                c = str(v).strip().lstrip('0')
+            if c and c not in exclude_codes:
+                exclude_codes.append(c)
+        if isinstance(raw_q, dict):
+            for k, v in raw_q.items():
+                try:
+                    quantities[str(int(k))] = int(v)
+                except Exception:
+                    try:
+                        quantities[str(k).strip().lstrip('0')] = int(v)
+                    except Exception:
+                        pass
         if vision_json.get('description'):
             resumen['description'] = vision_json.get('description')
 
     if circles and 'circulo' not in resumen['marks']:
         resumen['marks'].append('circulo')
 
+    # Si OpenAI no devolvió add_codes, no inventamos códigos con solo OCR débil.
+    # Pero si el comentario trae códigos explícitos, esos sí se mandan al parser.
     if vision_json and vision_json.get('suggested_text'):
         suggested_text = str(vision_json.get('suggested_text')).strip()
+    elif add_codes:
+        suggested_text = ', '.join(f"{c} {quantities.get(c,1)}" for c in add_codes if c not in exclude_codes)
     else:
         suggested = []
         if resumen['numbers']:
@@ -1780,6 +1824,55 @@ def analizar_imagen_referencia():
             suggested.append('marca ' + ' '.join(resumen['marks']))
         suggested_text = ('referencia visual ' + ' '.join(suggested)).strip() if suggested else comentario
 
+    # Convertir add_codes a productos reales usando el mismo contexto del parser.
+    pedidos = []
+    if add_codes:
+        params = []
+        where = ["1=1"]
+        if marca:
+            where.append("UPPER(COALESCE(p.marca,''))=UPPER(%s)")
+            params.append(marca)
+        if hilo:
+            where.append("UPPER(COALESCE(p.hilo,''))=UPPER(%s)")
+            params.append(hilo)
+        with DB() as db:
+            rows = db.execute(f"""
+                SELECT p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                       COALESCE(p.stock,0) AS stock,
+                       COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+                       COALESCE(pr.venta, p.precio, 0) AS precio_venta
+                FROM productos p
+                LEFT JOIN precios pr ON pr.marca = p.marca
+                WHERE {' AND '.join(where)}
+                ORDER BY p.marca, p.hilo, p.codigo
+                LIMIT 10000
+            """, params).fetchall()
+        por_codigo = {}
+        for p in [dict(r) for r in rows]:
+            c = str(p.get('codigo') or '').strip().lstrip('0') or '0'
+            por_codigo.setdefault(c, []).append(p)
+            cb = str(p.get('codigo_barras') or '').strip().lstrip('0') or '0'
+            if cb != '0':
+                por_codigo.setdefault(cb, []).append(p)
+        for c in add_codes:
+            if c in exclude_codes:
+                continue
+            opciones = por_codigo.get(c) or []
+            if not opciones:
+                continue
+            prod = opciones[0]
+            pedidos.append({
+                'producto_id': prod.get('id'),
+                'codigo': prod.get('codigo'),
+                'marca': prod.get('marca') or '',
+                'hilo': prod.get('hilo') or '',
+                'color': prod.get('color') or '',
+                'stock': int(prod.get('stock') or 0),
+                'precio_venta': float(prod.get('precio_venta') or 0),
+                'cantidad': int(quantities.get(c, 1) or 1),
+                'es_inventariable': prod.get('es_inventariable', True),
+            })
+
     return jsonify(json_safe({
         'ok': True,
         'ocr_text': ocr_text,
@@ -1787,6 +1880,10 @@ def analizar_imagen_referencia():
         'summary': resumen,
         'vision_notes': vision_notes,
         'suggested_text': suggested_text,
+        'add_codes': add_codes,
+        'exclude_codes': exclude_codes,
+        'quantities': quantities,
+        'pedidos': pedidos,
     }))
 
 
