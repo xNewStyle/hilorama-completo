@@ -1887,17 +1887,26 @@ def _infer_visual_codes_grid(raw, productos_contexto, comentario=''):
 
         # Heurística:
         # - Círculos de selección suelen estar alrededor de código/nombre o parte baja del tono.
-        # - Tachones/X suelen quedar más arriba, sobre la madeja.
+        # - Tachones/X suelen ser compactos, con mucha área roja dentro del bbox, o dos trazos cruzados.
         is_lower = rel_y >= 0.50
         is_tall = bh >= cell_h * 0.38
         is_wide = bw >= cell_w * 0.30
+        shape_kind = _classify_red_mark_component(comp)
+        is_strong_oval = (
+            bh >= cell_h * 1.05 or
+            (is_lower and bh >= cell_h * 0.85 and bw >= cell_w * 0.55) or
+            (rel_y >= 0.70 and bh >= cell_h * 0.65 and bw >= cell_w * 0.75)
+        )
+        is_small_quantity_mark = is_lower and bh <= cell_h * 0.45 and bw <= cell_w * 0.45
 
-        if is_lower:
+        if is_strong_oval or is_small_quantity_mark:
+            kind = "circulo"
+        elif is_lower and shape_kind != "tachado":
             kind = "circulo"
         elif (not is_lower) and is_tall and is_wide:
             kind = "tachado"
         else:
-            kind = "tachado"
+            kind = shape_kind
 
         item = {
             "codigo": codigo,
@@ -2015,7 +2024,7 @@ def _analizar_catalogo_grid_openai(data_url, comentario, contexto, productos_con
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
 
     catalogo = _productos_contexto_para_vision(productos_contexto, max_items=300)
 
@@ -2194,6 +2203,122 @@ def _extract_global_each_quantity(texto):
     return None
 
 
+def _comentario_tachados_no(comentario):
+    """True cuando la clienta usa tachado/X como NO comprar."""
+    t = _strip_acc(comentario or '')
+    if not t:
+        return False
+    patrones = [
+        r"\btachad[oa]s?\s+no\b", r"\bno\s+(los\s+)?tachad[oa]s?\b",
+        r"\bcruzad[oa]s?\s+no\b", r"\blos\s+de\s+x\s+no\b",
+        r"\bno\s+(quiero|agregues|pongas|metas).*?(tachad|cruzad|x)\b",
+        r"\bmenos\s+(el|los|la|las)?\s*(tachad|cruzad|x)\b",
+        r"\bexcepto\s+(el|los|la|las)?\s*(tachad|cruzad|x)\b",
+    ]
+    return any(re.search(p, t) for p in patrones)
+
+
+def _comentario_taches_son_marca(comentario):
+    """True cuando taches/rayas/X significan 'estos sí'."""
+    t = _strip_acc(comentario or '')
+    if not t:
+        return False
+    if _comentario_tachados_no(t):
+        return False
+    patrones = [
+        r"\blos\s+(tachad|cruzad|rayad|marcad|senalad)[oa]s?\b",
+        r"\blos\s+de\s+(x|tache|raya|punto|puntito)\b",
+        r"\blos\s+que\s+tienen\s+(x|tache|raya|punto|puntito)\b",
+        r"\blos\s+marcados?\b", r"\blos\s+senalados?\b",
+        r"\bmis\s+(taches|rayas|puntos)\b",
+    ]
+    return any(re.search(p, t) for p in patrones)
+
+
+def _comentario_todos_menos(comentario):
+    """True cuando el comentario implica todos los visibles excepto los excluidos."""
+    t = _strip_acc(comentario or '')
+    if not t:
+        return False
+    patrones = [
+        r"\btodos?\s+(menos|excepto|exepto)\b",
+        r"\bmenos\s+este\b", r"\bmenos\s+estos\b", r"\bsin\s+este\b", r"\bsin\s+estos\b",
+        r"\blos\s+demas\s+(si|sí|tambien|igual)\b",
+        r"\btach(e|ado).*\b(no|menos)\b.*\bdemas\b",
+        r"\bsolo\s+no\s+(quiero|agregues|pongas|metas)\b",
+    ]
+    return any(re.search(p, t) for p in patrones)
+
+
+def _visual_text_qty_hint(*parts):
+    """Detecta cantidades escritas en reason/mark_type: puntos, rayas, x2, 2pz, etc."""
+    t = _strip_acc(' '.join(str(x or '') for x in parts))
+    if not t:
+        return None
+    word_map = {
+        'un': 1, 'uno': 1, 'una': 1,
+        'dos': 2, 'par': 2, 'pares': 2,
+        'tres': 3, 'cuatro': 4, 'cinco': 5, 'seis': 6,
+        'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10,
+    }
+    m = re.search(r"\b(?:x|por)\s*(\d{1,2})\b", t)
+    if m:
+        return max(1, int(m.group(1)))
+    m = re.search(r"\b(\d{1,2})\s*(?:pz|pza|pzas|pieza|piezas|madeja|madejas|unid|unidades)\b", t)
+    if m:
+        return max(1, int(m.group(1)))
+    m = re.search(r"\b(\d{1,2})\s+(?:ray|raya|rayita|palito|punto|puntito|marca)", t)
+    if m:
+        return max(1, int(m.group(1)))
+    for word, qty in sorted(word_map.items(), key=lambda kv: -len(kv[0])):
+        if re.search(rf"\b{word}\s+(?:ray|raya|rayita|palito|punto|puntito|marca|pieza|pza|madeja)", t):
+            return qty
+    # marcas tipo II / III / //// dentro del texto o mark_type
+    if re.search(r"\b(4|cuatro|four|iiii|////)\b", t):
+        return 4
+    if re.search(r"\b(3|tres|three|iii|///)\b", t):
+        return 3
+    if re.search(r"\b(2|dos|two|ii|//)\b", t):
+        return 2
+    if re.search(r"\b(1|uno|una|one|i|/)\b", t):
+        return 1
+    return None
+
+
+def _fallback_strong_circle_codes(fb_debug):
+    """
+    Códigos con círculo/óvalo muy claro según respaldo visual.
+    Se usa solo para rescatar casos donde la IA confundió un óvalo grande con tachón.
+    """
+    out = []
+    try:
+        grid = (fb_debug or {}).get('grid') or {}
+        cell_h = float(grid.get('cell_h') or 1)
+        cell_w = float(grid.get('cell_w') or 1)
+        for m in grid.get('assigned') or []:
+            code = str(m.get('codigo') or '').strip().lstrip('0')
+            if not code:
+                continue
+            kind = str(m.get('kind') or '').lower()
+            rel_y = float(m.get('rel_y') or 0)
+            size = m.get('size') or [0, 0]
+            bw, bh = float(size[0] or 0), float(size[1] or 0)
+            # Óvalo fuerte: marca grande, baja o rodeando la zona código/nombre. Evita rescatar X compactas.
+            strong_oval = (
+                kind == 'circulo' and
+                (
+                    bh >= cell_h * 1.05 or
+                    (rel_y >= 0.52 and bh >= cell_h * 0.85 and bw >= cell_w * 0.55) or
+                    (rel_y >= 0.70 and bh >= cell_h * 0.65 and bw >= cell_w * 0.75)
+                )
+            )
+            if strong_oval and code not in out:
+                out.append(code)
+    except Exception:
+        pass
+    return out
+
+
 def _analizar_imagen_con_openai_lens(data_url, comentario, contexto, productos_contexto):
     """
     Analizador principal estilo Lens:
@@ -2207,7 +2332,7 @@ def _analizar_imagen_con_openai_lens(data_url, comentario, contexto, productos_c
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
 
     catalogo = _productos_contexto_para_vision(productos_contexto)
     schema_text = """
@@ -2243,6 +2368,15 @@ CONTEXTO ELEGIDO EN LA APP:
 
 PRODUCTOS DEL CONTEXTO, para validar:
 {json.dumps(catalogo, ensure_ascii=False)}
+
+REGLAS DE CONTEXTO DEL COMENTARIO:
+- Da prioridad al comentario cuando explica qué significan las marcas.
+- "1 de cada uno", "uno de cada", "una de cada" = cantidad global 1 para cada selected.
+- "2 de cada uno", "dos de cada" = cantidad global 2 para cada selected.
+- "todos", "todos los colores", "todos estos" puede significar todos los visibles, pero solo úsalo si el comentario lo dice claramente.
+- "todos menos/excepto", "menos este", "sin el", "los demás sí" = seleccionar visibles salvo los excluded.
+- "no hay", "sin stock", "agotado" sobre un producto no significa pedido; puede indicar excluded/none según contexto.
+- Si el usuario escribe códigos en el comentario, no los confundas con cantidades: un número cerca de palabras pz/pieza/cantidad es cantidad; un número que coincide con código visible puede ser producto.
 
 COMENTARIO DE LA CLIENTA:
 {comentario}
@@ -2335,7 +2469,7 @@ def _analizar_catalogo_por_fases_openai(data_url, original_data_url, comentario,
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
 
     catalogo = _productos_contexto_para_vision(productos_contexto, max_items=350)
 
@@ -2659,7 +2793,7 @@ def _analizar_celdas_anotadas_openai(data_url_original, raw, comentario, context
         return None, "sin_openai_api_key"
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
 
     cols, rows = _infer_rows_cols_para_catalogo(raw, productos_contexto)
     annotated_raw, grid_info = _crear_imagen_grid_anotada(raw, cols=cols, rows=rows)
@@ -2984,12 +3118,12 @@ def _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentar
     if not api_key:
         return None, 'sin_openai_api_key'
     from openai import OpenAI
-    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
+    client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
 
     # Evita mandar fotos enormes; mantiene suficiente calidad para leer códigos.
-    data_url = _optimizar_data_url_imagen(data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "1400")))
+    data_url = _optimizar_data_url_imagen(data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "900")))
     if original_data_url:
-        original_data_url = _optimizar_data_url_imagen(original_data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "1400")))
+        original_data_url = _optimizar_data_url_imagen(original_data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "900")))
 
     catalogo = _productos_contexto_para_vision(productos_contexto, max_items=int(os.environ.get("OPENAI_CATALOG_MAX_ITEMS", "250")))
     overlay_url = None
@@ -3015,15 +3149,15 @@ Devuelve SOLO JSON válido, sin markdown:
     {
       "code": "39",
       "quantity": 1,
-      "mark_type": "circle|line|two_lines|dot|dots|number|arrow|underline|scribble|other",
-      "quantity_evidence": "por frase 1 de cada uno / número 2 escrito / dos rayitas / dos puntos",
+      "mark_type": "circle|oval|line|two_lines|three_lines|dot|two_dots|three_dots|number|arrow|underline|check|slash|x_as_marker|scribble|other",
+      "quantity_evidence": "por frase 1 de cada uno / número 2 escrito / dos rayitas / dos puntos / x2 / dos palitos",
       "reason": "círculo rojo rodea código/nombre de la celda 39"
     }
   ],
   "excluded_products": [
     {
       "code": "73",
-      "mark_type": "x|cross_out|tachado",
+      "mark_type": "x|clear_x|cross_out|tachado|exclude_scribble",
       "reason": "X roja cruza la madeja/celda"
     }
   ],
@@ -3073,17 +3207,37 @@ ASOCIACION CODIGO-HILO:
 - Si una marca rodea la madeja, pertenece al código inmediatamente debajo.
 - No saltes a productos vecinos.
 
-MARCAS DE LA CLIENTA:
-- círculo, encierro, rayón, subrayado, flecha, palomita, punto o marca cerca/debajo/sobre el hilo = la clienta lo quiere.
-- X grande, tachón o cruz sobre la madeja/celda = excluir/no agregar.
-- Si el comentario dice "tachados no", cualquier X/tachón queda excluido aunque tenga otra marca.
-- Una sola rayita puede indicar 1 pieza.
-- Dos rayitas sobre/cerca del hilo = 2 piezas.
-- Tres rayitas = 3 piezas.
-- Un punto = 1 pieza; dos puntos = 2 piezas; tres puntos = 3 piezas.
-- Un número escrito cerca del hilo, por ejemplo 2, 3, 4, indica esa cantidad.
+MARCAS DE LA CLIENTA - INTERPRETACIÓN HUMANA:
+- círculo, óvalo, encierro, contorno, rayón, raya, palito, subrayado, flecha, palomita, punto, puntito o marca cerca/debajo/sobre el hilo = normalmente la clienta lo quiere.
+- Un círculo/óvalo grande alrededor del código, nombre o madeja = selected aunque el trazo toque o cruce un poco la madeja. NO lo confundas con tachado.
+- Una X grande o tachón CLARO de dos trazos cruzados sobre la madeja/celda = excluded solo cuando el contexto indique que tachado significa NO, o cuando hay otros círculos/palomitas que claramente son los seleccionados.
+- NO clasifiques como excluded solo porque una línea roja toca una celda: puede ser parte de un círculo, una raya de cantidad o una marca de selección.
+- Si todos o casi todos los productos marcados tienen X/tachón y el comentario no dice "tachados no", "menos", "no", "excluir", interpreta esos taches como MARCA DE SELECCIÓN, no como exclusión.
+- Si solo tachan uno o pocos y el comentario dice "los demás", "todos los demás", "todos menos", "excepto", "menos el tachado", entonces los tachados son excluded y los demás visibles son selected.
+- Si el comentario dice "tachados no", "los tachados no", "no los tachados", "cruzados no" o "los de X no", cualquier X/tachón queda excluded aunque tenga otra marca.
+- Si el comentario dice "los marcados", "los señalados", "los de tache", "los que tienen X", "los rayados" o "los puntitos", esas marcas son selected.
+- Si hay una mezcla de círculos y X/tachones, los círculos/óvalos/palomitas/flechas son selected y las X/tachones claros son excluded.
+
+CANTIDADES POR MARCAS:
+- Una sola rayita, palito, raya o slash cerca del hilo = 1 pieza si no hay otra cantidad.
+- Dos rayitas, dos palitos, //, II o dos marcas iguales = 2 piezas.
+- Tres rayitas, III o tres marcas iguales = 3 piezas.
+- Cuatro rayitas, IIII o cuatro marcas iguales = 4 piezas.
+- Un punto/puntito = 1 pieza; dos puntos/puntitos = 2 piezas; tres puntos/puntitos = 3 piezas; cuatro puntos = 4 piezas.
+- Un número escrito cerca del hilo, por ejemplo 2, 3, 4, 5, indica esa cantidad. Distingue números escritos a mano de los códigos impresos del catálogo.
+- Textos como x2, 2pz, 2 pz, 2 piezas, dos pzas, par, pares indican cantidad.
+- Si hay varias marcas de cantidad en una misma celda, usa la evidencia más clara: número escrito > puntos/rayitas contadas > comentario global.
 - Si el comentario dice "1 de cada uno", todos los seleccionados llevan quantity 1 salvo que una marca diga otra cantidad.
-- Si solo hay círculo y no hay cantidad, quantity=1.
+- Si solo hay círculo/óvalo y no hay cantidad, quantity=1.
+
+REGLAS DE CONTEXTO DEL COMENTARIO:
+- Da prioridad al comentario cuando explica qué significan las marcas.
+- "1 de cada uno", "uno de cada", "una de cada" = cantidad global 1 para cada selected.
+- "2 de cada uno", "dos de cada" = cantidad global 2 para cada selected.
+- "todos", "todos los colores", "todos estos" puede significar todos los visibles, pero solo úsalo si el comentario lo dice claramente.
+- "todos menos/excepto", "menos este", "sin el", "los demás sí" = seleccionar visibles salvo los excluded.
+- "no hay", "sin stock", "agotado" sobre un producto no significa pedido; puede indicar excluded/none según contexto.
+- Si el usuario escribe códigos en el comentario, no los confundas con cantidades: un número cerca de palabras pz/pieza/cantidad es cantidad; un número que coincide con código visible puede ser producto.
 
 COMENTARIO DE LA CLIENTA:
 {comentario}
@@ -3158,6 +3312,49 @@ def _resolver_ia_pura_marcas(parsed, productos_contexto, comentario):
         if isinstance(it, dict):
             visual_map[code] = it
 
+    global_qty = parsed.get('global_quantity') or _extract_global_each_quantity(comentario) or 1
+    try:
+        global_qty = max(1, int(global_qty))
+    except Exception:
+        global_qty = 1
+
+    tachados_no = _comentario_tachados_no(comentario)
+    taches_son_marca = _comentario_taches_son_marca(comentario)
+    todos_menos = _comentario_todos_menos(comentario)
+
+    # Ajustes de contexto:
+    # - A veces la clienta usa X/taches como marca de selección.
+    # - A veces tacha uno y quiere todos los demás.
+    if excluded_products and (taches_son_marca or (not selected_products and not tachados_no and not todos_menos)):
+        selected_products = list(selected_products) + list(excluded_products)
+        excluded_products = []
+    elif visible_codes and excluded_products and todos_menos:
+        excluded_set_tmp = set()
+        for it in excluded_products:
+            cc = _norm_code_list([it.get('code') if isinstance(it, dict) else it])
+            if cc:
+                excluded_set_tmp.add(cc[0])
+        already_selected = set()
+        for it in selected_products:
+            cc = _norm_code_list([it.get('code') if isinstance(it, dict) else it])
+            if cc:
+                already_selected.add(cc[0])
+        for c in visible_codes:
+            if c not in excluded_set_tmp and c not in already_selected:
+                selected_products.append({
+                    'code': c,
+                    'quantity': global_qty,
+                    'mark_type': 'all_except_context',
+                    'quantity_evidence': 'comentario: todos/los demás salvo tachados',
+                    'reason': 'seleccionado por contexto de todos menos/exepto/los demás sí'
+                })
+
+    selected_code_set = set()
+    for it in selected_products:
+        cc = _norm_code_list([it.get('code') if isinstance(it, dict) else it])
+        if cc:
+            selected_code_set.add(cc[0])
+
     exclude_codes = []
     for it in excluded_products:
         codes = _norm_code_list([it.get('code') if isinstance(it, dict) else it])
@@ -3166,14 +3363,11 @@ def _resolver_ia_pura_marcas(parsed, productos_contexto, comentario):
         code = codes[0]
         if code not in visible_codes:
             continue
+        # Si la IA puso un código en selected y excluded, selected gana salvo que el comentario diga tachados no.
+        if code in selected_code_set and not tachados_no:
+            continue
         if code not in exclude_codes:
             exclude_codes.append(code)
-
-    global_qty = parsed.get('global_quantity') or _extract_global_each_quantity(comentario) or 1
-    try:
-        global_qty = max(1, int(global_qty))
-    except Exception:
-        global_qty = 1
 
     add_codes = []
     quantities = {}
@@ -3194,13 +3388,10 @@ def _resolver_ia_pura_marcas(parsed, productos_contexto, comentario):
                     qty = max(1, int(raw_q))
             except Exception:
                 qty = global_qty
-            mt = _strip_acc(str(it.get('mark_type') or ''))
-            ev = _strip_acc(str(it.get('quantity_evidence') or it.get('reason') or ''))
             if raw_q is None:
-                if 'two' in mt or 'dos' in mt or '2' in ev or 'dos ray' in ev or 'dos punto' in ev:
-                    qty = 2
-                elif 'three' in mt or 'tres' in mt or '3' in ev or 'tres ray' in ev or 'tres punto' in ev:
-                    qty = 3
+                hint_qty = _visual_text_qty_hint(it.get('mark_type'), it.get('quantity_evidence'), it.get('reason'))
+                if hint_qty:
+                    qty = hint_qty
         if code not in add_codes:
             add_codes.append(code)
             quantities[code] = qty
@@ -3295,7 +3486,7 @@ def analizar_imagen_referencia():
         advertencias.append('Falló la IA visual: ' + str(e)[:180])
 
     # Diagnóstico rápido sin IA: detecta trazos rojos para que el botón no quede ciego
-    # si OpenAI tarda, falla o no hay API key. Solo se usa automático con Marca e Hilo elegidos.
+    # si OpenAI tarda, falla o no hay API key. También rescata óvalos grandes que la IA confunda con tachones.
     try:
         fb_add, fb_exclude, fb_debug = _infer_visual_codes_grid(raw, productos_contexto, comentario)
         grid_debug = fb_debug
@@ -3305,6 +3496,20 @@ def analizar_imagen_referencia():
             quantities = {c: quantities.get(c, 1) for c in add_codes}
             vision_notes.append('fallback_marcas_rojas')
             advertencias.append('Usé respaldo de marcas rojas porque la IA no respondió con productos. Revisa el carrito antes de guardar.')
+        elif add_codes and marca and hilo and fb_debug:
+            # Caso típico: la IA interpreta un óvalo grande alrededor del código como X/tachón.
+            # Solo se rescatan círculos MUY claros para no convertir X reales en productos.
+            rescue_codes = _fallback_strong_circle_codes(fb_debug)
+            rescued = []
+            for c in rescue_codes:
+                if c in exclude_codes and c not in add_codes:
+                    add_codes.append(c)
+                    quantities[c] = quantities.get(c, 1)
+                    rescued.append(c)
+            if rescued:
+                exclude_codes = [c for c in exclude_codes if c not in set(rescued)]
+                vision_notes.append('rescate_ovalos_grandes')
+                advertencias.append('Rescaté como seleccionados estos códigos por óvalo grande claro: ' + ', '.join(rescued) + '. Revisa antes de guardar.')
     except Exception as e:
         vision_notes.append('fallback_marcas_rojas_error:' + str(e)[:160])
 
@@ -3387,7 +3592,7 @@ def transcribir_audio():
                 tmp.write(raw)
                 temp_path = tmp.name
             try:
-                client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "20")))
+                client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
                 with open(temp_path, 'rb') as f:
                     resp = client.audio.transcriptions.create(model=os.environ.get('OPENAI_TRANSCRIBE_MODEL', 'whisper-1'), file=f)
                 transcript = getattr(resp, 'text', '') or (resp.get('text') if isinstance(resp, dict) else '') or ''
