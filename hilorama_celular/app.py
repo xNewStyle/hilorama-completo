@@ -2293,10 +2293,258 @@ def _extract_codes_from_free_text(texto):
     # ignorar 1 cuando viene de "uno" o instrucción visual.
     return list(dict.fromkeys(str(int(n)) for n in nums if int(n) > 1))
 
+
+def _analizar_catalogo_por_fases_openai(data_url, original_data_url, comentario, contexto, productos_contexto):
+    """
+    Analizador visual por fases, como propuso Jorge:
+    Fase 1: segmentar catálogo en celdas/productos visibles.
+    Fase 2: leer código primero, luego color escrito, luego color visual.
+    Fase 3: si hay original, comparar original vs editada para detectar modificaciones.
+    Fase 4: asociar cualquier marca/modificación a la celda correcta.
+    Fase 5: decidir selected/excluded/none.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None, "sin_openai_api_key"
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+
+    catalogo = _productos_contexto_para_vision(productos_contexto, max_items=350)
+
+    schema = """
+Devuelve SOLO JSON válido, sin markdown:
+{
+  "phases": {
+    "segmentation": "qué hiciste para separar celdas",
+    "codes": "cómo asociaste código con madeja",
+    "marks": "cómo detectaste modificaciones",
+    "decision": "cómo decidiste selected/excluded/none"
+  },
+  "items": [
+    {
+      "row": 1,
+      "col": 1,
+      "code": "39",
+      "label_text": "MANGO",
+      "visual_color": "amarillo",
+      "bbox": [0.10, 0.12, 0.25, 0.29],
+      "mark": "selected",
+      "mark_type": "circle",
+      "confidence": 0.94,
+      "reason": "círculo rojo rodea el código y la parte baja de la madeja"
+    }
+  ],
+  "add_codes": ["39"],
+  "exclude_codes": ["73"],
+  "quantities": {"39": 1},
+  "warnings": []
+}
+"""
+
+    extra_original = ""
+    if original_data_url:
+        extra_original = """
+HAY DOS IMÁGENES:
+- Imagen 1: imagen EDITADA por la clienta.
+- Imagen 2: imagen ORIGINAL sin editar.
+Compara ambas y detecta qué trazos/marcas se agregaron en la imagen editada.
+"""
+
+    prompt = f"""
+Eres un analizador visual especializado en catálogos de hilos/estambres. 
+NO eres un buscador genérico. Tu trabajo es mapear correctamente marcas de una clienta a códigos de producto.
+
+ANÁLISIS POR FASES OBLIGATORIO:
+
+FASE 1 - SEGMENTACIÓN:
+- Divide la imagen en productos/celdas.
+- Cada producto normalmente tiene una madeja arriba y debajo un CÓDIGO numérico y un nombre/color.
+- El código impreso debajo pertenece a la madeja inmediatamente arriba en la misma columna/celda.
+- Si hay otra madeja arriba o abajo, no confundas: el código debajo de una madeja pertenece a esa madeja, no a la de otra fila.
+- Recorre de izquierda a derecha y de arriba a abajo.
+- Identifica todos los códigos visibles antes de decidir seleccionados.
+
+FASE 2 - LECTURA:
+- Prioridad de identificación:
+  1) código numérico impreso
+  2) texto/nombre del color debajo del código
+  3) color visual de la madeja solo para corroborar
+- No inventes códigos que no estén visibles.
+- No agregues código 1 por la frase "1 de cada uno"; eso es cantidad, no código.
+
+FASE 3 - MODIFICACIONES:
+{extra_original}
+- Si solo hay una imagen, detecta marcas agregadas por la clienta: círculos, flechas, subrayados, tachones, X, rayones.
+- Las marcas pueden ser rojas u otro color llamativo.
+- Una marca que rodea código/nombre o madeja = selección.
+- Una X/tachón cruzando la madeja o celda = excluir.
+- Un círculo alrededor del código aunque no cubra toda la madeja = selección.
+
+FASE 4 - ASOCIACIÓN:
+- Asocia cada marca a la celda/producto con mayor solapamiento o cercanía.
+- La marca no debe brincar al vecino si está más cerca del código/madeja de otro producto.
+- Si una marca toca dos celdas, elige la que contiene el código dentro/abajo de la marca.
+- Si un producto tiene círculo y otro tiene tachón, no mezcles.
+
+FASE 5 - DECISIÓN:
+- mark = "selected" si la clienta lo quiere.
+- mark = "excluded" si está tachado/X o el comentario dice que tachados no.
+- mark = "none" si no hay marca clara.
+- Devuelve add_codes solo con selected.
+- Devuelve exclude_codes solo con excluded.
+- Si el comentario dice "los que tengan círculo 1 de cada uno los tachados no":
+  - todos los selected llevan cantidad 1
+  - todos los excluded NO se agregan.
+
+CONTEXTO APP:
+{contexto}
+
+PRODUCTOS VÁLIDOS DEL CONTEXTO:
+{json.dumps(catalogo, ensure_ascii=False)}
+
+COMENTARIO CLIENTA:
+{comentario}
+
+FORMATO:
+{schema}
+""".strip()
+
+    model = os.environ.get("OPENAI_VISION_MODEL", "gpt-4o")
+    content = [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
+    ]
+    if original_data_url:
+        content.append({"type": "image_url", "image_url": {"url": original_data_url, "detail": "high"}})
+
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "Responde únicamente JSON válido. No uses markdown. No inventes códigos."},
+            {"role": "user", "content": content},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+
+    parsed = _safe_json_from_text(resp.choices[0].message.content or "{}")
+    return parsed, "openai_phased_catalog"
+
+
+def _resolver_estado_items_por_fases(parsed, productos_contexto, comentario):
+    """
+    Convierte items de la IA por fases a add/exclude con filtros duros:
+    - Solo acepta códigos que aparecieron como item visible.
+    - No acepta código 1 si solo viene de cantidad.
+    - Prioriza mark por item, no add_codes sueltos.
+    """
+    items = parsed.get("items") or []
+    if not isinstance(items, list):
+        items = []
+
+    valid = set()
+    for p in productos_contexto:
+        c = str(p.get("codigo") or "").strip().lstrip("0")
+        if c:
+            valid.add(c)
+        cb = str(p.get("codigo_barras") or "").strip().lstrip("0")
+        if cb:
+            valid.add(cb)
+
+    # Cantidad global "1 de cada uno".
+    global_qty = _extract_global_each_quantity(comentario) or 1
+
+    resolved = {}
+    for it in items:
+        code_list = _norm_code_list([it.get("code")])
+        if not code_list:
+            continue
+        code = code_list[0]
+        if valid and code not in valid:
+            continue
+        # Nunca aceptar código 1 desde imagen si no se ve como producto real.
+        if code == "1" and "1" not in valid:
+            continue
+
+        mark = str(it.get("mark") or "").strip().lower()
+        if mark in ("selected", "circle", "circled", "add", "yes", "seleccionado", "agregar"):
+            state = "selected"
+        elif mark in ("excluded", "exclude", "x", "cross", "crossed", "tachado", "no"):
+            state = "excluded"
+        else:
+            state = "none"
+
+        try:
+            conf = float(it.get("confidence") or 0)
+        except Exception:
+            conf = 0
+
+        # Si ya existe, priorizar excluded sobre selected solo si tiene alta confianza;
+        # pero selected con círculo claro puede sobrepasar none.
+        prev = resolved.get(code)
+        rank = {"excluded": 3, "selected": 2, "none": 1}
+        if not prev or (rank.get(state, 0), conf) > (rank.get(prev["state"], 0), prev["confidence"]):
+            resolved[code] = {
+                "state": state,
+                "confidence": conf,
+                "item": it,
+            }
+
+    add = []
+    ex = []
+    quantities = {}
+    visual_items = []
+    for code, data in sorted(
+        resolved.items(),
+        key=lambda kv: (
+            int(kv[1]["item"].get("row") or 999),
+            int(kv[1]["item"].get("col") or 999),
+            int(kv[0]) if str(kv[0]).isdigit() else 999999
+        )
+    ):
+        st = data["state"]
+        it = data["item"]
+        visual_items.append({
+            "code": code,
+            "row": it.get("row"),
+            "col": it.get("col"),
+            "label_text": it.get("label_text") or it.get("label") or "",
+            "visual_color": it.get("visual_color") or "",
+            "mark": st,
+            "mark_type": it.get("mark_type") or "",
+            "confidence": data["confidence"],
+            "reason": it.get("reason") or "",
+        })
+        if st == "selected":
+            add.append(code)
+            quantities[code] = global_qty
+        elif st == "excluded":
+            ex.append(code)
+
+    # Si el JSON trae quantities, respetarlas solo para códigos seleccionados.
+    qraw = parsed.get("quantities") or {}
+    if isinstance(qraw, dict):
+        for k, v in qraw.items():
+            kk = _norm_code_list([k])
+            if not kk:
+                continue
+            kk = kk[0]
+            if kk in add:
+                try:
+                    quantities[kk] = max(1, int(v))
+                except Exception:
+                    pass
+
+    add = [c for c in add if c not in set(ex)]
+    return add, ex, quantities, visual_items
+
+
 @app.route('/api/analizar-imagen-referencia', methods=['POST'])
 def analizar_imagen_referencia():
     data = request.get_json(force=True) or {}
     data_url = data.get('image_base64') or ''
+    original_data_url = data.get('original_image_base64') or ''
     comentario = (data.get('comentario') or '').strip()
     marca = (data.get('marca') or '').strip()
     hilo = (data.get('hilo') or '').strip()
@@ -2319,45 +2567,40 @@ def analizar_imagen_referencia():
     exclude_codes = []
     quantities = {}
     grid_debug = None
+    visual_items = []
     advertencias = []
-    strict_debug = None
+    phase_result = None
 
     with DB() as db:
         productos_contexto = _codigos_contexto_productos(db, marca, hilo)
 
-    # 0) cantidad global "1 de cada uno", etc.
-    global_each_qty = _extract_global_each_quantity(comentario)
-
-    # 1) Analizador ESTRICTO por grid/catálogo
-    grid_result = None
+    # 1) Nuevo analizador por fases.
     try:
-        parsed_grid, provider_grid = _analizar_catalogo_grid_openai(data_url, comentario, contexto, productos_contexto)
-        vision_notes.append(provider_grid)
-        if parsed_grid:
-            grid_result = parsed_grid
-            strict_add, strict_ex, strict_qty, strict_debug = _convert_grid_items_to_codes(parsed_grid, productos_contexto)
-            if strict_add or strict_ex:
+        parsed, provider = _analizar_catalogo_por_fases_openai(data_url, original_data_url, comentario, contexto, productos_contexto)
+        vision_notes.append(provider)
+        if parsed:
+            phase_result = parsed
+            vision_text = json.dumps(parsed, ensure_ascii=False)
+            add_codes, exclude_codes, quantities, visual_items = _resolver_estado_items_por_fases(parsed, productos_contexto, comentario)
+    except Exception as e:
+        vision_notes.append("openai_phased_error:" + str(e)[:180])
+
+    # 2) Fallback estricto grid anterior si el nuevo no devuelve nada.
+    if not add_codes and not exclude_codes:
+        try:
+            parsed_grid, provider_grid = _analizar_catalogo_grid_openai(data_url, comentario, contexto, productos_contexto)
+            vision_notes.append(provider_grid)
+            if parsed_grid:
+                strict_add, strict_ex, strict_qty, strict_debug = _convert_grid_items_to_codes(parsed_grid, productos_contexto)
                 add_codes = strict_add
                 exclude_codes = strict_ex
                 quantities.update(strict_qty)
+                grid_debug = strict_debug
                 vision_text = json.dumps(parsed_grid, ensure_ascii=False)
-    except Exception as e:
-        vision_notes.append("openai_grid_error:" + str(e)[:180])
-
-    # 2) Si el modo estricto no devolvió suficiente, usar modo Lens libre
-    lens_result = None
-    if not add_codes and not exclude_codes:
-        try:
-            parsed, provider = _analizar_imagen_con_openai_lens(data_url, comentario, contexto, productos_contexto)
-            vision_notes.append(provider)
-            if parsed:
-                lens_result = parsed
-                vision_text = json.dumps(parsed, ensure_ascii=False)
-                add_codes, exclude_codes, quantities = _validar_resultado_lens(parsed, productos_contexto)
         except Exception as e:
-            vision_notes.append("openai_lens_error:" + str(e)[:180])
+            vision_notes.append("openai_grid_error:" + str(e)[:180])
 
-    # 3) OCR local como apoyo
+    # 3) OCR local opcional.
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(raw))
@@ -2371,7 +2614,7 @@ def analizar_imagen_referencia():
     except Exception:
         pass
 
-    # 4) Solo si ambos fallan, fallback por rojo/cuadrícula
+    # 4) Fallback por rojo/cuadrícula si no hay OpenAI o falló.
     if not add_codes and not exclude_codes:
         try:
             inferred_add, inferred_ex, grid_debug = _infer_visual_codes_grid(raw, productos_contexto, comentario)
@@ -2379,21 +2622,20 @@ def analizar_imagen_referencia():
                 vision_notes.append('fallback_red_grid')
                 add_codes = inferred_add
                 exclude_codes = inferred_ex
+                global_each_qty = _extract_global_each_quantity(comentario) or 1
+                for c in add_codes:
+                    quantities[c] = global_each_qty
         except Exception as e:
             vision_notes.append("fallback_grid_error:" + str(e)[:180])
 
-    # 5) Códigos explícitos del comentario
+    # 5) Códigos explícitos escritos a mano, pero NO tomar el "1" de "1 de cada uno".
     explicit_codes = _extract_codes_from_free_text(comentario)
     for c in explicit_codes:
         if c not in add_codes and c not in exclude_codes:
             add_codes.append(c)
+            quantities[c] = quantities.get(c, _extract_global_each_quantity(comentario) or 1)
 
     add_codes = [c for c in add_codes if c not in set(exclude_codes)]
-
-    # 6) aplicar cantidad global "1 de cada uno"
-    if global_each_qty and add_codes:
-        for c in add_codes:
-            quantities[c] = max(1, global_each_qty)
 
     pedidos, no_encontrados = _productos_a_pedidos_por_codigos(productos_contexto, add_codes, exclude_codes, quantities)
 
@@ -2406,24 +2648,21 @@ def analizar_imagen_referencia():
             retried_all = True
             vision_notes.append('fallback_sin_contexto')
 
-    joined = ' '.join(x for x in [comentario, ocr_text, vision_text] if x).strip()
-    resumen = _image_reference_summary(joined)
+    resumen = _image_reference_summary(' '.join(x for x in [comentario, ocr_text, vision_text] if x).strip())
 
     if add_codes:
         suggested_text = ', '.join(f"{c} {quantities.get(c,1)}" for c in add_codes)
-    elif grid_result and grid_result.get("suggested_text"):
-        suggested_text = str(grid_result.get("suggested_text"))
-    elif lens_result and lens_result.get("suggested_text"):
-        suggested_text = str(lens_result.get("suggested_text"))
     else:
         suggested_text = comentario
 
     if not os.environ.get("OPENAI_API_KEY"):
-        advertencias.append("No hay OPENAI_API_KEY en Render. Estoy usando fallback visual básico.")
+        advertencias.append("No hay OPENAI_API_KEY. Sin ella solo funciona el fallback básico.")
     if not marca or not hilo:
         advertencias.append("Selecciona Marca e Hilo exactos antes de analizar.")
-    if global_each_qty:
-        advertencias.append(f"Interpreté cantidad global: {global_each_qty} de cada seleccionado.")
+    if original_data_url:
+        advertencias.append("Se usó comparación con imagen original.")
+    else:
+        advertencias.append("No subiste imagen original; detecté modificaciones solo desde la imagen editada.")
     if add_codes and no_encontrados:
         advertencias.append("Algunos códigos detectados no existen en el contexto: " + ", ".join(no_encontrados))
 
@@ -2439,13 +2678,13 @@ def analizar_imagen_referencia():
         'quantities': quantities,
         'pedidos': pedidos,
         'no_encontrados': no_encontrados,
+        'visual_items': visual_items,
         'contexto': {'marca': marca, 'hilo': hilo, 'productos_contexto': len(productos_contexto), 'retry_all': retried_all},
         'grid_debug': grid_debug,
-        'strict_debug': strict_debug,
+        'phase_result': phase_result,
         'advertencias': advertencias,
-        'grid_result': grid_result,
-        'lens_result': lens_result,
     }))
+
 @app.route('/api/transcribir-audio', methods=['POST'])
 def transcribir_audio():
     data = request.get_json(force=True) or {}

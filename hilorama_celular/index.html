@@ -103,7 +103,7 @@
           <div id="pedidoAudioStatus" class="small" style="margin-top:8px">Audio: sin transcribir.</div>
         </details>
         <details class="ai-block"><summary>🖼 Imagen de referencia</summary>
-          <label style="margin-top:10px">Imagen</label><input id="pedidoImagen" type="file" accept="image/*" onchange="onPedidoImagenChange(event)">
+          <label style="margin-top:10px">Imagen</label><input id="pedidoImagen" type="file" accept="image/*" onchange="onPedidoImagenChange(event)"><label style="margin-top:8px">Imagen original sin editar (opcional, mejora muchísimo)</label><input id="pedidoImagenOriginal" type="file" accept="image/*">
           <div class="small">Para fotos alteradas: “de ese 2”, “arriba derecha”, “tachado no”.</div>
           <textarea id="pedidoImagenTexto" placeholder="Comentario sobre la foto: de ese 2 por favor / el de arriba a la derecha / el tachado no"></textarea>
           <div id="pedidoImagenPreview" class="hidden" style="margin-top:8px"></div>
@@ -209,7 +209,7 @@ async function analizarImagenReferencia(){
     if(r.summary&&r.summary.numbers&&r.summary.numbers.length)extras.push('números: '+r.summary.numbers.join(', '));
     if(r.summary&&r.summary.positions&&r.summary.positions.length)extras.push('posiciones: '+r.summary.positions.join(', '));
     if(r.summary&&r.summary.marks&&r.summary.marks.length)extras.push('marcas: '+r.summary.marks.join(', '));
-    if(r.pedidos&&r.pedidos.length){
+    let visual_items_table='';if(r.visual_items&&r.visual_items.length){visual_items_table='<div class="banner" style="margin-top:8px"><b>Mapa visual detectado:</b><br>'+r.visual_items.map(x=>`${escapeHtml(x.code)} · ${escapeHtml(x.label_text||'')} · ${escapeHtml(x.mark)} · conf ${escapeHtml(String(x.confidence||0))}`).join('<br>')+'</div>';}if(r.pedidos&&r.pedidos.length){
       state.parserPedidos=r.pedidos;
       addAllParsed(true);
       renderCart();
