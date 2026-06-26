@@ -107,7 +107,7 @@
           <div class="small">Para fotos alteradas: “de ese 2”, “arriba derecha”, “tachado no”.</div>
           <textarea id="pedidoImagenTexto" placeholder="Comentario sobre la foto: de ese 2 por favor / el de arriba a la derecha / el tachado no"></textarea>
           <div id="pedidoImagenPreview" class="hidden" style="margin-top:8px"></div>
-          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia()">Analizar por celdas (grid)</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
+          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia()">Analizar imagen con IA</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
           <div id="pedidoImagenAnalisis" class="small" style="margin-top:8px"></div><details id="mapaVisualDebugWrap" open style="margin-top:8px"><summary><b>Mapa visual por celdas / diagnóstico</b></summary><div id="mapaVisualDebug" class="small" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;max-height:360px;overflow:auto">Aquí aparecerá el diagnóstico después de analizar.</div><button class="light" type="button" onclick="copiarMapaVisual()">Copiar mapa para ChatGPT</button></details>
         </details>
         <details class="ai-block"><summary>👤 Historial de cliente opcional</summary>
@@ -209,15 +209,20 @@ function formatMapaVisual(r){
     lines.push('');
     lines.push('visual_items: VACÍO');
   }
-  if(r.phase_result){
-    lines.push('');
-    lines.push('--- phase_result crudo ---');
-    lines.push(JSON.stringify(r.phase_result,null,2).slice(0,9000));
-  }
   if(r.grid_debug){
     lines.push('');
     lines.push('--- grid_debug ---');
-    lines.push(JSON.stringify(r.grid_debug,null,2).slice(0,5000));
+    lines.push(JSON.stringify(r.grid_debug,null,2).slice(0,9000));
+  }
+  if(r.cell_result){
+    lines.push('');
+    lines.push('--- cell_result ---');
+    lines.push(JSON.stringify(r.cell_result,null,2).slice(0,9000));
+  }
+  if(r.phase_result){
+    lines.push('');
+    lines.push('--- phase_result ---');
+    lines.push(JSON.stringify(r.phase_result,null,2).slice(0,9000));
   }
   return lines.join('\n');
 }
@@ -230,7 +235,7 @@ function copiarMapaVisual(){
 async function analizarImagenReferencia(){
   const f=$('pedidoImagen').files&&$('pedidoImagen').files[0];
   if(!f)return alert('Primero selecciona una imagen.');
-  $('pedidoImagenAnalisis').innerHTML='Analizando imagen con el mismo contexto de marca/hilo...';
+  $('pedidoImagenAnalisis').innerHTML='Analizando imagen con IA visual, marcas y cantidades...';
   try{
     const image_base64=await fileToDataUrl(f);
     const comentario=$('pedidoImagenTexto').value.trim();
@@ -241,6 +246,7 @@ async function analizarImagenReferencia(){
       hilo:$('hiloCtx').value,
       contexto:($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos')
     })});
+    if($('mapaVisualDebug')){$('mapaVisualDebug').textContent=formatMapaVisual(r);}
     state.pedidoImagenAnalizada=r.suggested_text||'';
     const extras=[];
     if(r.add_codes&&r.add_codes.length)extras.push('agregar: '+r.add_codes.join(', '));
@@ -248,14 +254,14 @@ async function analizarImagenReferencia(){
     if(r.summary&&r.summary.numbers&&r.summary.numbers.length)extras.push('números: '+r.summary.numbers.join(', '));
     if(r.summary&&r.summary.positions&&r.summary.positions.length)extras.push('posiciones: '+r.summary.positions.join(', '));
     if(r.summary&&r.summary.marks&&r.summary.marks.length)extras.push('marcas: '+r.summary.marks.join(', '));
-    let visual_items_table='';if(r.visual_items&&r.visual_items.length){visual_items_table='<div class="banner" style="margin-top:8px"><b>Mapa visual detectado:</b><br>'+r.visual_items.map(x=>`${escapeHtml(x.code)} · ${escapeHtml(x.label_text||'')} · ${escapeHtml(x.mark)} · conf ${escapeHtml(String(x.confidence||0))}`).join('<br>')+'</div>';}if(r.pedidos&&r.pedidos.length){
+    let visual_items_table='';if(r.visual_items&&r.visual_items.length){visual_items_table='<div class="banner" style="margin-top:8px"><b>Mapa visual detectado:</b><br>'+r.visual_items.map(x=>`${escapeHtml(x.code)} · ${escapeHtml(x.label_text||'')} · ${escapeHtml(x.mark)} · qty ${escapeHtml(String(x.quantity||''))} · ${escapeHtml(x.mark_type||'')} · ${escapeHtml(x.reason||'')}`).join('<br>')+'</div>';}if(r.pedidos&&r.pedidos.length){
       state.parserPedidos=r.pedidos;
       addAllParsed(true);
       renderCart();
-      $('pedidoImagenAnalisis').innerHTML=`<div class="banner">Imagen analizada tipo Lens y ${r.pedidos.length} producto(s) agregados al carrito con contexto ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}.<br>${escapeHtml(extras.join(' · ')||'sin resumen')}<br>Revisa el carrito antes de guardar.</div>`;
+      $('pedidoImagenAnalisis').innerHTML=`<div class="banner">Imagen interpretada por IA y ${r.pedidos.length} producto(s) agregados al carrito con contexto ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}.<br>${escapeHtml(extras.join(' · ')||'sin resumen')}<br>Revisa el carrito antes de guardar.</div>`+visual_items_table;
       crearScroll('crearCarritoSec');
     }else{
-      $('pedidoImagenAnalisis').innerHTML=`<div class="banner warning">Analicé la imagen pero no pude convertirla automáticamente a productos.<br>OCR: ${escapeHtml((r.ocr_text||'').slice(0,180)||'sin texto visible')}<br>Resumen: ${escapeHtml(extras.join(' · ')||'sin hallazgos claros')}<br>Sugerencia: <b>${escapeHtml(r.suggested_text||'')}</b></div>`;
+      $('pedidoImagenAnalisis').innerHTML=`<div class="banner warning">Analicé la imagen pero no pude convertirla automáticamente a productos.<br>OCR: ${escapeHtml((r.ocr_text||'').slice(0,180)||'sin texto visible')}<br>Resumen: ${escapeHtml(extras.join(' · ')||'sin hallazgos claros')}<br>Sugerencia: <b>${escapeHtml(r.suggested_text||'')}</b></div>`+visual_items_table;
       if(!$('pedidoImagenTexto').value.trim()&&r.suggested_text){$('pedidoImagenTexto').value=r.suggested_text}
     }
   }catch(e){$('pedidoImagenAnalisis').innerHTML=`<div class="banner warning"><b>No pude analizar la imagen.</b><br>${escapeHtml(e.message)}<br>Si vuelve a pasar, manda captura de este mensaje.</div>`;if($('mapaVisualDebug')){$('mapaVisualDebug').textContent='ERROR AL ANALIZAR:\n'+e.message}}
