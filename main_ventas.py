@@ -287,11 +287,79 @@ def abrir_panel_asignacion():
 
     conn = get_conn()
 
+    def _fecha_para_orden(valor):
+        import datetime
+
+        if not valor:
+            return datetime.datetime.min
+
+        if isinstance(valor, datetime.datetime):
+            return valor
+
+        if isinstance(valor, datetime.date):
+            return datetime.datetime.combine(valor, datetime.time.min)
+
+        texto = str(valor).strip()
+        if not texto:
+            return datetime.datetime.min
+
+        texto = texto.replace("T", " ")
+
+        # Quita milisegundos o zona horaria si vienen en texto
+        texto_limpio = texto.split(".")[0]
+        if "+" in texto_limpio:
+            texto_limpio = texto_limpio.split("+")[0].strip()
+        if texto_limpio.endswith("Z"):
+            texto_limpio = texto_limpio[:-1].strip()
+
+        for formato in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                largo = 19 if "%S" in formato else 16 if "%M" in formato else 10
+                return datetime.datetime.strptime(texto_limpio[:largo], formato)
+            except Exception:
+                pass
+
+        return datetime.datetime.min
+
+    def _valor_nota(nota, clave):
+        try:
+            return nota[clave]
+        except Exception:
+            return None
+
+    def _numero_nota_para_orden(nota_id):
+        # Orden más confiable para este panel: COT-00361 debe ir arriba de COT-00360.
+        # Algunas notas antiguas pueden tener una fecha modificada/actualizada y por eso se subían arriba.
+        import re
+        texto = str(nota_id or "")
+        numeros = re.findall(r"\d+", texto)
+        if not numeros:
+            return 0
+        try:
+            return int(numeros[-1])
+        except Exception:
+            return 0
+
+    def ordenar_notas_empacador(lista):
+        # En asignación de empacador ordenamos por número de nota descendente:
+        # COT-00361, COT-00360, COT-00359...
+        # La fecha queda como respaldo por si algún día una nota no trae folio numérico.
+        return sorted(
+            list(lista),
+            key=lambda n: (
+                _numero_nota_para_orden(_valor_nota(n, "id")),
+                _fecha_para_orden(_valor_nota(n, "fecha_asignacion")),
+                _fecha_para_orden(_valor_nota(n, "fecha"))
+            ),
+            reverse=True
+        )
+
     notas = conn.execute("""
         SELECT 
             n.id,
             n.cliente_nombre,
             n.pedido,
+            n.fecha,
             n.fecha_asignacion,
             n.estado,
             e.nombre AS empacador_actual,
@@ -319,6 +387,8 @@ def abrir_panel_asignacion():
 
    
     """).fetchall()
+
+    notas = ordenar_notas_empacador(notas)
 
     conn.close()
 
@@ -556,6 +626,7 @@ def abrir_panel_asignacion():
                 n.id,
                 n.cliente_nombre,
                 n.pedido,
+                n.fecha,
                 n.fecha_asignacion,
                 n.estado,
                 e.nombre AS empacador_actual,
@@ -580,6 +651,8 @@ def abrir_panel_asignacion():
 
 
         """).fetchall()
+
+        nuevas_notas = ordenar_notas_empacador(nuevas_notas)
 
         conn.close()
 

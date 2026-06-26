@@ -6,6 +6,21 @@ from database.connection import get_conn
 from clientes import obtener_cliente_por_id
 from tkinter import messagebox
 
+
+def ensure_notas_extra_schema():
+    """Agrega columnas nuevas de forma segura, sin borrar datos."""
+    conn = get_conn()
+    try:
+        conn.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS fecha_pago TEXT")
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        conn.close()
+
 # ================= ID =================
 
 def generar_id():
@@ -84,15 +99,69 @@ def crear_cotizacion(cliente, carrito, envio=None, pedido=None):
 
 # ================= LISTAR =================
 
+
+
+def _fecha_para_orden(valor):
+    """Convierte fecha_pago/fecha a datetime para ordenar sin romper Postgres.
+    Evita errores cuando una columna es TEXT y otra TIMESTAMP.
+    """
+    if not valor:
+        return datetime.min
+
+    if isinstance(valor, datetime):
+        return valor
+
+    texto = str(valor).strip()
+    if not texto:
+        return datetime.min
+
+    # Quitar zona Z si llega desde algún servicio externo
+    texto = texto.replace("Z", "")
+
+    # Intento principal: fechas tipo 2026-06-15 o 2026-06-15T18:30:00
+    try:
+        return datetime.fromisoformat(texto)
+    except Exception:
+        pass
+
+    formatos = (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y",
+    )
+
+    for fmt in formatos:
+        try:
+            return datetime.strptime(texto[:19], fmt)
+        except Exception:
+            continue
+
+    return datetime.min
+
+
+def _clave_orden_nota(nota):
+    """Ordena todas las notas: pagadas por fecha_pago, las demás por fecha."""
+    fecha = None
+
+    if nota.get("estado") == "PAGADA" and nota.get("fecha_pago"):
+        fecha = nota.get("fecha_pago")
+    else:
+        fecha = nota.get("fecha")
+
+    return (_fecha_para_orden(fecha), str(nota.get("id", "")))
+
 def listar_cotizaciones():
+    ensure_notas_extra_schema()
     conn = get_conn()
 
-    rows = conn.execute("""
-        SELECT * FROM notas
-        ORDER BY fecha DESC
-    """).fetchall()
+    # Importante: NO ordenar aquí con COALESCE(fecha_pago, fecha),
+    # porque en algunas bases fecha es TEXT y fecha_pago es TIMESTAMP.
+    # Eso rompe Postgres. Ordenamos en Python para que funcione con ambos tipos.
+    rows = conn.execute("SELECT * FROM notas").fetchall()
 
     notas = [dict(r) for r in rows]
+    notas.sort(key=_clave_orden_nota, reverse=True)
 
     conn.close()
 
@@ -102,6 +171,7 @@ def listar_cotizaciones():
 # ================= OBTENER =================
 
 def obtener_cotizacion(id_nota):
+    ensure_notas_extra_schema()
     conn = get_conn()
 
     nota = conn.execute(
@@ -354,6 +424,7 @@ def eliminar_nota(id_nota):
 
 
 def guardar_nota_actualizada(nota_actualizada):
+    ensure_notas_extra_schema()
     conn = get_conn()
 
     envio_data = nota_actualizada.get("envio", {})
@@ -361,6 +432,15 @@ def guardar_nota_actualizada(nota_actualizada):
 
     if envio_data:
         paqueteria = envio_data.get("tipo") or envio_data.get("paqueteria")
+
+    fecha_pago = nota_actualizada.get("fecha_pago")
+
+    if nota_actualizada.get("estado") == "PAGADA" and not fecha_pago:
+        actual = conn.execute(
+            "SELECT fecha_pago FROM notas WHERE id=%s",
+            (nota_actualizada["id"],)
+        ).fetchone()
+        fecha_pago = (actual or {}).get("fecha_pago") or datetime.now().isoformat(timespec="seconds")
 
     conn.execute("""
         UPDATE notas
@@ -370,7 +450,8 @@ def guardar_nota_actualizada(nota_actualizada):
             total=%s,
             envio=%s,
             comprobante=%s,
-            paqueteria=%s
+            paqueteria=%s,
+            fecha_pago=%s
         WHERE id=%s
     """, (
         nota_actualizada["cliente_id"],
@@ -380,6 +461,7 @@ def guardar_nota_actualizada(nota_actualizada):
         json.dumps(envio_data) if envio_data else None,
         nota_actualizada.get("comprobante"),
         paqueteria,
+        fecha_pago,
         nota_actualizada["id"]
     ))
 

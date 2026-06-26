@@ -1,0 +1,46 @@
+{
+  "clientes": {
+    "demo": {
+      "esperando": "",
+      "ultimo_producto": {
+        "codigo": "993",
+        "codigo_barras": "4684645",
+        "marca": "ALIZE",
+        "hilo": "VELLUTO",
+        "color": "LADRILLO",
+        "stock": 49,
+        "estado": "RESURTIR",
+        "precio": 59.99,
+        "volumetrico": 1.5,
+        "es_inventariable": true,
+        "descripcion": "ALIZE VELLUTO LADRILLO tono/código 993",
+        "cantidad": 0,
+        "subtotal": 0
+      },
+      "pedido_actual": [
+        {
+          "codigo": null,
+          "codigo_barras": null,
+          "marca": "HILORAMA",
+          "hilo": "KOMFY MINI",
+          "color": "100 SURTIDOS",
+          "stock": null,
+          "estado": null,
+          "precio": null,
+          "volumetrico": null,
+          "es_inventariable": null,
+          "descripcion": null,
+          "cantidad": null,
+          "subtotal": null
+        }
+      ],
+      "forma_entrega": "envio",
+      "direccion_envio": "57000",
+      "actualizado": "2026-06-22 18:24:30",
+      "ultima_respuesta": "Claro 😊 Te comparto el catálogo/colores de Velluto.",
+      "ultimo_media_producto": "velluto",
+      "ultima_accion_media": "pedir_catalogo",
+      "ultimo_codigo_media": ""
+    }
+  }
+}

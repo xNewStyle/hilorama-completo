@@ -588,7 +588,9 @@ def doble_click_editar(event):
         return
 
     # #0 árbol | #1 hilo | #2 color | #3 código | #4 stock | #5 barras | #6 costo | #7 precio | #8 volumétrico | #9 tipo
-    if columna == "#4":
+    if columna == "#2":
+        editar_celda(1, "color")
+    elif columna == "#4":
         editar_celda(3, "stock")
     elif columna == "#5":
         editar_celda(4, "codigo_barras")
@@ -695,7 +697,33 @@ def editar_celda(columna, campo):
                 conn=conn
             )
         else:
-            if campo == "precio":
+            if campo == "color":
+                nuevo_valor = str(nuevo_valor).strip().upper()
+                if not nuevo_valor:
+                    conn.close()
+                    messagebox.showerror("Error", "Color inválido")
+                    return
+
+                existe = conn.execute("""
+                    SELECT id FROM productos
+                    WHERE marca=%s AND hilo=%s AND codigo=%s AND color=%s
+                """, (marca, hilo, codigo, nuevo_valor)).fetchone()
+
+                if existe and nuevo_valor != color:
+                    conn.close()
+                    messagebox.showerror(
+                        "No se puede renombrar",
+                        "Ya existe un producto con esa misma marca, hilo, código y color."
+                    )
+                    return
+
+                conn.execute("""
+                    UPDATE productos
+                    SET color=%s
+                    WHERE marca=%s AND hilo=%s AND codigo=%s AND color=%s
+                """, (nuevo_valor, marca, hilo, codigo, color))
+
+            elif campo == "precio":
                 try:
                     nuevo_valor = float(nuevo_valor)
                 except Exception:
@@ -2392,7 +2420,7 @@ def construir_interfaz():
     table_card.pack(fill="both", expand=True)
 
     tk.Label(table_card, text="Inventario de almacén", bg="white", fg="#22364D", font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 2))
-    tk.Label(table_card, text="Doble clic sobre stock, código de barras, costo, precio o volumétrico para editar. Usa “Item cotización” para paquetes/combos que no deben contar como almacén.", bg="white", fg="#61738F", font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=(0, 8))
+    tk.Label(table_card, text="Doble clic sobre color, stock, código de barras, costo, precio o volumétrico para editar. Usa “Item cotización” para paquetes/combos que no deben contar como almacén.", bg="white", fg="#61738F", font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=(0, 8))
 
     tabla_wrap = tk.Frame(table_card, bg="white")
     tabla_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 12))

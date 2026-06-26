@@ -14,6 +14,7 @@ from visor_imagen import visor_imagen
 from ver_clientes import editar_cliente_por_id
 from notas import buscar_nota_por_texto
 import platform
+import datetime
 from pdf_cotizacion import generar_pdf_cotizacion
 import subprocess
 from envios_config import calcular_envio, cargar_envios
@@ -998,8 +999,25 @@ def abrir_visor(root):
         hoy = datetime.date.today().isoformat()
 
         clientes = listar_clientes()
+        notas_lista = listar_cotizaciones()
 
-        for n in listar_cotizaciones():
+        # 🔥 ORDEN GENERAL:
+        # - PAGADAS: primero por fecha_pago, si no existe usa fecha.
+        # - COTIZACIONES / PENDIENTES: por fecha de creación.
+        # Así lo más reciente siempre sale arriba y lo más antiguo abajo,
+        # no solo cuando filtras PAGADA.
+        def fecha_orden(n):
+            if n.get("estado") == "PAGADA":
+                return str(n.get("fecha_pago") or n.get("fecha") or "")
+            return str(n.get("fecha") or "")
+
+        notas_lista = sorted(
+            notas_lista,
+            key=fecha_orden,
+            reverse=True
+        )
+
+        for n in notas_lista:
 
             cliente = next(
                 (c for c in clientes if c["id"] == n["cliente_id"]),
@@ -1014,7 +1032,7 @@ def abrir_visor(root):
 
             pedido = str(n.get("pedido", ""))
 
-            fecha = str(n.get("fecha", ""))
+            fecha = str(n.get("fecha_pago") or n.get("fecha", "")) if n.get("estado") == "PAGADA" else str(n.get("fecha", ""))
 
             # 🔹 FILTRO CLIENTE/TEL
             if texto and texto not in nombre and texto not in tel:
@@ -2696,19 +2714,146 @@ CONTABILIDAD_API_URL = os.environ.get(
 PENDIENTES_CONTABILIDAD_FILE = "contabilidad_pendientes.json"
 
 
+# Costos reales de envío que quieres descontar para calcular dinero neto.
+# Puedes cambiar estos números después si suben tus costos.
+COSTOS_ENVIO_REALES = {
+    "CORREOS": 30,
+    "CORREOS DE MEXICO": 30,
+    "CORREOS DE MÉXICO": 30,
+    "SEPOMEX": 30,
+    "FEDEX": 200,
+    "ESTAFETA": 150,
+}
+
+
+def _numero(valor, default=0):
+    try:
+        if valor is None or valor == "":
+            return default
+        return float(valor)
+    except Exception:
+        return default
+
+
+def _texto_normalizado(valor):
+    return str(valor or "").strip().upper()
+
+
+def obtener_costo_envio_real_neto(nota):
+    """Devuelve el costo real de envío que se resta a la venta."""
+    envio = nota.get("envio") or {}
+
+    if isinstance(envio, str):
+        try:
+            envio = json.loads(envio)
+        except Exception:
+            envio = {}
+
+    paqueteria = _texto_normalizado(
+        envio.get("paqueteria")
+        or envio.get("empresa")
+        or envio.get("nombre")
+        or ""
+    )
+
+    if "CORREOS" in paqueteria or "SEPOMEX" in paqueteria:
+        return COSTOS_ENVIO_REALES["CORREOS"], paqueteria or "CORREOS"
+    if "FEDEX" in paqueteria:
+        return COSTOS_ENVIO_REALES["FEDEX"], paqueteria or "FEDEX"
+    if "ESTAFETA" in paqueteria:
+        return COSTOS_ENVIO_REALES["ESTAFETA"], paqueteria or "ESTAFETA"
+
+    # Si no reconoce la paquetería, no descuenta envío para evitar inventar costo.
+    return 0, paqueteria or "SIN PAQUETERIA"
+
+
+def obtener_costo_proveedor_item_neto(item):
+    """
+    Busca el costo proveedor unitario del producto.
+    Primero intenta en el item de la nota; si no viene ahí, lo busca en almacén por código.
+    """
+    posibles_campos = (
+        "costo_neto",
+        "costo_proveedor",
+        "precio_proveedor",
+        "precio_compra",
+        "costo_compra",
+        "costo",
+        "precio_costo",
+    )
+
+    for campo in posibles_campos:
+        if campo in item and item.get(campo) not in (None, ""):
+            return _numero(item.get(campo)), campo
+
+    codigo = item.get("codigo") or item.get("Código")
+    if codigo:
+        try:
+            producto = obtener_producto_por_codigo(codigo)
+        except Exception:
+            producto = None
+
+        if producto:
+            for campo in posibles_campos:
+                if campo in producto and producto.get(campo) not in (None, ""):
+                    return _numero(producto.get(campo)), campo
+
+    return 0, "SIN_COSTO"
+
+
+def calcular_dinero_neto_nota(nota):
+    """
+    Fórmula:
+    dinero_neto = total_nota - costo_proveedor_total
+
+    IMPORTANTE:
+    Aquí NO se descuenta el costo real del envío.
+    Si pagaste envío a Correos, FedEx, Estafeta, etc., regístralo aparte
+    como gasto manual desde la app de dinero.
+    """
+    total_nota = _numero(nota.get("total"))
+
+    costo_proveedor_total = 0
+    productos_sin_costo = []
+
+    for item in nota.get("items", []) or []:
+        cantidad = _numero(item.get("cantidad"))
+        costo_unitario, campo = obtener_costo_proveedor_item_neto(item)
+        costo_proveedor_total += cantidad * costo_unitario
+
+        if costo_unitario <= 0:
+            productos_sin_costo.append(str(item.get("codigo") or "SIN_CODIGO"))
+
+    dinero_neto = total_nota - costo_proveedor_total
+
+    return {
+        "total_nota": round(total_nota, 2),
+        "costo_proveedor": round(costo_proveedor_total, 2),
+        "costo_envio_real": 0,
+        "paqueteria": "NO_DESCONTADO",
+        "dinero_neto": round(dinero_neto, 2),
+        "productos_sin_costo": productos_sin_costo,
+    }
+
+
 def construir_payload_ingreso_contabilidad(nota, comprobante=None):
-    """Construye el ingreso que se enviará a Mi Control de Dinero."""
+    """Construye el ingreso NETO que se enviará a Mi Control de Dinero."""
     nota_id = str(nota.get("id") or "").strip()
     if not nota_id:
         return None, "La nota no tiene ID"
 
-    try:
-        monto = float(nota.get("total") or 0)
-    except Exception:
-        monto = 0
+    calculo = calcular_dinero_neto_nota(nota)
+    monto_neto = calculo["dinero_neto"]
 
-    if monto <= 0:
+    if calculo["total_nota"] <= 0:
         return None, "La nota no tiene total válido"
+
+    if monto_neto <= 0:
+        return None, (
+            "El dinero neto salió en cero o negativo. "
+            f"Total: ${calculo['total_nota']:.2f}, "
+            f"proveedor: ${calculo['costo_proveedor']:.2f}"
+        )
 
     cliente_nombre = nota.get("cliente_nombre") or ""
     if not cliente_nombre:
@@ -2719,11 +2864,29 @@ def construir_payload_ingreso_contabilidad(nota, comprobante=None):
         except Exception:
             cliente_nombre = ""
 
+    # La API actual usa el campo cliente para armar la descripción.
+    # Por eso aquí dejamos un resumen corto del cálculo.
+    detalle = (
+        f"{cliente_nombre} | NETO ${monto_neto:.2f} "
+        f"= Total ${calculo['total_nota']:.2f} "
+        f"- proveedor ${calculo['costo_proveedor']:.2f} "
+        f"| envío real NO descontado, se registra como gasto manual"
+    )
+
+    if calculo["productos_sin_costo"]:
+        detalle += f" | Sin costo proveedor: {', '.join(calculo['productos_sin_costo'][:8])}"
+
     return {
         "nota_id": nota_id,
-        "cliente": cliente_nombre,
-        "monto": monto,
-        "comprobante": comprobante or nota.get("comprobante", "")
+        "cliente": detalle,
+        "monto": monto_neto,
+        "comprobante": comprobante or nota.get("comprobante", ""),
+        "tipo_calculo": "neto",
+        "total_nota": calculo["total_nota"],
+        "costo_proveedor": calculo["costo_proveedor"],
+        "costo_envio_real": calculo["costo_envio_real"],
+        "paqueteria": calculo["paqueteria"],
+        "productos_sin_costo": calculo["productos_sin_costo"],
     }, None
 
 
@@ -2787,7 +2950,21 @@ def enviar_payload_ingreso_contabilidad(payload):
     if respuesta.get("ok"):
         if respuesta.get("duplicado"):
             return True, "La nota ya tenía ingreso registrado"
-        return True, "Ingreso registrado automáticamente en Mi Control de Dinero"
+
+        try:
+            monto = float(payload.get("monto") or 0)
+            total = float(payload.get("total_nota") or 0)
+            proveedor = float(payload.get("costo_proveedor") or 0)
+            envio = float(payload.get("costo_envio_real") or 0)
+            paqueteria = payload.get("paqueteria") or ""
+            return True, (
+                "Ingreso NETO registrado en Mi Control de Dinero: "
+                f"${monto:.2f} = total ${total:.2f} "
+                f"- proveedor ${proveedor:.2f} "
+                "(envío real se registra manual)"
+            )
+        except Exception:
+            return True, "Ingreso NETO registrado automáticamente en Mi Control de Dinero"
 
     return False, respuesta.get("error") or "La API no aceptó el ingreso"
 
@@ -2900,6 +3077,7 @@ def marcar_como_pagada(tree, win):
 
         nota["estado"] = "PAGADA"
         nota["comprobante"] = destino
+        nota["fecha_pago"] = datetime.datetime.now().isoformat(timespec="seconds")
         guardar_nota_actualizada(nota)
 
         registrar_cambio(

@@ -226,40 +226,58 @@ def draw_comprobante_pagado(
     c,
     nota,
     x_cm=2,
-    y_cm=2,
-    w_cm=6,
-    h_cm=6,
+    y_cm=6,
+    w_cm=7,
+    h_cm=9,
     rotacion=0
 ):
+    """Dibuja el comprobante dentro de la hoja del PDF premium.
 
-    ruta = nota.get("comprobante")
-    if not ruta or not os.path.exists(ruta):
+    Antes el comprobante podía no verse porque la posición Y estaba fuera de la página
+    y porque algunas rutas relativas no se encontraban al generar el PDF.
+    """
+
+    ruta_original = nota.get("comprobante")
+    if not ruta_original:
         return
 
-    img = Image.open(ruta)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    candidatos = [
+        ruta_original,
+        os.path.join(BASE_DIR, ruta_original),
+        os.path.abspath(ruta_original),
+    ]
 
-    # rotar si hace falta
+    ruta = next((r for r in candidatos if r and os.path.exists(r)), None)
+    if not ruta:
+        print("⚠ Comprobante no encontrado:", ruta_original)
+        return
+
+    try:
+        img = Image.open(ruta).convert("RGB")
+    except Exception as e:
+        print("⚠ No se pudo abrir comprobante:", e)
+        return
+
     if rotacion:
         img = img.rotate(rotacion, expand=True)
 
-    # tamaño máximo en pixeles
-    max_w = int(w_cm * 118)   # cm → px aprox
+    max_w = int(w_cm * 118)
     max_h = int(h_cm * 118)
-
-    # 🔥 ajustar proporcionalmente
     img.thumbnail((max_w, max_h), Image.LANCZOS)
 
-    # guardar temporal
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     img.save(tmp.name, "PNG")
 
     x = x_cm * cm
     y = y_cm * cm
-
-    # tamaño final proporcional
     w = img.width / 118 * cm
     h = img.height / 118 * cm
 
+    c.saveState()
+    c.setFillColor(colors.HexColor("#2E3A3F"))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(x, y + h + 0.25*cm, "Comprobante de pago")
     c.drawImage(
         tmp.name,
         x,
@@ -269,6 +287,7 @@ def draw_comprobante_pagado(
         preserveAspectRatio=True,
         mask="auto"
     )
+    c.restoreState()
 
 
 
@@ -338,10 +357,11 @@ def dibujar_premium(canvas, doc):
     draw_comprobante_pagado(
         canvas,
         nota,
-        x_cm=3.5,     # ← mueve izquierda / derecha
-        y_cm=-16,     # ← mueve arriba / abajo
-        w_cm=4.3,     # ← tamaño
-        rotacion=360 # 🔥 gira la imagen
+        x_cm=2.1,     # ← izquierda / derecha
+        y_cm=6.1,     # ← dentro de la hoja, visible
+        w_cm=7.2,     # ← tamaño máximo ancho
+        h_cm=9.0,     # ← tamaño máximo alto
+        rotacion=0
     )
 
 
