@@ -8,47 +8,19 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icon-192.png">
   <style>
-    :root {
-      --bg:#f3f6fb; --card:#fff; --text:#111827; --muted:#6b7280;
-      --line:#e5e7eb; --blue:#1976d2; --green:#16803c; --red:#b42318;
-      --orange:#b45309; --shadow: 0 4px 16px rgba(15,23,42,.08);
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}
-    .app{max-width:850px;margin:auto;padding:14px 14px 90px}
-    header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,var(--bg) 84%,rgba(243,246,251,0));padding:12px 0}
-    h1{margin:0;font-size:26px}
-    h2{font-size:19px;margin:0 0 12px}
-    .status{font-size:13px;color:var(--muted);margin-top:5px;word-break:break-word}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow);margin:12px 0}
-    .grid{display:grid;gap:10px}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
-    button,input,select,textarea{width:100%;font:inherit;border-radius:13px;padding:12px;border:1px solid var(--line);background:white}
-    button{border:0;background:var(--blue);color:white;font-weight:800;cursor:pointer}
-    button.secondary{background:#374151}
-    button.green{background:var(--green)}
-    button.red{background:var(--red)}
-    button.light{background:#e8eef8;color:#111827}
-    button:disabled{opacity:.55}
-    label{font-size:13px;color:var(--muted);display:block;margin-bottom:5px}
-    .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#e8eef8;padding:6px 10px;font-size:13px;font-weight:700}
-    .pill.green{background:#dcfce7;color:#166534}.pill.orange{background:#ffedd5;color:#9a3412}.pill.red{background:#fee2e2;color:#991b1b}
-    .note{border-bottom:1px solid var(--line);padding:12px 0}.note:last-child{border-bottom:0}
-    .note-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-    .note strong{font-size:16px}.note p{margin:4px 0;color:var(--muted);font-size:13px}
-    .amount{font-weight:900;white-space:nowrap}
-    .product,.client,.cart-item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:10px 0}
-    .product:last-child,.client:last-child,.cart-item:last-child{border-bottom:0}
-    .small{font-size:12px;color:var(--muted)}
-    .hidden{display:none!important}
-    .selected{outline:3px solid rgba(25,118,210,.2)}
-    .footer{position:fixed;left:0;right:0;bottom:0;background:rgba(243,246,251,.9);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:10px 14px;z-index:10}
-    .footer-inner{max-width:850px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    .big-number{font-size:26px;font-weight:900}
-    .empty{text-align:center;color:var(--muted);padding:18px}
-    .danger-text{color:var(--red)}
-    @media(min-width:760px){.tabs{grid-template-columns:repeat(6,1fr)}}
+    :root{--bg:#f3f6fb;--card:#fff;--text:#111827;--muted:#6b7280;--line:#e5e7eb;--blue:#1976d2;--green:#16803c;--red:#b42318;--orange:#b45309;--shadow:0 4px 16px rgba(15,23,42,.08)}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}
+    .app{max-width:900px;margin:auto;padding:14px 14px 96px} header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,var(--bg) 84%,rgba(243,246,251,0));padding:12px 0}
+    h1{margin:0;font-size:28px} h2{font-size:19px;margin:0 0 12px}.status{font-size:13px;color:var(--muted);margin-top:5px;word-break:break-word}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow);margin:12px 0}.inner{box-shadow:none;background:#fbfdff}
+    .grid{display:grid;gap:10px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.tabs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
+    button,input,select,textarea{width:100%;font:inherit;border-radius:13px;padding:12px;border:1px solid var(--line);background:white} textarea{min-height:80px}
+    button{border:0;background:var(--blue);color:white;font-weight:800;cursor:pointer}button.secondary{background:#374151}button.green{background:var(--green)}button.red{background:var(--red)}button.light{background:#e8eef8;color:#111827}button.orange{background:#d97706}button:disabled{opacity:.55}
+    label{font-size:13px;color:var(--muted);display:block;margin-bottom:5px}.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#e8eef8;padding:6px 10px;font-size:13px;font-weight:700}.pill.green{background:#dcfce7;color:#166534}.pill.orange{background:#ffedd5;color:#9a3412}.pill.red{background:#fee2e2;color:#991b1b}
+    .note,.rowline{border-bottom:1px solid var(--line);padding:12px 0}.note:last-child,.rowline:last-child{border-bottom:0}.note-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.note strong{font-size:16px}.note p{margin:4px 0;color:var(--muted);font-size:13px}.amount{font-weight:900;white-space:nowrap}.small{font-size:12px;color:var(--muted)}.hidden{display:none!important}.selected{outline:3px solid rgba(25,118,210,.2)}.empty{text-align:center;color:var(--muted);padding:18px}.danger-text{color:var(--red)}.big-number{font-size:26px;font-weight:900}
+    .product,.client,.cart-item,.pack-item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:10px 0}.product:last-child,.client:last-child,.cart-item:last-child,.pack-item:last-child{border-bottom:0}
+    .footer{position:fixed;left:0;right:0;bottom:0;background:rgba(243,246,251,.94);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:10px 14px;z-index:10}.footer-inner{max-width:900px;margin:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.footer button{font-size:12px;padding:10px 6px}
+    @media(min-width:760px){.tabs{grid-template-columns:repeat(5,1fr)}.footer button{font-size:14px}}
   </style>
 </head>
 <body>
@@ -61,355 +33,108 @@
 
   <section class="card" id="loginCard">
     <h2>Acceso</h2>
-    <p class="status">Usa el PIN móvil que configures en Render. Si todavía no configuraste PIN, puedes dejarlo vacío para prueba.</p>
-    <label>PIN</label>
-    <input id="pinInput" type="password" placeholder="PIN móvil">
+    <p class="status">Usa el PIN móvil configurado en Render.</p>
+    <label>PIN</label><input id="pinInput" type="password" placeholder="PIN móvil">
     <button id="savePinBtn">Entrar</button>
   </section>
 
   <section id="mainApp" class="hidden">
     <section class="card">
       <h2>Resumen</h2>
-      <div class="grid2">
-        <div><div class="small">Cotizaciones</div><div class="big-number" id="countCot">0</div></div>
-        <div><div class="small">Pendientes/Pagadas</div><div class="big-number" id="countSales">0</div></div>
-      </div>
+      <div class="grid2"><div><div class="small">Cotizaciones</div><div class="big-number" id="countCot">0</div></div><div><div class="small">Pendientes/Pagadas</div><div class="big-number" id="countSales">0</div></div></div>
     </section>
 
     <section class="tabs">
       <button class="light" onclick="showView('notas')">Notas</button>
-      <button class="green" onclick="showView('crear')">Crear cotización</button>
-      <button class="secondary" onclick="loadAll()">Sincronizar</button>
+      <button class="green" onclick="showView('crear')">Crear</button>
+      <button class="secondary" onclick="showView('almacen')">Almacén</button>
+      <button class="orange" onclick="showView('empacador')">Empacador</button>
+      <button onclick="loadAll()">Sincronizar</button>
     </section>
 
     <section id="viewNotas" class="card">
       <h2>Notas recientes</h2>
-      <div class="grid2">
-        <div>
-          <label>Estado</label>
-          <select id="estadoFiltro">
-            <option value="TODOS">Todas</option>
-            <option value="COTIZACION">Cotizaciones</option>
-            <option value="VENTA_PENDIENTE">Pendientes</option>
-            <option value="PAGADA">Pagadas</option>
-          </select>
-        </div>
-        <div>
-          <label>Buscar</label>
-          <input id="buscarNotas" placeholder="Cliente, folio, pedido">
-        </div>
-      </div>
+      <div class="grid2"><div><label>Estado</label><select id="estadoFiltro"><option value="TODOS">Todas</option><option value="COTIZACION">Cotizaciones</option><option value="VENTA_PENDIENTE">Pendientes</option><option value="PAGADA">Pagadas</option></select></div><div><label>Buscar</label><input id="buscarNotas" placeholder="Cliente, folio, pedido"></div></div>
       <div id="notasList"></div>
     </section>
 
+    <section id="viewDetalle" class="card hidden">
+      <h2>Detalle de nota</h2>
+      <div id="detalleBox"></div>
+    </section>
+
     <section id="viewCrear" class="card hidden">
-      <h2>Crear cotización</h2>
-
-      <div class="card" style="box-shadow:none">
+      <h2 id="crearTitulo">Crear cotización</h2>
+      <div id="editBanner" class="status hidden"></div>
+      <div class="card inner">
         <h2>1. Cliente</h2>
-        <label>Buscar cliente</label>
-        <input id="buscarCliente" placeholder="Nombre o teléfono">
-        <div class="grid2" style="margin-top:8px">
-          <input id="nuevoClienteNombre" placeholder="Nuevo cliente">
-          <input id="nuevoClienteTelefono" placeholder="Teléfono">
-        </div>
+        <label>Buscar cliente</label><input id="buscarCliente" placeholder="Nombre o teléfono">
+        <div class="grid2" style="margin-top:8px"><input id="nuevoClienteNombre" placeholder="Nuevo cliente"><input id="nuevoClienteTelefono" placeholder="Teléfono"></div>
         <button class="light" style="margin-top:8px" onclick="crearClienteRapido()">Crear cliente rápido</button>
-        <div id="clienteSeleccionado" class="status">Sin cliente seleccionado</div>
-        <div id="clientesList"></div>
+        <div id="clienteSeleccionado" class="status">Sin cliente seleccionado</div><div id="clientesList"></div>
       </div>
+      <div class="card inner">
+        <h2>2. Pedido y envío</h2>
+        <div class="grid2"><div><label>Pedido</label><select id="pedidoSelect"></select></div><div><label>Paquetería</label><select id="envioSelect"></select></div></div>
+        <label style="margin-top:8px">Precio envío cobrado</label><input id="envioPrecio" type="number" step="0.01" placeholder="0.00" value="0">
+      </div>
+      <div class="card inner"><h2>3. Productos</h2><label>Buscar por código, color, marca o hilo</label><input id="buscarProducto" placeholder="Ej. velluto 101, rojo, 205..."><div id="productosList"></div></div>
+      <div class="card inner"><h2>4. Carrito</h2><div id="cartList"></div><div class="note-title" style="margin-top:12px"><strong>Total</strong><span class="amount" id="cartTotal">$0.00</span></div><div class="grid2" style="margin-top:12px"><button class="green" id="guardarCotBtn" onclick="guardarCotizacion()">Guardar cotización</button><button class="secondary" onclick="cancelarEdicion()">Limpiar</button></div></div>
+    </section>
 
-      <div class="card" style="box-shadow:none">
-        <h2>2. Productos</h2>
-        <label>Buscar por código, color, marca o hilo</label>
-        <input id="buscarProducto" placeholder="Ej. velluto 101, rojo, 205...">
-        <div id="productosList"></div>
-      </div>
+    <section id="viewAlmacen" class="card hidden">
+      <h2>Almacén móvil</h2>
+      <label>Buscar producto</label><input id="buscarAlmacen" placeholder="Código, color, marca, hilo">
+      <p class="status">Puedes modificar color y stock. Los cambios se reflejan en la PC.</p>
+      <div id="almacenList"></div>
+    </section>
 
-      <div class="card" style="box-shadow:none">
-        <h2>3. Carrito</h2>
-        <div id="cartList"></div>
-        <div class="note-title" style="margin-top:12px">
-          <strong>Total</strong>
-          <span class="amount" id="cartTotal">$0.00</span>
-        </div>
-        <button class="green" style="margin-top:12px" id="guardarCotBtn" onclick="guardarCotizacion()">Guardar cotización</button>
-      </div>
+    <section id="viewEmpacador" class="card hidden">
+      <h2>Empacador móvil</h2>
+      <div class="grid2"><div><label>Buscar</label><input id="buscarEmpacador" placeholder="Cliente, nota, pedido"></div><div><label>&nbsp;</label><button onclick="loadEmpacador()">Cargar</button></div></div>
+      <div id="empacadorList"></div>
     </section>
   </section>
 </main>
-
-<div class="footer">
-  <div class="footer-inner">
-    <button onclick="showView('notas')">Ver notas</button>
-    <button class="green" onclick="showView('crear')">Nueva cotización</button>
-  </div>
-</div>
-
+<div class="footer"><div class="footer-inner"><button onclick="showView('notas')">Notas</button><button class="green" onclick="showView('crear')">Crear</button><button class="secondary" onclick="showView('almacen')">Almacén</button><button class="orange" onclick="showView('empacador')">Empacar</button></div></div>
 <script>
-const state = {
-  pin: localStorage.getItem("hilorama_mobile_pin") || "",
-  notas: [],
-  cliente: null,
-  cart: [],
-  pending: JSON.parse(localStorage.getItem("hilorama_pending_requests") || "[]")
-};
-
-const $ = id => document.getElementById(id);
-const money = n => new Intl.NumberFormat("es-MX",{style:"currency",currency:"MXN"}).format(Number(n||0));
-
-function setStatus(txt){ $("status").textContent = txt; }
-function updatePendingStatus(){
-  $("pendingStatus").textContent = state.pending.length ? `Pendientes por sincronizar: ${state.pending.length}` : "";
-  localStorage.setItem("hilorama_pending_requests", JSON.stringify(state.pending));
-}
-
-async function apiFetch(url, options={}){
-  const headers = Object.assign({}, options.headers || {}, {"X-Mobile-Pin": state.pin});
-  if (options.body && !(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
-  const res = await fetch(url, Object.assign({}, options, {headers, cache:"no-store"}));
-  if (res.status === 401) {
-    localStorage.removeItem("hilorama_mobile_pin");
-    $("loginCard").classList.remove("hidden");
-    $("mainApp").classList.add("hidden");
-    throw new Error("PIN incorrecto");
-  }
-  const data = await res.json().catch(()=>({}));
-  if (!res.ok) throw new Error(data.error || `Error HTTP ${res.status}`);
-  return data;
-}
-
-$("savePinBtn").onclick = async () => {
-  state.pin = $("pinInput").value.trim();
-  localStorage.setItem("hilorama_mobile_pin", state.pin);
-  await startApp();
-};
-
-async function startApp(){
-  try{
-    const health = await apiFetch("/api/health");
-    $("loginCard").classList.add("hidden");
-    $("mainApp").classList.remove("hidden");
-    setStatus(`Conectado a Render · ${health.time}`);
-    await loadAll();
-  }catch(e){
-    setStatus("No se pudo conectar: " + e.message);
-  }
-}
-
-function showView(name){
-  $("viewNotas").classList.toggle("hidden", name !== "notas");
-  $("viewCrear").classList.toggle("hidden", name !== "crear");
-}
-
-async function loadAll(){
-  await Promise.all([loadResumen(), loadNotas()]);
-  await syncPending();
-}
-
-async function loadResumen(){
-  try{
-    const r = await apiFetch("/api/resumen");
-    $("countCot").textContent = r.COTIZACION || 0;
-    $("countSales").textContent = Number(r.VENTA_PENDIENTE || 0) + Number(r.PAGADA || 0);
-  }catch(e){ console.log(e); }
-}
-
-async function loadNotas(){
-  const estado = $("estadoFiltro").value;
-  const q = $("buscarNotas").value.trim();
-  setStatus("Sincronizando notas...");
-  try{
-    const params = new URLSearchParams({estado, q, limit:"100"});
-    state.notas = await apiFetch("/api/notas?" + params.toString());
-    renderNotas();
-    setStatus(`Sincronizado · ${state.notas.length} notas cargadas`);
-  }catch(e){
-    setStatus("Error al cargar notas: " + e.message);
-  }
-}
-
-function renderNotas(){
-  const box = $("notasList");
-  if (!state.notas.length) {
-    box.innerHTML = `<div class="empty">No hay notas para mostrar.</div>`;
-    return;
-  }
-  box.innerHTML = state.notas.map(n => {
-    const cls = n.estado === "PAGADA" ? "green" : (n.estado === "VENTA_PENDIENTE" ? "orange" : "");
-    return `<article class="note">
-      <div class="note-title">
-        <div>
-          <strong>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre || "")}</strong>
-          <p>${escapeHtml(n.fecha || "")}</p>
-          <p>Items: ${n.items_count || 0} ${n.pedido ? "· Pedido " + escapeHtml(n.pedido) : ""}</p>
-        </div>
-        <div style="text-align:right">
-          <span class="pill ${cls}">${escapeHtml(n.estado || "")}</span>
-          <div class="amount">${money(n.total)}</div>
-        </div>
-      </div>
-    </article>`;
-  }).join("");
-}
-
-$("estadoFiltro").onchange = loadNotas;
-$("buscarNotas").oninput = debounce(loadNotas, 350);
-
-$("buscarCliente").oninput = debounce(async () => {
-  const q = $("buscarCliente").value.trim();
-  if (!q) { $("clientesList").innerHTML = ""; return; }
-  try{
-    const clientes = await apiFetch("/api/clientes?q=" + encodeURIComponent(q));
-    $("clientesList").innerHTML = clientes.map(c => `
-      <div class="client">
-        <div><strong>${escapeHtml(c.nombre)}</strong><div class="small">${escapeHtml(c.telefono || "")}</div></div>
-        <button class="light" onclick='seleccionarCliente(${JSON.stringify(c).replaceAll("'", "&#39;")})'>Elegir</button>
-      </div>
-    `).join("") || `<div class="empty">No encontré clientes.</div>`;
-  }catch(e){ $("clientesList").innerHTML = `<p class="danger-text">${escapeHtml(e.message)}</p>`; }
-}, 350);
-
-function seleccionarCliente(c){
-  state.cliente = c;
-  $("clienteSeleccionado").innerHTML = `Cliente seleccionado: <strong>${escapeHtml(c.nombre)}</strong>`;
-  $("clientesList").innerHTML = "";
-  $("buscarCliente").value = "";
-}
-
-async function crearClienteRapido(){
-  const nombre = $("nuevoClienteNombre").value.trim();
-  const telefono = $("nuevoClienteTelefono").value.trim();
-  if (!nombre) return alert("Escribe el nombre del cliente.");
-  try{
-    const r = await apiFetch("/api/clientes", {method:"POST", body:JSON.stringify({nombre, telefono})});
-    seleccionarCliente(r.cliente);
-    $("nuevoClienteNombre").value = "";
-    $("nuevoClienteTelefono").value = "";
-  }catch(e){ alert(e.message); }
-}
-
-$("buscarProducto").oninput = debounce(async () => {
-  const q = $("buscarProducto").value.trim();
-  if (!q) { $("productosList").innerHTML = ""; return; }
-  try{
-    const productos = await apiFetch("/api/productos?q=" + encodeURIComponent(q));
-    $("productosList").innerHTML = productos.map(p => `
-      <div class="product">
-        <div>
-          <strong>${escapeHtml(p.codigo || "")} · ${escapeHtml(p.color || "")}</strong>
-          <div class="small">${escapeHtml(p.marca || "")} / ${escapeHtml(p.hilo || "")} · Stock: ${p.stock} · ${money(p.precio_venta)}</div>
-        </div>
-        <button class="light" onclick='agregarProducto(${JSON.stringify(p).replaceAll("'", "&#39;")})'>Agregar</button>
-      </div>
-    `).join("") || `<div class="empty">No encontré productos.</div>`;
-  }catch(e){ $("productosList").innerHTML = `<p class="danger-text">${escapeHtml(e.message)}</p>`; }
-}, 350);
-
-function agregarProducto(p){
-  const qty = Number(prompt(`Cantidad para ${p.codigo} ${p.color || ""}:`, "1"));
-  if (!qty || qty <= 0) return;
-  const existing = state.cart.find(i => i.codigo === p.codigo);
-  if (existing) existing.cantidad += qty;
-  else state.cart.push({
-    codigo:p.codigo, marca:p.marca, hilo:p.hilo, color:p.color,
-    cantidad:qty, precio:Number(p.precio_venta || 0), stock:Number(p.stock || 0)
-  });
-  renderCart();
-}
-
-function renderCart(){
-  if (!state.cart.length) {
-    $("cartList").innerHTML = `<div class="empty">Carrito vacío.</div>`;
-    $("cartTotal").textContent = money(0);
-    return;
-  }
-  let total = 0;
-  $("cartList").innerHTML = state.cart.map((i, idx) => {
-    const sub = i.cantidad * i.precio; total += sub;
-    return `<div class="cart-item">
-      <div>
-        <strong>${escapeHtml(i.codigo)} · ${escapeHtml(i.color || "")}</strong>
-        <div class="small">${escapeHtml(i.marca || "")} / ${escapeHtml(i.hilo || "")} · ${i.cantidad} x ${money(i.precio)} = ${money(sub)}</div>
-      </div>
-      <button class="red" onclick="removeCart(${idx})">Quitar</button>
-    </div>`;
-  }).join("");
-  $("cartTotal").textContent = money(total);
-}
-
-function removeCart(idx){ state.cart.splice(idx,1); renderCart(); }
-
-async function guardarCotizacion(){
-  if (!state.cliente) return alert("Selecciona o crea cliente.");
-  if (!state.cart.length) return alert("Agrega productos.");
-
-  const payload = {
-    cliente_id: state.cliente.id,
-    items: state.cart.map(i => ({codigo:i.codigo, cantidad:i.cantidad}))
-  };
-
-  $("guardarCotBtn").disabled = true;
-  try{
-    const r = await apiFetch("/api/cotizaciones", {method:"POST", body:JSON.stringify(payload)});
-    alert(`Cotización creada: ${r.nota_id}\nTotal: ${money(r.total)}`);
-    state.cart = [];
-    state.cliente = null;
-    $("clienteSeleccionado").textContent = "Sin cliente seleccionado";
-    renderCart();
-    showView("notas");
-    await loadAll();
-  }catch(e){
-    if (!navigator.onLine || String(e.message).includes("Failed to fetch")) {
-      state.pending.push({url:"/api/cotizaciones", payload, created_at:new Date().toISOString()});
-      updatePendingStatus();
-      alert("No había conexión. La cotización quedó pendiente y se enviará cuando vuelva internet.");
-    } else {
-      alert(e.message);
-    }
-  }finally{
-    $("guardarCotBtn").disabled = false;
-  }
-}
-
-async function syncPending(){
-  updatePendingStatus();
-  if (!navigator.onLine || !state.pending.length) return;
-
-  const left = [];
-  for (const p of state.pending) {
-    try{
-      await apiFetch(p.url, {method:"POST", body:JSON.stringify(p.payload)});
-    }catch(e){
-      left.push(p);
-    }
-  }
-  state.pending = left;
-  updatePendingStatus();
-  if (!left.length) await loadNotas();
-}
-
-function debounce(fn, ms){
-  let t; return (...args) => { clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
-}
-
-function escapeHtml(v){
-  return String(v ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-}
-
-window.addEventListener("online", () => { setStatus("Conexión recuperada. Sincronizando..."); syncPending(); loadAll(); });
-window.addEventListener("offline", () => setStatus("Sin conexión. Lo que guardes se quedará pendiente."));
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=1").catch(console.log));
-}
-
-renderCart();
-updatePendingStatus();
-
-if (state.pin) {
-  $("pinInput").value = state.pin;
-  startApp();
-}
+const state={pin:localStorage.getItem('hilorama_mobile_pin')||'',notas:[],cliente:null,cart:[],pending:JSON.parse(localStorage.getItem('hilorama_pending_requests')||'[]'),editing:null,pedidos:[],envios:[],productos:[],almacen:[],empacador:[]};
+const $=id=>document.getElementById(id); const money=n=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(n||0));
+function setStatus(t){$('status').textContent=t} function updatePendingStatus(){ $('pendingStatus').textContent=state.pending.length?`Pendientes por sincronizar: ${state.pending.length}`:''; localStorage.setItem('hilorama_pending_requests',JSON.stringify(state.pending)); }
+async function apiFetch(url,options={}){const headers=Object.assign({},options.headers||{}, {'X-Mobile-Pin':state.pin}); if(options.body && !(options.body instanceof FormData)) headers['Content-Type']='application/json'; const res=await fetch(url,Object.assign({},options,{headers,cache:'no-store'})); if(res.status===401){localStorage.removeItem('hilorama_mobile_pin');$('loginCard').classList.remove('hidden');$('mainApp').classList.add('hidden');throw new Error('PIN incorrecto')} const data=await res.json().catch(()=>({})); if(!res.ok) throw new Error(data.error||`Error HTTP ${res.status}`); return data;}
+$('savePinBtn').onclick=async()=>{state.pin=$('pinInput').value.trim();localStorage.setItem('hilorama_mobile_pin',state.pin);await startApp();};
+async function startApp(){try{const h=await apiFetch('/api/health');$('loginCard').classList.add('hidden');$('mainApp').classList.remove('hidden');setStatus(`Conectado · ${h.time} · ${h.version||''}`);await loadAll();}catch(e){setStatus('No se pudo conectar: '+e.message);}}
+function showView(name){['Notas','Detalle','Crear','Almacen','Empacador'].forEach(v=>$('view'+v).classList.add('hidden')); if(name==='notas')$('viewNotas').classList.remove('hidden'); if(name==='detalle')$('viewDetalle').classList.remove('hidden'); if(name==='crear')$('viewCrear').classList.remove('hidden'); if(name==='almacen')$('viewAlmacen').classList.remove('hidden'); if(name==='empacador'){ $('viewEmpacador').classList.remove('hidden'); loadEmpacador(); }}
+async function loadAll(){await Promise.all([loadResumen(),loadNotas(),loadPedidos(),loadEnvios()]);await syncPending();}
+async function loadResumen(){try{const r=await apiFetch('/api/resumen');$('countCot').textContent=r.COTIZACION||0;$('countSales').textContent=Number(r.VENTA_PENDIENTE||0)+Number(r.PAGADA||0);}catch(e){console.log(e)}}
+async function loadPedidos(){try{state.pedidos=await apiFetch('/api/pedidos'); $('pedidoSelect').innerHTML='<option value="">Automático</option>'+state.pedidos.map(p=>`<option value="${escapeHtml(p.numero)}" ${p.activo?'selected':''}>Pedido ${escapeHtml(p.numero)}${p.activo?' · activo':''}</option>`).join('');}catch(e){console.log(e)}}
+async function loadEnvios(){try{state.envios=await apiFetch('/api/envios'); $('envioSelect').innerHTML=state.envios.map(e=>`<option value="${escapeHtml(e.paqueteria)}">${escapeHtml(e.paqueteria)}</option>`).join('');}catch(e){console.log(e)}}
+async function loadNotas(){const estado=$('estadoFiltro').value,q=$('buscarNotas').value.trim();setStatus('Sincronizando notas...');try{state.notas=await apiFetch('/api/notas?'+new URLSearchParams({estado,q,limit:'150'}));renderNotas();setStatus(`Sincronizado · ${state.notas.length} notas cargadas`);}catch(e){setStatus('Error al cargar notas: '+e.message)}}
+function renderNotas(){const box=$('notasList'); if(!state.notas.length){box.innerHTML='<div class="empty">No hay notas para mostrar.</div>';return;} box.innerHTML=state.notas.map(n=>{const cls=n.estado==='PAGADA'?'green':(n.estado==='VENTA_PENDIENTE'?'orange':''); const prog=Number(n.piezas_total||0)?` · Empacado ${n.piezas_empacadas||0}/${n.piezas_total||0}`:''; return `<article class="note"><div class="note-title"><div><strong>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre||'')}</strong><p>${escapeHtml(n.fecha||'')}</p><p>${n.items_count||0} items ${n.pedido?'· Pedido '+escapeHtml(n.pedido):''}${prog}</p></div><div style="text-align:right"><span class="pill ${cls}">${escapeHtml(n.estado||'')}</span><div class="amount">${money(n.total)}</div><button class="light" style="margin-top:6px" onclick="verDetalle('${escapeAttr(n.id)}')">Ver</button></div></div></article>`}).join('')}
+$('estadoFiltro').onchange=loadNotas; $('buscarNotas').oninput=debounce(loadNotas,350);
+async function verDetalle(id){try{const n=await apiFetch('/api/notas/'+encodeURIComponent(id)); renderDetalle(n); showView('detalle');}catch(e){alert(e.message)}}
+function renderDetalle(n){const envio=n.envio||{}; const direccion=n.direccion||{}; $('detalleBox').innerHTML=`<div class="note-title"><div><strong>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre||n.cliente_nombre_real||'')}</strong><p>${escapeHtml(n.telefono||'')}</p><p>${escapeHtml(n.fecha||'')} · ${escapeHtml(n.estado||'')} · Pedido ${escapeHtml(n.pedido||'-')}</p><p>${escapeHtml([direccion.calle,direccion.numero_ext,direccion.colonia,direccion.municipio,direccion.estado,direccion.codigo_postal].filter(Boolean).join(', '))}</p></div><div class="amount">${money(n.total)}</div></div><hr><strong>Productos</strong>${(n.items||[]).map(i=>`<div class="rowline"><strong>${escapeHtml(i.codigo)} · ${escapeHtml(i.color||'')}</strong><div class="small">${escapeHtml(i.marca||'')} / ${escapeHtml(i.hilo||'')} · ${i.cantidad} x ${money(i.precio)} · empacado ${i.empacadas||0}/${i.cantidad}</div></div>`).join('')}<hr><strong>Envío</strong><p class="status">${escapeHtml(envio.paqueteria||envio.tipo||n.paqueteria||'Sin envío')} · ${money(envio.precio||0)}</p><div class="grid2"><button class="light" onclick='cargarNotaParaEditar(${JSON.stringify(n).replaceAll("'","&#39;")})'>Editar cotización</button><button class="secondary" onclick="cambiarEnvio('${escapeAttr(n.id)}')">Cambiar envío</button></div><div class="grid2" style="margin-top:8px"><button class="orange" onclick="convertirVenta('${escapeAttr(n.id)}')">Convertir a venta</button><button class="green" onclick="marcarPagada('${escapeAttr(n.id)}')">Marcar pagada</button></div>`;}
+function cargarNotaParaEditar(n){ if(n.estado!=='COTIZACION') return alert('Solo puedes editar cotizaciones.'); state.editing=n.id; state.cliente={id:n.cliente_id,nombre:n.cliente_nombre||n.cliente_nombre_real,telefono:n.telefono||''}; state.cart=(n.items||[]).map(i=>({codigo:i.codigo,marca:i.marca,hilo:i.hilo,color:i.color,cantidad:Number(i.cantidad||0),precio:Number(i.precio||0),stock:Number(i.stock||0)})); $('clienteSeleccionado').innerHTML=`Cliente seleccionado: <strong>${escapeHtml(state.cliente.nombre)}</strong>`; $('crearTitulo').textContent='Editar cotización '+n.id; $('editBanner').classList.remove('hidden'); $('editBanner').textContent='Editando '+n.id+'. Al guardar se actualiza la misma cotización.'; $('pedidoSelect').value=n.pedido||''; const ev=n.envio||{}; $('envioSelect').value=ev.paqueteria||ev.tipo||n.paqueteria||'Sin envio'; $('envioPrecio').value=ev.precio||0; renderCart(); showView('crear');}
+function cancelarEdicion(){state.editing=null;state.cliente=null;state.cart=[];$('clienteSeleccionado').textContent='Sin cliente seleccionado';$('crearTitulo').textContent='Crear cotización';$('editBanner').classList.add('hidden');renderCart();}
+async function cambiarEnvio(id){const paq=prompt('Paquetería:', $('envioSelect').value||'Correos de Mexico'); if(paq===null)return; const precio=Number(prompt('Precio envío cobrado:', '0')||0); try{await apiFetch('/api/notas/'+encodeURIComponent(id)+'/envio',{method:'POST',body:JSON.stringify({envio:{paqueteria:paq,precio}})}); alert('Envío actualizado'); await verDetalle(id); await loadNotas();}catch(e){alert(e.message)}}
+async function convertirVenta(id){if(!confirm('¿Convertir esta cotización a VENTA_PENDIENTE y descontar stock?'))return; try{await apiFetch('/api/notas/'+encodeURIComponent(id)+'/convertir',{method:'POST',body:JSON.stringify({})}); alert('Convertida a venta pendiente'); await verDetalle(id); await loadAll();}catch(e){alert(e.message)}}
+async function marcarPagada(id){if(!confirm('¿Marcar esta nota como PAGADA?'))return; try{await apiFetch('/api/notas/'+encodeURIComponent(id)+'/pagar',{method:'POST',body:JSON.stringify({})}); alert('Nota marcada como pagada'); await verDetalle(id); await loadAll();}catch(e){alert(e.message)}}
+$('buscarCliente').oninput=debounce(async()=>{const q=$('buscarCliente').value.trim(); if(!q){$('clientesList').innerHTML='';return;} try{const clientes=await apiFetch('/api/clientes?q='+encodeURIComponent(q)); $('clientesList').innerHTML=clientes.map((c,idx)=>{state['cliente_'+idx]=c;return `<div class="client"><div><strong>${escapeHtml(c.nombre)}</strong><div class="small">${escapeHtml(c.telefono||'')}</div></div><button class="light" onclick="seleccionarClienteIdx(${idx})">Elegir</button></div>`}).join('')||'<div class="empty">No encontré clientes.</div>'; }catch(e){$('clientesList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`;}},350);
+function seleccionarClienteIdx(idx){seleccionarCliente(state['cliente_'+idx]);} function seleccionarCliente(c){state.cliente=c;$('clienteSeleccionado').innerHTML=`Cliente seleccionado: <strong>${escapeHtml(c.nombre)}</strong>`;$('clientesList').innerHTML='';$('buscarCliente').value='';}
+async function crearClienteRapido(){const nombre=$('nuevoClienteNombre').value.trim(),telefono=$('nuevoClienteTelefono').value.trim(); if(!nombre)return alert('Escribe el nombre del cliente.'); try{const r=await apiFetch('/api/clientes',{method:'POST',body:JSON.stringify({nombre,telefono})}); seleccionarCliente(r.cliente);$('nuevoClienteNombre').value='';$('nuevoClienteTelefono').value='';}catch(e){alert(e.message)}}
+$('buscarProducto').oninput=debounce(async()=>{const q=$('buscarProducto').value.trim(); if(!q){$('productosList').innerHTML='';return;} try{state.productos=await apiFetch('/api/productos?q='+encodeURIComponent(q)); $('productosList').innerHTML=state.productos.map((p,idx)=>`<div class="product"><div><strong>${escapeHtml(p.codigo||'')} · ${escapeHtml(p.color||'')}</strong><div class="small">${escapeHtml(p.marca||'')} / ${escapeHtml(p.hilo||'')} · Stock: ${p.stock} · ${money(p.precio_venta)}</div></div><button class="light" onclick="agregarProductoIdx(${idx})">Agregar</button></div>`).join('')||'<div class="empty">No encontré productos.</div>'; }catch(e){$('productosList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`;}},350);
+function agregarProductoIdx(idx){agregarProducto(state.productos[idx]);} function agregarProducto(p){const qty=Number(prompt(`Cantidad para ${p.codigo} ${p.color||''}:`,'1')); if(!qty||qty<=0)return; const existing=state.cart.find(i=>i.codigo===p.codigo); if(existing)existing.cantidad+=qty; else state.cart.push({codigo:p.codigo,marca:p.marca,hilo:p.hilo,color:p.color,cantidad:qty,precio:Number(p.precio_venta||0),stock:Number(p.stock||0)}); renderCart();}
+function renderCart(){if(!state.cart.length){$('cartList').innerHTML='<div class="empty">Carrito vacío.</div>';$('cartTotal').textContent=money(0);return;} let total=Number($('envioPrecio').value||0); $('cartList').innerHTML=state.cart.map((i,idx)=>{const sub=i.cantidad*i.precio;total+=sub;return `<div class="cart-item"><div><strong>${escapeHtml(i.codigo)} · ${escapeHtml(i.color||'')}</strong><div class="small">${escapeHtml(i.marca||'')} / ${escapeHtml(i.hilo||'')} · ${i.cantidad} x ${money(i.precio)} = ${money(sub)}</div></div><button class="red" onclick="removeCart(${idx})">Quitar</button></div>`}).join('');$('cartTotal').textContent=money(total);} function removeCart(idx){state.cart.splice(idx,1);renderCart();} $('envioPrecio').oninput=renderCart;
+async function guardarCotizacion(){if(!state.cliente)return alert('Selecciona o crea cliente.'); if(!state.cart.length)return alert('Agrega productos.'); const paq=$('envioSelect').value; const precio=Number($('envioPrecio').value||0); const payload={cliente_id:state.cliente.id,pedido:$('pedidoSelect').value||null,envio:{paqueteria:paq,precio},items:state.cart.map(i=>({codigo:i.codigo,cantidad:i.cantidad,precio:i.precio}))}; $('guardarCotBtn').disabled=true; try{let r;if(state.editing){r=await apiFetch('/api/notas/'+encodeURIComponent(state.editing),{method:'PUT',body:JSON.stringify(payload)});alert(`Cotización actualizada: ${state.editing}\nTotal: ${money(r.total)}`);}else{r=await apiFetch('/api/cotizaciones',{method:'POST',body:JSON.stringify(payload)});alert(`Cotización creada: ${r.nota_id}\nTotal: ${money(r.total)}`);} cancelarEdicion();showView('notas');await loadAll();}catch(e){if(!navigator.onLine||String(e.message).includes('Failed to fetch')){state.pending.push({url:state.editing?'/api/notas/'+state.editing:'/api/cotizaciones',method:state.editing?'PUT':'POST',payload,created_at:new Date().toISOString()});updatePendingStatus();alert('Sin conexión. Quedó pendiente para sincronizar.');}else alert(e.message);}finally{$('guardarCotBtn').disabled=false;}}
+async function syncPending(){updatePendingStatus();if(!navigator.onLine||!state.pending.length)return; const left=[]; for(const p of state.pending){try{await apiFetch(p.url,{method:p.method||'POST',body:JSON.stringify(p.payload)});}catch(e){left.push(p);}} state.pending=left;updatePendingStatus();if(!left.length)await loadNotas();}
+$('buscarAlmacen').oninput=debounce(loadAlmacen,350); async function loadAlmacen(){const q=$('buscarAlmacen').value.trim(); if(!q){$('almacenList').innerHTML='';return;} try{state.almacen=await apiFetch('/api/productos?q='+encodeURIComponent(q)+'&limit=100'); $('almacenList').innerHTML=state.almacen.map((p,idx)=>`<div class="rowline"><strong>${escapeHtml(p.codigo)} · ${escapeHtml(p.color||'')}</strong><div class="small">${escapeHtml(p.marca)} / ${escapeHtml(p.hilo)} · Stock ${p.stock} · ${money(p.precio_venta)}</div><div class="grid2" style="margin-top:8px"><button class="light" onclick="editarColor(${idx})">Editar color</button><button class="secondary" onclick="editarStock(${idx})">Editar stock</button></div></div>`).join('')||'<div class="empty">No hay productos.</div>';}catch(e){$('almacenList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`;}}
+async function editarColor(idx){const p=state.almacen[idx]; const color=prompt('Nuevo nombre/color:',p.color||''); if(color===null)return; try{await apiFetch('/api/productos/'+encodeURIComponent(p.codigo),{method:'PATCH',body:JSON.stringify({color})});alert('Color actualizado');loadAlmacen();}catch(e){alert(e.message)}} async function editarStock(idx){const p=state.almacen[idx]; const stock=prompt('Nuevo stock:',p.stock||0); if(stock===null)return; try{await apiFetch('/api/productos/'+encodeURIComponent(p.codigo),{method:'PATCH',body:JSON.stringify({stock:Number(stock)})});alert('Stock actualizado');loadAlmacen();}catch(e){alert(e.message)}}
+$('buscarEmpacador').oninput=debounce(loadEmpacador,500); async function loadEmpacador(){const q=$('buscarEmpacador').value.trim(); try{state.empacador=await apiFetch('/api/empacador/notas?'+new URLSearchParams({q,pendientes:'0'})); $('empacadorList').innerHTML=state.empacador.map(n=>`<div class="note"><div class="note-title"><div><strong>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre||'')}</strong><p>Pedido ${escapeHtml(n.pedido||'-')} · ${escapeHtml(n.estado||'')}</p><p>Progreso ${n.piezas_empacadas||0}/${n.piezas_total||0}</p></div><button class="light" onclick="verEmpaque('${escapeAttr(n.id)}')">Abrir</button></div></div>`).join('')||'<div class="empty">No hay notas.</div>'; }catch(e){$('empacadorList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`;}}
+async function verEmpaque(id){try{const n=await apiFetch('/api/notas/'+encodeURIComponent(id)); $('empacadorList').innerHTML=`<button class="light" onclick="loadEmpacador()">← Regresar</button><h2>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre||'')}</h2>${(n.items||[]).map(i=>`<div class="pack-item"><div><strong>${escapeHtml(i.codigo)} · ${escapeHtml(i.color||'')}</strong><div class="small">Necesita ${i.cantidad} · Empacado ${i.empacadas||0}</div></div><button class="green" onclick="setEmpacado('${escapeAttr(n.id)}',${i.id},${i.cantidad})">Completar</button></div>`).join('')}`;}catch(e){alert(e.message)}} async function setEmpacado(nota,item,cantidad){const emp=Number(prompt('Cantidad empacada:',cantidad)||0);try{await apiFetch('/api/empacador/notas/'+encodeURIComponent(nota)+'/item',{method:'POST',body:JSON.stringify({item_id:item,empacadas:emp})});await verEmpaque(nota);}catch(e){alert(e.message)}}
+function debounce(fn,ms){let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms)}} function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))} function escapeAttr(v){return String(v??'').replace(/[\\'"<>]/g,'')}
+window.addEventListener('online',()=>{setStatus('Conexión recuperada. Sincronizando...');syncPending();loadAll();}); window.addEventListener('offline',()=>setStatus('Sin conexión. Lo que guardes quedará pendiente.'));
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=2').catch(console.log));}
+renderCart();updatePendingStatus(); if(state.pin){$('pinInput').value=state.pin;startApp();}
 </script>
 </body>
 </html>

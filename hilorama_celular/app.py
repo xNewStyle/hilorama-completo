@@ -13,17 +13,16 @@ from flask_cors import CORS
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__, static_folder="static", static_url_path="/static")
+app = Flask(__name__)
 CORS(app)
 
 _pool = None
 _schema_ready = False
-
 MEXICO_TZ = ZoneInfo("America/Mexico_City")
 
 
 def now_mexico():
-    return datetime.now(MEXICO_TZ).replace(tzinfo=None)
+    return datetime.now(MEXICO_TZ).replace(tzinfo=None, microsecond=0)
 
 
 def get_database_url():
@@ -52,10 +51,7 @@ class DB:
         return self
 
     def execute(self, query, params=None):
-        # IMPORTANTE:
-        # Si params viene en None, no mandamos () a psycopg2.
-        # Esto evita errores cuando el SQL trae símbolos % literales,
-        # por ejemplo: WHERE id LIKE 'COT-%'
+        # No mandar () cuando no hay params: evita fallas con LIKE 'COT-%'.
         if params is None:
             self.cur.execute(query)
         else:
@@ -116,6 +112,7 @@ def fecha_orden(valor):
     if isinstance(valor, datetime):
         return valor
     texto = str(valor).strip().replace("T", " ").replace("Z", "")
+    texto = texto.split(".")[0]
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
         try:
             return datetime.strptime(texto[:19], fmt)
@@ -128,23 +125,27 @@ def fecha_orden(valor):
 
 
 def nota_sort_key(n):
-    if n.get("estado") == "PAGADA" and n.get("fecha_pago"):
-        f = n.get("fecha_pago")
-    else:
-        f = n.get("fecha")
+    f = n.get("fecha_pago") if n.get("estado") == "PAGADA" and n.get("fecha_pago") else n.get("fecha")
     return (fecha_orden(f), str(n.get("id") or ""))
 
 
 def require_pin():
-    # Para prueba puede quedar vacío. Para uso real, configura MOBILE_PIN en Render.
     expected = os.environ.get("MOBILE_PIN", "").strip()
     if not expected:
         return None
-
     got = request.headers.get("X-Mobile-Pin", "").strip()
     if got != expected:
         return jsonify({"ok": False, "error": "PIN incorrecto"}), 401
     return None
+
+
+def table_exists(db, table):
+    row = db.execute("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables WHERE table_name=%s
+        ) AS existe
+    """, (table,)).fetchone()
+    return bool(row and row.get("existe"))
 
 
 def ensure_schema():
@@ -206,7 +207,7 @@ def ensure_schema():
             )
         """)
 
-        # Columnas que ya usa tu programa de PC en versiones nuevas.
+        # Columnas compatibles con el programa de PC.
         db.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS codigo_barras TEXT")
         db.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS precio REAL DEFAULT 0")
         db.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS costo_neto REAL DEFAULT 0")
@@ -220,6 +221,7 @@ def ensure_schema():
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS fecha_pago TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS paqueteria TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS empacador_id INTEGER")
+        db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS empacador TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS fecha_asignacion TIMESTAMP")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS fecha_finalizacion TIMESTAMP")
 
@@ -228,18 +230,9 @@ def ensure_schema():
         db.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS color TEXT")
         db.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS empacadas INTEGER DEFAULT 0")
 
-        db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notas_estado_fecha
-            ON notas(estado, fecha DESC)
-        """)
-        db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_items_nota_mobile
-            ON items(nota_id)
-        """)
-        db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_productos_busqueda_mobile
-            ON productos(codigo, marca, hilo, color)
-        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_notas_estado_fecha ON notas(estado, fecha DESC)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_items_nota_mobile ON items(nota_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_productos_busqueda_mobile ON productos(codigo, marca, hilo, color)")
 
     _schema_ready = True
 
@@ -253,6 +246,9 @@ def before_request():
             return err
 
 
+# =========================
+# Static app
+# =========================
 @app.route("/")
 def index():
     return send_from_directory(APP_DIR, "index.html")
@@ -278,12 +274,16 @@ def icon_512():
     return send_from_directory(APP_DIR, "icon-512.png")
 
 
+# =========================
+# Basic APIs
+# =========================
 @app.route("/api/health")
 def health():
     ensure_schema()
     return jsonify({
         "ok": True,
         "service": "Hilorama Celular API",
+        "version": "fase2",
         "time": now_mexico().isoformat(sep=" ", timespec="seconds"),
         "pin_enabled": bool(os.environ.get("MOBILE_PIN", "").strip()),
     })
@@ -301,6 +301,45 @@ def resumen():
     return jsonify(json_safe(data))
 
 
+@app.route("/api/pedidos")
+def listar_pedidos():
+    with DB() as db:
+        pedidos = []
+        if table_exists(db, "pedidos"):
+            try:
+                rows = db.execute("""
+                    SELECT numero, COALESCE(activo,false) AS activo
+                    FROM pedidos
+                    ORDER BY numero DESC
+                    LIMIT 50
+                """).fetchall()
+                pedidos = [{"numero": str(r["numero"]), "activo": bool(r.get("activo"))} for r in rows]
+            except Exception:
+                db.rollback()
+        if not pedidos:
+            rows = db.execute("""
+                SELECT DISTINCT pedido
+                FROM notas
+                WHERE pedido IS NOT NULL AND pedido <> ''
+                ORDER BY pedido DESC
+                LIMIT 50
+            """).fetchall()
+            pedidos = [{"numero": str(r["pedido"]), "activo": False} for r in rows]
+    return jsonify(json_safe(pedidos))
+
+
+@app.route("/api/envios")
+def listar_envios():
+    # Opciones básicas para app móvil. La PC puede seguir usando su configuración completa.
+    return jsonify([
+        {"paqueteria": "Sin envio", "precio": 0},
+        {"paqueteria": "Correos de Mexico", "precio": 0},
+        {"paqueteria": "Estafeta", "precio": 0},
+        {"paqueteria": "FedEx", "precio": 0},
+        {"paqueteria": "Entrega en Tienda", "precio": 0},
+    ])
+
+
 @app.route("/api/notas")
 def listar_notas():
     estado = (request.args.get("estado") or "").strip().upper()
@@ -309,98 +348,117 @@ def listar_notas():
 
     params = []
     where = ["1=1"]
-
     if estado and estado != "TODOS":
-        where.append("estado=%s")
+        where.append("n.estado=%s")
         params.append(estado)
-
     if q:
-        where.append("(LOWER(id) LIKE %s OR LOWER(COALESCE(cliente_nombre,'')) LIKE %s OR LOWER(COALESCE(pedido,'')) LIKE %s)")
+        where.append("""
+            (
+                LOWER(COALESCE(n.id,'')) LIKE %s OR
+                LOWER(COALESCE(n.cliente_nombre,'')) LIKE %s OR
+                LOWER(COALESCE(n.pedido,'')) LIKE %s OR
+                LOWER(COALESCE(c.telefono,'')) LIKE %s
+            )
+        """)
         like = f"%{q}%"
-        params.extend([like, like, like])
-
-    sql = f"""
-        SELECT id, cliente_id, cliente_nombre, fecha, estado, total, envio,
-               pedido, comprobante, fecha_pago, paqueteria, empacador_id
-        FROM notas
-        WHERE {' AND '.join(where)}
-    """
+        params.extend([like, like, like, like])
 
     with DB() as db:
-        rows = db.execute(sql, params).fetchall()
-        notas = [dict(r) for r in rows]
+        rows = db.execute(f"""
+            SELECT
+                n.id, n.cliente_id, n.cliente_nombre, n.fecha, n.estado,
+                n.total, n.envio, n.pedido, n.comprobante, n.fecha_pago,
+                n.paqueteria, n.empacador_id, n.empacador, n.fecha_asignacion,
+                c.telefono,
+                COUNT(i.id) AS items_count,
+                COALESCE(SUM(i.cantidad),0) AS piezas_total,
+                COALESCE(SUM(i.empacadas),0) AS piezas_empacadas
+            FROM notas n
+            LEFT JOIN clientes c ON c.id=n.cliente_id
+            LEFT JOIN items i ON i.nota_id=n.id
+            WHERE {' AND '.join(where)}
+            GROUP BY n.id, c.telefono
+            ORDER BY n.id DESC
+            LIMIT {limit}
+        """, params).fetchall()
 
-        ids = [n["id"] for n in notas]
-        counts = {}
-        if ids:
-            marks = ",".join(["%s"] * len(ids))
-            item_rows = db.execute(
-                f"SELECT nota_id, COUNT(*) AS c FROM items WHERE nota_id IN ({marks}) GROUP BY nota_id",
-                ids,
-            ).fetchall()
-            counts = {r["nota_id"]: int(r["c"]) for r in item_rows}
-
+    notas = [dict(r) for r in rows]
     notas.sort(key=nota_sort_key, reverse=True)
-    notas = notas[:limit]
-
-    for n in notas:
-        n["items_count"] = counts.get(n["id"], 0)
-        n["envio"] = parse_json_text(n.get("envio"), {})
-        n["total"] = float(n.get("total") or 0)
-
     return jsonify(json_safe(notas))
 
 
 @app.route("/api/notas/<nota_id>")
-def obtener_nota(nota_id):
+def detalle_nota(nota_id):
     with DB() as db:
         nota = db.execute("""
-            SELECT * FROM notas WHERE id=%s
+            SELECT n.*, c.nombre AS cliente_nombre_real, c.telefono, c.direccion
+            FROM notas n
+            LEFT JOIN clientes c ON c.id=n.cliente_id
+            WHERE n.id=%s
         """, (nota_id,)).fetchone()
-
         if not nota:
             return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
 
         items = db.execute("""
-            SELECT id, codigo, marca, hilo, color, cantidad, empacadas, precio
-            FROM items
-            WHERE nota_id=%s
-            ORDER BY id
+            SELECT
+                i.id, i.codigo,
+                COALESCE(i.marca, p.marca, '') AS marca,
+                COALESCE(i.hilo, p.hilo, '') AS hilo,
+                COALESCE(i.color, p.color, '') AS color,
+                COALESCE(i.cantidad,0) AS cantidad,
+                COALESCE(i.empacadas,0) AS empacadas,
+                COALESCE(i.precio, pr.venta, p.precio, 0) AS precio,
+                COALESCE(p.stock,0) AS stock,
+                COALESCE(p.es_inventariable, TRUE) AS es_inventariable
+            FROM items i
+            LEFT JOIN productos p ON p.codigo=i.codigo
+            LEFT JOIN precios pr ON pr.marca = COALESCE(i.marca, p.marca)
+            WHERE i.nota_id=%s
+            ORDER BY i.id
         """, (nota_id,)).fetchall()
 
     n = dict(nota)
+    n["direccion"] = parse_json_text(n.get("direccion"), {})
     n["envio"] = parse_json_text(n.get("envio"), {})
     n["items"] = [dict(i) for i in items]
     return jsonify(json_safe(n))
 
 
+# =========================
+# Clientes / productos
+# =========================
 @app.route("/api/clientes")
 def buscar_clientes():
     q = (request.args.get("q") or "").strip().lower()
-    limit = min(int(request.args.get("limit") or 25), 100)
+    limit = min(int(request.args.get("limit") or 30), 100)
 
     params = []
-    where = "1=1"
+    where = ["1=1"]
     if q:
-        where = "(LOWER(COALESCE(nombre,'')) LIKE %s OR COALESCE(telefono,'') LIKE %s)"
-        params = [f"%{q}%", f"%{q}%"]
+        where.append("""
+            (
+                LOWER(COALESCE(nombre,'')) LIKE %s OR
+                LOWER(COALESCE(telefono,'')) LIKE %s
+            )
+        """)
+        like = f"%{q}%"
+        params.extend([like, like])
 
     with DB() as db:
         rows = db.execute(f"""
             SELECT id, nombre, telefono, direccion
             FROM clientes
-            WHERE {where}
+            WHERE {' AND '.join(where)}
             ORDER BY nombre
             LIMIT {limit}
         """, params).fetchall()
 
-    clientes = []
+    data = []
     for r in rows:
         c = dict(r)
         c["direccion"] = parse_json_text(c.get("direccion"), {})
-        clientes.append(c)
-
-    return jsonify(json_safe(clientes))
+        data.append(c)
+    return jsonify(json_safe(data))
 
 
 @app.route("/api/clientes", methods=["POST"])
@@ -439,7 +497,7 @@ def buscar_productos():
     q = (request.args.get("q") or "").strip().lower()
     marca = (request.args.get("marca") or "").strip()
     hilo = (request.args.get("hilo") or "").strip()
-    limit = min(int(request.args.get("limit") or 60), 200)
+    limit = min(int(request.args.get("limit") or 80), 300)
 
     params = []
     where = ["1=1"]
@@ -474,7 +532,8 @@ def buscar_productos():
                 COALESCE(p.volumetrico,1) AS volumetrico,
                 COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
                 COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
-                COALESCE(pr.venta, p.precio, 0) AS precio_venta
+                COALESCE(pr.venta, p.precio, 0) AS precio_venta,
+                COALESCE(p.costo_neto,0) AS costo_neto
             FROM productos p
             LEFT JOIN precios pr ON pr.marca = p.marca
             WHERE {' AND '.join(where)}
@@ -485,6 +544,42 @@ def buscar_productos():
     return jsonify(json_safe([dict(r) for r in rows]))
 
 
+@app.route("/api/productos/<codigo>", methods=["PATCH"])
+def actualizar_producto(codigo):
+    data = request.get_json(force=True) or {}
+    allowed = []
+    params = []
+
+    if "color" in data:
+        allowed.append("color=%s")
+        params.append((data.get("color") or "").strip())
+    if "stock" in data:
+        try:
+            stock = int(data.get("stock"))
+        except Exception:
+            return jsonify({"ok": False, "error": "Stock inválido"}), 400
+        allowed.append("stock=%s")
+        params.append(stock)
+
+    if not allowed:
+        return jsonify({"ok": False, "error": "No hay cambios"}), 400
+
+    params.append(codigo)
+    with DB() as db:
+        row = db.execute(f"""
+            UPDATE productos
+            SET {', '.join(allowed)}
+            WHERE codigo=%s
+            RETURNING id, codigo, marca, hilo, color, stock
+        """, params).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
+    return jsonify(json_safe({"ok": True, "producto": dict(row)}))
+
+
+# =========================
+# Cotizaciones / notas
+# =========================
 def generar_id_nota(db):
     row = db.execute("""
         SELECT id
@@ -493,13 +588,116 @@ def generar_id_nota(db):
         ORDER BY id DESC
         LIMIT 1
     """).fetchone()
-
     if not row:
         return "COT-00001"
-
     m = re.search(r"(\d+)$", str(row["id"]))
     numero = int(m.group(1)) if m else 0
     return f"COT-{numero + 1:05d}"
+
+
+def obtener_pedido_default(db):
+    try:
+        if table_exists(db, "pedidos"):
+            try:
+                row = db.execute("""
+                    SELECT numero
+                    FROM pedidos
+                    WHERE activo = TRUE
+                    ORDER BY numero DESC
+                    LIMIT 1
+                """).fetchone()
+                if row and row.get("numero") is not None:
+                    return str(row["numero"])
+            except Exception:
+                db.rollback()
+            try:
+                row = db.execute("""
+                    SELECT numero
+                    FROM pedidos
+                    ORDER BY numero DESC
+                    LIMIT 1
+                """).fetchone()
+                if row and row.get("numero") is not None:
+                    return str(row["numero"])
+            except Exception:
+                db.rollback()
+        row = db.execute("""
+            SELECT pedido FROM notas
+            WHERE pedido IS NOT NULL AND pedido <> ''
+            ORDER BY fecha DESC
+            LIMIT 1
+        """).fetchone()
+        return str(row["pedido"]) if row and row.get("pedido") else None
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
+
+
+def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
+    items_finales = []
+    errores = []
+    total = 0.0
+
+    for raw in items_req:
+        codigo = str(raw.get("codigo") or "").strip()
+        cantidad = int(raw.get("cantidad") or 0)
+        precio_manual = raw.get("precio")
+        if not codigo or cantidad <= 0:
+            continue
+
+        prod = db.execute("""
+            SELECT
+                p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                COALESCE(p.stock,0) AS stock,
+                COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+                COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
+                COALESCE(pr.venta, p.precio, 0) AS precio_venta
+            FROM productos p
+            LEFT JOIN precios pr ON pr.marca = p.marca
+            WHERE p.codigo=%s OR p.codigo_barras=%s
+            LIMIT 1
+        """, (codigo, codigo)).fetchone()
+
+        if not prod:
+            errores.append(f"No existe el producto {codigo}")
+            continue
+
+        prod = dict(prod)
+        es_inventariable = prod.get("es_inventariable")
+        if isinstance(es_inventariable, str):
+            es_inventariable = es_inventariable.lower() not in ("false", "f", "0", "no", "n")
+
+        stock = int(prod.get("stock") or 0)
+        if validar_stock and es_inventariable and stock < cantidad:
+            errores.append(f"Stock insuficiente {prod['codigo']} ({stock} disponibles)")
+            continue
+
+        precio = float(precio_manual if precio_manual is not None else (prod.get("precio_venta") or 0))
+        subtotal = cantidad * precio
+        total += subtotal
+        items_finales.append({
+            "codigo": prod["codigo"],
+            "marca": prod.get("marca") or "",
+            "hilo": prod.get("hilo") or "",
+            "color": prod.get("color") or "",
+            "cantidad": cantidad,
+            "precio": precio,
+            "subtotal": subtotal,
+            "es_inventariable": bool(es_inventariable),
+        })
+
+    if errores:
+        raise ValueError(" / ".join(errores))
+    if not items_finales:
+        raise ValueError("No hay productos válidos")
+
+    envio_precio = 0.0
+    if isinstance(envio, dict):
+        envio_precio = float(envio.get("precio") or 0)
+    return items_finales, round(total + envio_precio, 2)
 
 
 @app.route("/api/cotizaciones", methods=["POST"])
@@ -516,29 +714,18 @@ def crear_cotizacion_movil():
         return jsonify({"ok": False, "error": "La cotización no tiene productos"}), 400
 
     with DB() as db:
-        # Cliente existente o nuevo.
+        if not pedido:
+            pedido = obtener_pedido_default(db)
+
         if cliente_id:
-            cliente = db.execute(
-                "SELECT id, nombre, telefono, direccion FROM clientes WHERE id=%s",
-                (cliente_id,),
-            ).fetchone()
+            cliente = db.execute("SELECT id, nombre, telefono, direccion FROM clientes WHERE id=%s", (cliente_id,)).fetchone()
             if not cliente:
                 return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
             cliente = dict(cliente)
         else:
             if not cliente_nombre:
                 return jsonify({"ok": False, "error": "Falta cliente"}), 400
-
-            direccion_vacia = {
-                "calle": "",
-                "numero_ext": "",
-                "numero_int": "",
-                "colonia": "",
-                "codigo_postal": "",
-                "estado": "",
-                "municipio": "",
-                "referencia": "",
-            }
+            direccion_vacia = {"calle":"","numero_ext":"","numero_int":"","colonia":"","codigo_postal":"","estado":"","municipio":"","referencia":""}
             cliente = db.execute("""
                 INSERT INTO clientes (nombre, telefono, direccion)
                 VALUES (%s,%s,%s)
@@ -546,110 +733,227 @@ def crear_cotizacion_movil():
             """, (cliente_nombre, telefono, json.dumps(direccion_vacia, ensure_ascii=False))).fetchone()
             cliente = dict(cliente)
 
-        items_finales = []
-        errores = []
-        total = 0.0
+        try:
+            items_finales, total = _calcular_items_y_total(db, items_req, envio, validar_stock=True)
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
 
-        for raw in items_req:
-            codigo = str(raw.get("codigo") or "").strip()
-            cantidad = int(raw.get("cantidad") or 0)
-            if not codigo or cantidad <= 0:
-                continue
-
-            prod = db.execute("""
-                SELECT
-                    p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
-                    COALESCE(p.stock,0) AS stock,
-                    COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
-                    COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
-                    COALESCE(pr.venta, p.precio, 0) AS precio_venta
-                FROM productos p
-                LEFT JOIN precios pr ON pr.marca = p.marca
-                WHERE p.codigo=%s OR p.codigo_barras=%s
-                LIMIT 1
-            """, (codigo, codigo)).fetchone()
-
-            if not prod:
-                errores.append(f"No existe el producto {codigo}")
-                continue
-
-            prod = dict(prod)
-            es_inventariable = prod.get("es_inventariable")
-            if isinstance(es_inventariable, str):
-                es_inventariable = es_inventariable.lower() not in ("false", "f", "0", "no", "n")
-
-            stock = int(prod.get("stock") or 0)
-            if es_inventariable and stock < cantidad:
-                errores.append(f"Stock insuficiente {prod['codigo']} ({stock} disponibles)")
-                continue
-
-            precio = float(prod.get("precio_venta") or 0)
-            subtotal = cantidad * precio
-            total += subtotal
-
-            items_finales.append({
-                "codigo": prod["codigo"],
-                "marca": prod.get("marca") or "",
-                "hilo": prod.get("hilo") or "",
-                "color": prod.get("color") or "",
-                "cantidad": cantidad,
-                "precio": precio,
-                "subtotal": subtotal,
-            })
-
-        if errores:
-            return jsonify({"ok": False, "error": " / ".join(errores)}), 400
-
-        if not items_finales:
-            return jsonify({"ok": False, "error": "No hay productos válidos"}), 400
-
-        envio_precio = 0.0
         paqueteria = None
         if isinstance(envio, dict):
-            envio_precio = float(envio.get("precio") or 0)
             paqueteria = envio.get("tipo") or envio.get("paqueteria")
 
-        total = round(total + envio_precio, 2)
         nota_id = generar_id_nota(db)
-
         db.execute("""
             INSERT INTO notas
             (id, cliente_id, cliente_nombre, fecha, estado, total, envio, pedido, paqueteria)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
-            nota_id,
-            cliente["id"],
-            cliente["nombre"],
-            now_mexico(),
-            "COTIZACION",
-            total,
+            nota_id, cliente["id"], cliente["nombre"], now_mexico(), "COTIZACION", total,
             json.dumps(envio, ensure_ascii=False) if envio else None,
-            pedido,
-            paqueteria,
+            pedido, paqueteria,
         ))
 
         for p in items_finales:
             db.execute("""
-                INSERT INTO items
-                (nota_id, codigo, marca, hilo, color, cantidad, precio)
+                INSERT INTO items (nota_id, codigo, marca, hilo, color, cantidad, precio)
                 VALUES (%s,%s,%s,%s,%s,%s,%s)
-            """, (
-                nota_id,
-                p["codigo"],
-                p["marca"],
-                p["hilo"],
-                p["color"],
-                p["cantidad"],
-                p["precio"],
-            ))
+            """, (nota_id, p["codigo"], p["marca"], p["hilo"], p["color"], p["cantidad"], p["precio"]))
 
-    return jsonify(json_safe({
-        "ok": True,
-        "nota_id": nota_id,
-        "total": total,
-        "items": items_finales,
-        "cliente": {"id": cliente["id"], "nombre": cliente["nombre"]},
-    }))
+    return jsonify(json_safe({"ok": True, "nota_id": nota_id, "total": total, "items": items_finales, "cliente": {"id": cliente["id"], "nombre": cliente["nombre"]}}))
+
+
+@app.route("/api/notas/<nota_id>", methods=["PUT"])
+def editar_cotizacion(nota_id):
+    data = request.get_json(force=True) or {}
+    items_req = data.get("items") or []
+    envio = data.get("envio") if "envio" in data else None
+    pedido = data.get("pedido") if "pedido" in data else None
+
+    if not items_req:
+        return jsonify({"ok": False, "error": "La cotización no tiene productos"}), 400
+
+    with DB() as db:
+        nota = db.execute("SELECT id, estado FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        if not nota:
+            return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+        if nota.get("estado") != "COTIZACION":
+            return jsonify({"ok": False, "error": "Solo se pueden editar cotizaciones"}), 400
+
+        try:
+            items_finales, total = _calcular_items_y_total(db, items_req, envio, validar_stock=True)
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+        paqueteria = None
+        if isinstance(envio, dict):
+            paqueteria = envio.get("tipo") or envio.get("paqueteria")
+
+        sets = ["total=%s"]
+        params = [total]
+        if "envio" in data:
+            sets.append("envio=%s")
+            params.append(json.dumps(envio, ensure_ascii=False) if envio else None)
+            sets.append("paqueteria=%s")
+            params.append(paqueteria)
+        if "pedido" in data:
+            sets.append("pedido=%s")
+            params.append(pedido)
+        params.append(nota_id)
+        db.execute(f"UPDATE notas SET {', '.join(sets)} WHERE id=%s", params)
+
+        db.execute("DELETE FROM items WHERE nota_id=%s", (nota_id,))
+        for p in items_finales:
+            db.execute("""
+                INSERT INTO items (nota_id, codigo, marca, hilo, color, cantidad, precio)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+            """, (nota_id, p["codigo"], p["marca"], p["hilo"], p["color"], p["cantidad"], p["precio"]))
+
+    return jsonify(json_safe({"ok": True, "nota_id": nota_id, "total": total}))
+
+
+@app.route("/api/notas/<nota_id>/envio", methods=["POST"])
+def actualizar_envio_nota(nota_id):
+    data = request.get_json(force=True) or {}
+    envio = data.get("envio") or {}
+    pedido = data.get("pedido")
+    paqueteria = envio.get("tipo") or envio.get("paqueteria") if isinstance(envio, dict) else None
+    precio_envio = float(envio.get("precio") or 0) if isinstance(envio, dict) else 0
+
+    with DB() as db:
+        nota = db.execute("SELECT id, estado FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        if not nota:
+            return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+        subtotal = db.execute("SELECT COALESCE(SUM(cantidad*precio),0) AS subtotal FROM items WHERE nota_id=%s", (nota_id,)).fetchone()["subtotal"]
+        total = round(float(subtotal or 0) + precio_envio, 2)
+        db.execute("""
+            UPDATE notas
+            SET envio=%s, paqueteria=%s, total=%s, pedido=COALESCE(%s, pedido)
+            WHERE id=%s
+        """, (json.dumps(envio, ensure_ascii=False), paqueteria, total, pedido, nota_id))
+    return jsonify({"ok": True, "nota_id": nota_id, "total": total})
+
+
+@app.route("/api/notas/<nota_id>/convertir", methods=["POST"])
+def convertir_a_venta(nota_id):
+    with DB() as db:
+        nota = db.execute("SELECT id, estado FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        if not nota:
+            return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+        if nota.get("estado") != "COTIZACION":
+            return jsonify({"ok": False, "error": "Solo se puede convertir una COTIZACION"}), 400
+
+        items = db.execute("""
+            SELECT i.codigo, COALESCE(i.cantidad,0) AS cantidad, COALESCE(p.stock,0) AS stock,
+                   COALESCE(p.es_inventariable, TRUE) AS es_inventariable
+            FROM items i
+            LEFT JOIN productos p ON p.codigo=i.codigo
+            WHERE i.nota_id=%s
+        """, (nota_id,)).fetchall()
+
+        for it in items:
+            es_inv = it.get("es_inventariable")
+            if isinstance(es_inv, str):
+                es_inv = es_inv.lower() not in ("false", "f", "0", "no", "n")
+            if es_inv and int(it.get("stock") or 0) < int(it.get("cantidad") or 0):
+                return jsonify({"ok": False, "error": f"Stock insuficiente {it['codigo']}"}), 400
+
+        for it in items:
+            es_inv = it.get("es_inventariable")
+            if isinstance(es_inv, str):
+                es_inv = es_inv.lower() not in ("false", "f", "0", "no", "n")
+            if es_inv:
+                db.execute("UPDATE productos SET stock=COALESCE(stock,0)-%s WHERE codigo=%s", (int(it["cantidad"] or 0), it["codigo"]))
+
+        db.execute("UPDATE notas SET estado='VENTA_PENDIENTE' WHERE id=%s", (nota_id,))
+    return jsonify({"ok": True, "nota_id": nota_id, "estado": "VENTA_PENDIENTE"})
+
+
+@app.route("/api/notas/<nota_id>/pagar", methods=["POST"])
+def marcar_pagada(nota_id):
+    data = request.get_json(force=True) or {}
+    comprobante = data.get("comprobante") or None
+    with DB() as db:
+        nota = db.execute("SELECT id, estado FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        if not nota:
+            return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+        db.execute("""
+            UPDATE notas
+            SET estado='PAGADA', fecha_pago=%s, comprobante=COALESCE(%s, comprobante)
+            WHERE id=%s
+        """, (now_mexico().isoformat(sep=" ", timespec="seconds"), comprobante, nota_id))
+    return jsonify({"ok": True, "nota_id": nota_id, "estado": "PAGADA"})
+
+
+# =========================
+# Empacador móvil
+# =========================
+@app.route("/api/empacador/notas")
+def empacador_notas():
+    q = (request.args.get("q") or "").strip().lower()
+    only_pending = (request.args.get("pendientes") or "1") == "1"
+    params = []
+    where = ["n.estado IN ('VENTA_PENDIENTE','PAGADA','EN_PROCESO','COTIZACION')"]
+    if q:
+        where.append("(LOWER(n.id) LIKE %s OR LOWER(COALESCE(n.cliente_nombre,'')) LIKE %s OR LOWER(COALESCE(n.pedido,'')) LIKE %s)")
+        like = f"%{q}%"
+        params.extend([like, like, like])
+
+    with DB() as db:
+        rows = db.execute(f"""
+            SELECT n.id, n.cliente_nombre, n.pedido, n.estado, n.fecha, n.empacador, n.empacador_id,
+                   COALESCE(SUM(i.cantidad),0) AS piezas_total,
+                   COALESCE(SUM(i.empacadas),0) AS piezas_empacadas
+            FROM notas n
+            LEFT JOIN items i ON i.nota_id=n.id
+            WHERE {' AND '.join(where)}
+            GROUP BY n.id
+            ORDER BY n.id DESC
+            LIMIT 150
+        """, params).fetchall()
+    data = []
+    for r in rows:
+        d = dict(r)
+        if only_pending and int(d.get("piezas_total") or 0) and int(d.get("piezas_empacadas") or 0) >= int(d.get("piezas_total") or 0):
+            continue
+        data.append(d)
+    return jsonify(json_safe(data))
+
+
+@app.route("/api/empacador/notas/<nota_id>/item", methods=["POST"])
+def actualizar_empacado_item(nota_id):
+    data = request.get_json(force=True) or {}
+    item_id = data.get("item_id")
+    codigo = data.get("codigo")
+    try:
+        empacadas = int(data.get("empacadas") or 0)
+    except Exception:
+        return jsonify({"ok": False, "error": "Cantidad inválida"}), 400
+    empacadas = max(0, empacadas)
+
+    with DB() as db:
+        if item_id:
+            row = db.execute("""
+                UPDATE items
+                SET empacadas=LEAST(%s, COALESCE(cantidad,0))
+                WHERE id=%s AND nota_id=%s
+                RETURNING id, codigo, cantidad, empacadas
+            """, (empacadas, item_id, nota_id)).fetchone()
+        else:
+            row = db.execute("""
+                UPDATE items
+                SET empacadas=LEAST(%s, COALESCE(cantidad,0))
+                WHERE codigo=%s AND nota_id=%s
+                RETURNING id, codigo, cantidad, empacadas
+            """, (empacadas, codigo, nota_id)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Item no encontrado"}), 404
+        totals = db.execute("""
+            SELECT COALESCE(SUM(cantidad),0) AS total, COALESCE(SUM(empacadas),0) AS empacadas
+            FROM items WHERE nota_id=%s
+        """, (nota_id,)).fetchone()
+        if int(totals.get("total") or 0) and int(totals.get("empacadas") or 0) >= int(totals.get("total") or 0):
+            db.execute("UPDATE notas SET fecha_finalizacion=COALESCE(fecha_finalizacion,%s) WHERE id=%s", (now_mexico(), nota_id))
+    return jsonify(json_safe({"ok": True, "item": dict(row)}))
 
 
 if __name__ == "__main__":
