@@ -6,6 +6,7 @@ import base64
 import tempfile
 import math
 import traceback
+from PIL import Image, ImageDraw, ImageFont
 import html
 import unicodedata
 from datetime import datetime
@@ -2540,6 +2541,265 @@ def _resolver_estado_items_por_fases(parsed, productos_contexto, comentario):
     return add, ex, quantities, visual_items
 
 
+
+def _image_bytes_to_data_url(raw, mime="image/png"):
+    return "data:%s;base64,%s" % (mime, base64.b64encode(raw).decode("ascii"))
+
+
+def _crear_imagen_grid_anotada(raw, cols=5, rows=4):
+    """
+    Crea una versión de la imagen con una cuadrícula visible y nombres de celda.
+    Esto obliga al modelo visual a analizar por secciones, no como imagen libre.
+    """
+    img = Image.open(io.BytesIO(raw)).convert("RGB")
+    w, h = img.size
+
+    # Si la imagen viene muy grande, mantener proporción pero limitar para costo/tamaño.
+    max_side = 1600
+    if max(w, h) > max_side:
+        scale = max_side / max(w, h)
+        img = img.resize((int(w*scale), int(h*scale)))
+        w, h = img.size
+
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(18, w//45))
+        font_small = ImageFont.truetype("DejaVuSans-Bold.ttf", max(12, w//70))
+    except Exception:
+        font = None
+        font_small = None
+
+    cw = w / cols
+    rh = h / rows
+
+    # Líneas de celda
+    for c in range(cols+1):
+        x = int(c*cw)
+        draw.line([(x, 0), (x, h)], fill=(0, 90, 255), width=max(3, w//350))
+    for r in range(rows+1):
+        y = int(r*rh)
+        draw.line([(0, y), (w, y)], fill=(0, 90, 255), width=max(3, h//500))
+
+    # Etiquetas R1C1, etc.
+    for r in range(rows):
+        for c in range(cols):
+            label = f"R{r+1}C{c+1}"
+            x = int(c*cw + 8)
+            y = int(r*rh + 8)
+            # fondo blanco semitransparente simulado
+            draw.rectangle([x-3, y-3, x+70, y+28], fill=(255,255,255), outline=(0,90,255), width=2)
+            draw.text((x, y), label, fill=(0, 0, 0), font=font_small)
+
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue(), {"cols": cols, "rows": rows, "width": w, "height": h}
+
+
+def _infer_rows_cols_para_catalogo(raw, productos_contexto=None):
+    """
+    Regla inicial: los catálogos que el usuario manda suelen ser 5 columnas.
+    Las filas se estiman por proporción de imagen y/o cantidad visible.
+    Para páginas de tonos como la de Komfy Mini: 5x4.
+    """
+    img = Image.open(io.BytesIO(raw))
+    w, h = img.size
+    cols = 5
+    # La página enviada tiene 4 filas; usar 4 por defecto en catálogos altos.
+    if h / max(w, 1) > 1.15:
+        rows = 4
+    else:
+        rows = 3
+    # Si el contexto es chico, ajustar sin bajar de 3 para no romper catálogos
+    if productos_contexto:
+        n = len(productos_contexto)
+        if n <= 10:
+            rows = 2
+        elif n <= 15:
+            rows = 3
+        else:
+            rows = 4
+    return cols, rows
+
+
+def _analizar_celdas_anotadas_openai(data_url_original, raw, comentario, contexto, productos_contexto):
+    """
+    Analizador por celdas:
+    1) dibuja una cuadrícula R1C1...
+    2) pide al modelo leer código/nombre/estado por celda
+    3) devuelve JSON estructurado.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None, "sin_openai_api_key"
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+
+    cols, rows = _infer_rows_cols_para_catalogo(raw, productos_contexto)
+    annotated_raw, grid_info = _crear_imagen_grid_anotada(raw, cols=cols, rows=rows)
+    annotated_url = _image_bytes_to_data_url(annotated_raw)
+
+    # Solo códigos válidos como ayuda, pero el modelo debe leer el código de la imagen.
+    valid_codes = []
+    for p in productos_contexto[:350]:
+        c = str(p.get("codigo") or "").strip()
+        if c:
+            valid_codes.append({
+                "codigo": c,
+                "color": str(p.get("color") or "").strip(),
+                "marca": str(p.get("marca") or "").strip(),
+                "hilo": str(p.get("hilo") or "").strip(),
+            })
+
+    prompt = f"""
+Analiza esta imagen de catálogo de hilos dividida en una cuadrícula azul con celdas R1C1, R1C2, etc.
+
+NO adivines por orden del catálogo de la base de datos.
+DEBES LEER EL CÓDIGO IMPRESO DENTRO DE CADA CELDA.
+
+Para cada celda que tenga un producto:
+1. Lee el código numérico impreso debajo de la madeja.
+2. Lee el nombre/color escrito debajo del código.
+3. Determina si la celda está:
+   - selected: tiene círculo rojo, contorno rojo, subrayado rojo o marca roja indicando que sí lo quiere.
+   - excluded: tiene X roja o tachón claro sobre la madeja/celda.
+   - none: no tiene marca de selección.
+4. La marca solo aplica a la celda donde está, no a la vecina.
+5. Si el comentario dice "los que tengan círculo 1 de cada uno los tachados no":
+   - selected = agregar cantidad 1
+   - excluded = no agregar
+   - none = ignorar
+6. NO conviertas "1 de cada uno" en código 1.
+7. NO agregues blanco/marfil/rosa/etc. si no lees su código impreso y no está marcado.
+8. Si una celda tiene una línea roja pequeña pero el círculo grande rodea otra celda, no la marques selected.
+
+CONTEXTO DE APP:
+{contexto}
+
+CÓDIGOS VÁLIDOS DEL CONTEXTO, SOLO PARA VALIDAR:
+{json.dumps(valid_codes, ensure_ascii=False)}
+
+COMENTARIO:
+{comentario}
+
+Devuelve SOLO JSON válido:
+{{
+  "grid": {{"cols": {cols}, "rows": {rows}}},
+  "cells": [
+    {{"cell":"R1C1","row":1,"col":1,"code":"39","label_text":"MANGO","mark":"selected","mark_type":"circle","confidence":0.95,"reason":"círculo rojo rodea el código 39"}},
+    {{"cell":"R1C2","row":1,"col":2,"code":"54","label_text":"CAMELLO","mark":"none","mark_type":"","confidence":0.90,"reason":"sin marca"}},
+    {{"cell":"R1C5","row":1,"col":5,"code":"73","label_text":"SANDIA","mark":"excluded","mark_type":"x","confidence":0.95,"reason":"X roja sobre el producto"}}
+  ],
+  "add_codes":["39"],
+  "exclude_codes":["73"],
+  "quantities":{{"39":1}},
+  "warnings":[]
+}}
+""".strip()
+
+    model = os.environ.get("OPENAI_VISION_MODEL", "gpt-4o")
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "Responde únicamente JSON válido. No uses markdown. Lee códigos por celda."},
+            {"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": annotated_url, "detail": "high"}},
+            ]},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+    parsed = _safe_json_from_text(resp.choices[0].message.content or "{}")
+    parsed["_grid_info_local"] = grid_info
+    return parsed, "openai_cell_grid"
+
+
+def _convertir_celdas_a_resultado(parsed, productos_contexto, comentario):
+    cells = parsed.get("cells") or parsed.get("items") or []
+    if not isinstance(cells, list):
+        cells = []
+
+    valid = set()
+    for p in productos_contexto:
+        c = str(p.get("codigo") or "").strip().lstrip("0")
+        if c:
+            valid.add(c)
+        cb = str(p.get("codigo_barras") or "").strip().lstrip("0")
+        if cb:
+            valid.add(cb)
+
+    global_qty = _extract_global_each_quantity(comentario) or 1
+    add = []
+    ex = []
+    quantities = {}
+    visual_items = []
+
+    # Si el modelo entrega cells, confiar más en cells que en add_codes.
+    for cell in cells:
+        code_list = _norm_code_list([cell.get("code")])
+        if not code_list:
+            continue
+        code = code_list[0]
+        # Duro: no aceptar código 1 si es cantidad, y no aceptar código fuera de contexto.
+        if code == "1" and "1" not in valid:
+            continue
+        if valid and code not in valid:
+            # guardarlo en visual_items como inválido para debug, pero no agregar
+            visual_items.append({
+                "code": code,
+                "row": cell.get("row"),
+                "col": cell.get("col"),
+                "label_text": cell.get("label_text") or cell.get("label") or "",
+                "visual_color": cell.get("visual_color") or "",
+                "mark": "invalid_context",
+                "mark_type": cell.get("mark_type") or "",
+                "confidence": cell.get("confidence") or 0,
+                "reason": "Código leído pero no existe en el contexto seleccionado",
+            })
+            continue
+
+        mark = str(cell.get("mark") or "").lower().strip()
+        if mark in ("selected", "select", "circle", "circled", "add", "yes", "si", "sí"):
+            state = "selected"
+        elif mark in ("excluded", "exclude", "x", "cross", "crossed", "tachado", "no"):
+            state = "excluded"
+        else:
+            state = "none"
+
+        item = {
+            "code": code,
+            "row": cell.get("row"),
+            "col": cell.get("col"),
+            "label_text": cell.get("label_text") or cell.get("label") or "",
+            "visual_color": cell.get("visual_color") or "",
+            "mark": state,
+            "mark_type": cell.get("mark_type") or "",
+            "confidence": cell.get("confidence") or 0,
+            "reason": cell.get("reason") or "",
+        }
+        visual_items.append(item)
+
+        if state == "selected" and code not in add:
+            add.append(code)
+            quantities[code] = global_qty
+        elif state == "excluded" and code not in ex:
+            ex.append(code)
+
+    add = [c for c in add if c not in set(ex)]
+
+    # Si no hubo cells, usar add/exclude del JSON directo como respaldo.
+    if not add and not ex:
+        add = _norm_code_list(parsed.get("add_codes") or [])
+        ex = _norm_code_list(parsed.get("exclude_codes") or [])
+        add = [c for c in add if c not in set(ex) and (not valid or c in valid)]
+        ex = [c for c in ex if (not valid or c in valid)]
+        for c in add:
+            quantities[c] = global_qty
+
+    return add, ex, quantities, visual_items
+
+
 @app.route('/api/analizar-imagen-referencia', methods=['POST'])
 def analizar_imagen_referencia():
     data = request.get_json(force=True) or {}
@@ -2570,22 +2830,35 @@ def analizar_imagen_referencia():
     visual_items = []
     advertencias = []
     phase_result = None
+    cell_result = None
 
     with DB() as db:
         productos_contexto = _codigos_contexto_productos(db, marca, hilo)
 
-    # 1) Nuevo analizador por fases.
+    # 1) Nuevo método principal: cuadrícula anotada por celdas.
     try:
-        parsed, provider = _analizar_catalogo_por_fases_openai(data_url, original_data_url, comentario, contexto, productos_contexto)
+        parsed_cells, provider = _analizar_celdas_anotadas_openai(data_url, raw, comentario, contexto, productos_contexto)
         vision_notes.append(provider)
-        if parsed:
-            phase_result = parsed
-            vision_text = json.dumps(parsed, ensure_ascii=False)
-            add_codes, exclude_codes, quantities, visual_items = _resolver_estado_items_por_fases(parsed, productos_contexto, comentario)
+        if parsed_cells:
+            cell_result = parsed_cells
+            vision_text = json.dumps(parsed_cells, ensure_ascii=False)
+            add_codes, exclude_codes, quantities, visual_items = _convertir_celdas_a_resultado(parsed_cells, productos_contexto, comentario)
     except Exception as e:
-        vision_notes.append("openai_phased_error:" + str(e)[:180])
+        vision_notes.append("openai_cell_grid_error:" + str(e)[:180])
 
-    # 2) Fallback estricto grid anterior si el nuevo no devuelve nada.
+    # 2) Si no pudo, usar método por fases anterior.
+    if not add_codes and not exclude_codes:
+        try:
+            parsed, provider = _analizar_catalogo_por_fases_openai(data_url, original_data_url, comentario, contexto, productos_contexto)
+            vision_notes.append(provider)
+            if parsed:
+                phase_result = parsed
+                vision_text = json.dumps(parsed, ensure_ascii=False)
+                add_codes, exclude_codes, quantities, visual_items = _resolver_estado_items_por_fases(parsed, productos_contexto, comentario)
+        except Exception as e:
+            vision_notes.append("openai_phased_error:" + str(e)[:180])
+
+    # 3) Fallback de cuadrícula OpenAI anterior.
     if not add_codes and not exclude_codes:
         try:
             parsed_grid, provider_grid = _analizar_catalogo_grid_openai(data_url, comentario, contexto, productos_contexto)
@@ -2600,9 +2873,8 @@ def analizar_imagen_referencia():
         except Exception as e:
             vision_notes.append("openai_grid_error:" + str(e)[:180])
 
-    # 3) OCR local opcional.
+    # 4) OCR local opcional.
     try:
-        from PIL import Image
         img = Image.open(io.BytesIO(raw))
         try:
             import pytesseract
@@ -2614,7 +2886,7 @@ def analizar_imagen_referencia():
     except Exception:
         pass
 
-    # 4) Fallback por rojo/cuadrícula si no hay OpenAI o falló.
+    # 5) Fallback por rojo/cuadrícula si no hay OpenAI o falló.
     if not add_codes and not exclude_codes:
         try:
             inferred_add, inferred_ex, grid_debug = _infer_visual_codes_grid(raw, productos_contexto, comentario)
@@ -2628,7 +2900,7 @@ def analizar_imagen_referencia():
         except Exception as e:
             vision_notes.append("fallback_grid_error:" + str(e)[:180])
 
-    # 5) Códigos explícitos escritos a mano, pero NO tomar el "1" de "1 de cada uno".
+    # 6) Códigos explícitos escritos a mano, sin tomar el 1 de cantidad.
     explicit_codes = _extract_codes_from_free_text(comentario)
     for c in explicit_codes:
         if c not in add_codes and c not in exclude_codes:
@@ -2659,12 +2931,8 @@ def analizar_imagen_referencia():
         advertencias.append("No hay OPENAI_API_KEY. Sin ella solo funciona el fallback básico.")
     if not marca or not hilo:
         advertencias.append("Selecciona Marca e Hilo exactos antes de analizar.")
-    if original_data_url:
-        advertencias.append("Se usó comparación con imagen original.")
-    else:
-        advertencias.append("No subiste imagen original; detecté modificaciones solo desde la imagen editada.")
-    if add_codes and no_encontrados:
-        advertencias.append("Algunos códigos detectados no existen en el contexto: " + ", ".join(no_encontrados))
+    if no_encontrados:
+        advertencias.append("Códigos detectados que no existen en el contexto: " + ", ".join(no_encontrados))
 
     return jsonify(json_safe({
         'ok': True,
@@ -2682,6 +2950,7 @@ def analizar_imagen_referencia():
         'contexto': {'marca': marca, 'hilo': hilo, 'productos_contexto': len(productos_contexto), 'retry_all': retried_all},
         'grid_debug': grid_debug,
         'phase_result': phase_result,
+        'cell_result': cell_result,
         'advertencias': advertencias,
     }))
 

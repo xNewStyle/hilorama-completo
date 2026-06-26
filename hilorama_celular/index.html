@@ -107,8 +107,8 @@
           <div class="small">Para fotos alteradas: “de ese 2”, “arriba derecha”, “tachado no”.</div>
           <textarea id="pedidoImagenTexto" placeholder="Comentario sobre la foto: de ese 2 por favor / el de arriba a la derecha / el tachado no"></textarea>
           <div id="pedidoImagenPreview" class="hidden" style="margin-top:8px"></div>
-          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia()">Analizar imagen (grid)</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
-          <div id="pedidoImagenAnalisis" class="small" style="margin-top:8px"></div>
+          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia()">Analizar por celdas (grid)</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
+          <div id="pedidoImagenAnalisis" class="small" style="margin-top:8px"></div><details id="mapaVisualDebugWrap" open style="margin-top:8px"><summary><b>Mapa visual por celdas / diagnóstico</b></summary><div id="mapaVisualDebug" class="small" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;max-height:360px;overflow:auto">Aquí aparecerá el diagnóstico después de analizar.</div><button class="light" type="button" onclick="copiarMapaVisual()">Copiar mapa para ChatGPT</button></details>
         </details>
         <details class="ai-block"><summary>👤 Historial de cliente opcional</summary>
           <div class="grid2"><div><label>Cliente</label><input id="parserCliente" placeholder="Ayuda para 'los mismos de ayer'"></div><div><label>Teléfono</label><input id="parserTelefono" placeholder="Ayuda para historial"></div></div>
@@ -188,6 +188,45 @@ function abrirPdfNota(id){window.open('/nota-pdf/'+encodeURIComponent(id),'_blan
 async function fileToDataUrl(file){return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(new Error('No pude leer el archivo'));r.readAsDataURL(file)})}
 function limpiarAnalisisImagen(){state.pedidoImagenAnalizada='';if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML=''}
 function limpiarAudioSubido(){state.audioTranscript='';if($('pedidoAudio'))$('pedidoAudio').value='';if($('pedidoAudioStatus'))$('pedidoAudioStatus').textContent='Audio: sin transcribir.'}
+
+function formatMapaVisual(r){
+  const lines=[];
+  lines.push('=== MAPA VISUAL DETECTADO ===');
+  lines.push('motor: '+((r.vision_notes||[]).join(' / ')||'sin motor'));
+  lines.push('contexto: '+JSON.stringify(r.contexto||{}));
+  lines.push('add_codes: '+JSON.stringify(r.add_codes||[]));
+  lines.push('exclude_codes: '+JSON.stringify(r.exclude_codes||[]));
+  lines.push('quantities: '+JSON.stringify(r.quantities||{}));
+  lines.push('no_encontrados: '+JSON.stringify(r.no_encontrados||[]));
+  lines.push('advertencias: '+JSON.stringify(r.advertencias||[]));
+  if(r.visual_items&&r.visual_items.length){
+    lines.push('');
+    lines.push('--- visual_items ---');
+    r.visual_items.forEach((x,i)=>{
+      lines.push(`${i+1}. code=${x.code||''} row=${x.row||''} col=${x.col||''} label=${x.label_text||''} color=${x.visual_color||''} mark=${x.mark||''} type=${x.mark_type||''} conf=${x.confidence||''} reason=${x.reason||''}`);
+    });
+  }else{
+    lines.push('');
+    lines.push('visual_items: VACÍO');
+  }
+  if(r.phase_result){
+    lines.push('');
+    lines.push('--- phase_result crudo ---');
+    lines.push(JSON.stringify(r.phase_result,null,2).slice(0,9000));
+  }
+  if(r.grid_debug){
+    lines.push('');
+    lines.push('--- grid_debug ---');
+    lines.push(JSON.stringify(r.grid_debug,null,2).slice(0,5000));
+  }
+  return lines.join('\n');
+}
+function copiarMapaVisual(){
+  const txt=($('mapaVisualDebug')&&$('mapaVisualDebug').textContent)||'';
+  if(!txt.trim())return alert('Todavía no hay mapa visual.');
+  navigator.clipboard.writeText(txt).then(()=>alert('Mapa copiado. Pégamelo en ChatGPT.'),()=>alert('No pude copiar. Selecciona el texto y cópialo manualmente.'));
+}
+
 async function analizarImagenReferencia(){
   const f=$('pedidoImagen').files&&$('pedidoImagen').files[0];
   if(!f)return alert('Primero selecciona una imagen.');
@@ -219,7 +258,7 @@ async function analizarImagenReferencia(){
       $('pedidoImagenAnalisis').innerHTML=`<div class="banner warning">Analicé la imagen pero no pude convertirla automáticamente a productos.<br>OCR: ${escapeHtml((r.ocr_text||'').slice(0,180)||'sin texto visible')}<br>Resumen: ${escapeHtml(extras.join(' · ')||'sin hallazgos claros')}<br>Sugerencia: <b>${escapeHtml(r.suggested_text||'')}</b></div>`;
       if(!$('pedidoImagenTexto').value.trim()&&r.suggested_text){$('pedidoImagenTexto').value=r.suggested_text}
     }
-  }catch(e){$('pedidoImagenAnalisis').innerHTML=`<div class="banner warning"><b>No pude analizar la imagen.</b><br>${escapeHtml(e.message)}<br>Si vuelve a pasar, manda captura de este mensaje.</div>`}
+  }catch(e){$('pedidoImagenAnalisis').innerHTML=`<div class="banner warning"><b>No pude analizar la imagen.</b><br>${escapeHtml(e.message)}<br>Si vuelve a pasar, manda captura de este mensaje.</div>`;if($('mapaVisualDebug')){$('mapaVisualDebug').textContent='ERROR AL ANALIZAR:\n'+e.message}}
 }
 async function transcribirAudioSubido(){const f=$('pedidoAudio').files&&$('pedidoAudio').files[0];if(!f)return alert('Primero selecciona un audio.');$('pedidoAudioStatus').textContent='Transcribiendo audio...';try{const audio_base64=await fileToDataUrl(f);const r=await apiFetch('/api/transcribir-audio',{method:'POST',body:JSON.stringify({audio_base64,filename:f.name})});state.audioTranscript=r.transcript||'';$('pedidoAudioStatus').textContent='Audio transcrito.';const base=$('pedidoTexto').value.trim();$('pedidoTexto').value=(base+' '+state.audioTranscript).replace(/\s+/g,' ').trim()}catch(e){$('pedidoAudioStatus').textContent='Error al transcribir: '+e.message}}
 
