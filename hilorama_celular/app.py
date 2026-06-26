@@ -4,6 +4,8 @@ import re
 import io
 import base64
 import tempfile
+import math
+import traceback
 import html
 import unicodedata
 from datetime import datetime
@@ -20,6 +22,23 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
 CORS(app)
+
+@app.errorhandler(Exception)
+def json_api_errors(e):
+    # Evita que errores internos regresen HTML y en el celular salga "Respuesta no válida".
+    # Para rutas API, siempre regresamos JSON con el mensaje real del error.
+    if request.path.startswith("/api/"):
+        try:
+            err = str(e) or e.__class__.__name__
+        except Exception:
+            err = e.__class__.__name__
+        return jsonify({
+            "ok": False,
+            "error": f"Error interno en {request.path}: {err}",
+            "type": e.__class__.__name__,
+        }), 500
+    raise e
+
 
 _pool = None
 _schema_ready = False
@@ -1881,7 +1900,10 @@ def analizar_imagen_referencia():
     if not data_url:
         return jsonify({'ok': False, 'error': 'No se recibió imagen'}), 400
 
-    raw = _extract_data_url_bytes(data_url)
+    try:
+        raw = _extract_data_url_bytes(data_url)
+    except Exception:
+        return jsonify({'ok': False, 'error': 'No pude leer la imagen. Intenta subirla otra vez o usa una imagen más pequeña.'}), 400
     ocr_text = ''
     vision_text = ''
     vision_json = None
@@ -2053,7 +2075,10 @@ def transcribir_audio():
     filename = (data.get('filename') or 'audio.ogg').strip()
     if not data_url:
         return jsonify({'ok': False, 'error': 'No se recibió audio'}), 400
-    raw = _extract_data_url_bytes(data_url)
+    try:
+        raw = _extract_data_url_bytes(data_url)
+    except Exception:
+        return jsonify({'ok': False, 'error': 'No pude leer la imagen. Intenta subirla otra vez o usa una imagen más pequeña.'}), 400
     suffix = '.' + filename.split('.')[-1].lower() if '.' in filename else '.ogg'
     transcript = ''
     provider = ''
