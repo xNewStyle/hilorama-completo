@@ -3217,6 +3217,15 @@ MARCAS DE LA CLIENTA - INTERPRETACIÓN HUMANA:
 - Si el comentario dice "tachados no", "los tachados no", "no los tachados", "cruzados no" o "los de X no", cualquier X/tachón queda excluded aunque tenga otra marca.
 - Si el comentario dice "los marcados", "los señalados", "los de tache", "los que tienen X", "los rayados" o "los puntitos", esas marcas son selected.
 - Si hay una mezcla de círculos y X/tachones, los círculos/óvalos/palomitas/flechas son selected y las X/tachones claros son excluded.
+- Si el comentario dice "los que NO están tachados", "los no tachados" o "los demás", los tachados son excluded y los demás visibles son selected.
+- Si el comentario dice "solo los tachados", "los de tache", "los cruzados" o "los marcados con X", entonces las X/tachones son selected.
+- Si el comentario dice "todos menos los marcados" o "los marcados no", entonces las marcas son excluded y los demás visibles son selected.
+- Palomita/check/visto, flecha, llave, corchete, línea apuntando, subrayado debajo del nombre/código, número escrito encima o a un lado = selected salvo que el comentario diga lo contrario.
+- Un rayón largo que atraviesa una fila completa puede ser solo una marca visual de selección grupal; no lo trates como excluded a menos que el comentario diga "no", "menos", "tachados no" o sea una X clara.
+- El color de la tinta de la marca (rojo, azul, negro, verde) NO es color del hilo; solo indica selección/exclusión/cantidad.
+- Si no hay círculos pero sí puntos/rayitas/marcas pequeñas junto a varios productos, eso normalmente significa selected con quantity según cantidad de marcas.
+- Si una X está solamente sobre el precio/código o etiqueta pero el producto está encerrado por un óvalo grande, gana el óvalo: selected, salvo comentario explícito de exclusión.
+- Si una celda tiene una marca ambigua pero el código/nombre queda claramente dentro de un encierro, clasifícala selected y explica la duda en reason.
 
 CANTIDADES POR MARCAS:
 - Una sola rayita, palito, raya o slash cerca del hilo = 1 pieza si no hay otra cantidad.
@@ -3225,7 +3234,11 @@ CANTIDADES POR MARCAS:
 - Cuatro rayitas, IIII o cuatro marcas iguales = 4 piezas.
 - Un punto/puntito = 1 pieza; dos puntos/puntitos = 2 piezas; tres puntos/puntitos = 3 piezas; cuatro puntos = 4 piezas.
 - Un número escrito cerca del hilo, por ejemplo 2, 3, 4, 5, indica esa cantidad. Distingue números escritos a mano de los códigos impresos del catálogo.
-- Textos como x2, 2pz, 2 pz, 2 piezas, dos pzas, par, pares indican cantidad.
+- Textos como x2, x 2, 2x, 2pz, 2 pz, 2 piezas, dos pzas, par, pares, doble, triple indican cantidad.
+- Dos circulitos/puntos sobre la misma celda = 2 piezas; tres circulitos/puntos = 3 piezas.
+- Una marca tipo +, cruz pequeña o palomita sin otra cantidad = 1 pieza. Si hay dos marcas pequeñas separadas en la misma celda = 2 piezas.
+- Si el comentario dice "doble" o "dos de los marcados", todos los selected llevan quantity 2 salvo que una celda tenga cantidad específica.
+- Si el comentario dice "una bolsita", "una madeja", "una pieza", "una pza" cerca de un producto = quantity 1.
 - Si hay varias marcas de cantidad en una misma celda, usa la evidencia más clara: número escrito > puntos/rayitas contadas > comentario global.
 - Si el comentario dice "1 de cada uno", todos los seleccionados llevan quantity 1 salvo que una marca diga otra cantidad.
 - Si solo hay círculo/óvalo y no hay cantidad, quantity=1.
