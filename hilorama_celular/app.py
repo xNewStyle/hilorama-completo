@@ -1,6 +1,11 @@
 import json
 import os
 import re
+import io
+import base64
+import tempfile
+import html
+import unicodedata
 from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -660,12 +665,327 @@ def catalogo_hilos():
     return jsonify([r["hilo"] for r in rows])
 
 
+def _norm_txt(v):
+    v = (v or '').strip().lower()
+    return ''.join(c for c in unicodedata.normalize('NFD', v) if unicodedata.category(c) != 'Mn')
+
+
+COLOR_GRUPOS = {
+    'negro': ['negro','negra','black','blac','blak','obscuro','oscuro'],
+    'blanco': ['blanco','blanca','white','crudo','hueso','marfil','ivory'],
+    'gris': ['gris','gray','grey','plata','plateado','silver'],
+    'rojo': ['rojo','roja','red','cereza','escarlata'],
+    'vino': ['vino','vinotinto','guinda','borgona','burgundy'],
+    'rosa': ['rosa','rosita','pink','fucsia','fiusha','rosa mexicano','mexicano'],
+    'morado': ['morado','morada','purple','violeta','lila','lavanda','uva'],
+    'azul': ['azul','blue','celeste','cielo','marino','azul rey','rey'],
+    'verde': ['verde','green','bandera','menta','olivo','pistache','militar','limon'],
+    'amarillo': ['amarillo','amarilla','yellow','mostaza','canario','oro'],
+    'naranja': ['naranja','orange','mandarina','coral','salmon'],
+    'cafe': ['cafe','brown','marron','chocolate','camel','capuchino'],
+    'beige': ['beige','crema','nude','arena','champagne'],
+    'dorado': ['dorado','dorada','gold'],
+}
+
+COMPATIBILIDAD_COLORES = {
+    'negro': ['blanco','gris','rojo','rosa','beige'],
+    'blanco': ['negro','azul','rosa','beige','gris'],
+    'gris': ['negro','rosa','azul','blanco','vino'],
+    'rojo': ['negro','blanco','gris','beige','vino'],
+    'vino': ['beige','gris','blanco','rosa','negro'],
+    'rosa': ['gris','blanco','beige','morado','vino'],
+    'morado': ['rosa','gris','blanco','beige','azul'],
+    'azul': ['blanco','gris','beige','negro','verde'],
+    'verde': ['beige','blanco','gris','azul','cafe'],
+    'amarillo': ['gris','blanco','cafe','verde','naranja'],
+    'naranja': ['beige','gris','cafe','amarillo','verde'],
+    'cafe': ['beige','blanco','verde','naranja','amarillo'],
+    'beige': ['cafe','rosa','blanco','verde','vino'],
+    'dorado': ['negro','blanco','vino','beige','gris'],
+}
+
+
+def _color_canon(texto):
+    t = _norm_txt(texto)
+    encontrados = []
+    for canon, aliases in COLOR_GRUPOS.items():
+        for a in aliases:
+            aa = _norm_txt(a)
+            if aa and re.search(rf'(?<!\w){re.escape(aa)}(?!\w)', t):
+                if canon not in encontrados:
+                    encontrados.append(canon)
+                break
+    return encontrados
+
+
+def _extraer_referencia_visual(texto):
+    t = _norm_txt(texto)
+    if not t:
+        return None
+    ref = {'raw': texto}
+    m = re.search(r'(?:de ese|de la foto|de la imagen|quiero el|ese|el numero|numero)\s*(\d+)', t)
+    if m:
+        ref['numero'] = int(m.group(1))
+    posiciones = []
+    patrones = [
+        ('arriba_derecha', r'arriba\s+(?:a\s+la\s+)?derecha'),
+        ('arriba_izquierda', r'arriba\s+(?:a\s+la\s+)?izquierda'),
+        ('abajo_derecha', r'abajo\s+(?:a\s+la\s+)?derecha'),
+        ('abajo_izquierda', r'abajo\s+(?:a\s+la\s+)?izquierda'),
+        ('arriba', r'\bde arriba\b|\barriba\b'),
+        ('abajo', r'\bde abajo\b|\babajo\b'),
+        ('medio', r'en medio|de en medio|del medio|centro'),
+        ('derecha', r'\bderecha\b'),
+        ('izquierda', r'\bizquierda\b'),
+        ('primero', r'el primero|la primera|primero'),
+        ('segundo', r'el segundo|la segunda|segundo'),
+        ('tercero', r'el tercero|la tercera|tercero'),
+        ('ultimo', r'el ultimo|el ultimo de abajo|ultima|ultimo'),
+    ]
+    for nombre, pat in patrones:
+        if re.search(pat, t):
+            posiciones.append(nombre)
+    if posiciones:
+        ref['posiciones'] = posiciones
+    if 'tachado' in t or 'tachame' in t or 'tachon' in t:
+        ref['accion'] = 'excluir_tachado'
+    if 'circulo' in t or 'encerrado' in t or 'rodeado' in t:
+        ref['marca'] = 'circulo'
+    if 'flecha' in t or 'senalado' in t or 'señalado' in t:
+        ref['marca'] = 'flecha'
+    return ref if len(ref) > 1 else None
+
+
+def _es_intencion_historial(texto):
+    t = _norm_txt(texto)
+    frases = [
+        'los mismos de ayer','lo mismo de ayer','los mismos de la ultima vez','lo mismo de la ultima vez',
+        'los mismos de la vez pasada','lo mismo que ayer','igual que ayer','igual que la vez pasada','los mismos de siempre'
+    ]
+    return any(f in t for f in frases)
+
+
+def _resolver_items_ultima_nota(db, cliente_nombre='', telefono=''):
+    where = []
+    params = []
+    if cliente_nombre:
+        where.append("LOWER(COALESCE(n.cliente_nombre,'')) = %s")
+        params.append(cliente_nombre.strip().lower())
+    if telefono:
+        where.append("LOWER(COALESCE(c.telefono,'')) = %s")
+        params.append(telefono.strip().lower())
+    if not where:
+        return None, []
+    row = db.execute(f"""
+        SELECT n.id, n.fecha
+        FROM notas n
+        LEFT JOIN clientes c ON c.id = n.cliente_id
+        WHERE {' OR '.join(where)}
+        ORDER BY n.fecha DESC, n.id DESC
+        LIMIT 1
+    """, params).fetchone()
+    if not row:
+        return None, []
+    items = db.execute("""
+        SELECT i.codigo, COALESCE(i.cantidad,1) AS cantidad,
+               COALESCE(i.marca, p.marca) AS marca,
+               COALESCE(i.hilo, p.hilo) AS hilo,
+               COALESCE(i.color, p.color) AS color,
+               COALESCE(p.stock,0) AS stock,
+               COALESCE(pr.venta, p.precio, i.precio, 0) AS precio_venta,
+               COALESCE(p.es_inventariable, TRUE) AS es_inventariable
+        FROM items i
+        LEFT JOIN productos p ON p.codigo = i.codigo
+        LEFT JOIN precios pr ON pr.marca = COALESCE(i.marca, p.marca)
+        WHERE i.nota_id=%s
+        ORDER BY i.id
+    """, (row['id'],)).fetchall()
+    return row['id'], [dict(i) for i in items]
+
+
+def _armar_pedidos_desde_items(items_rows):
+    pedidos = []
+    for prod in items_rows:
+        pedidos.append({
+            'producto_id': prod.get('id'),
+            'codigo': prod.get('codigo'),
+            'marca': prod.get('marca') or '',
+            'hilo': prod.get('hilo') or '',
+            'color': prod.get('color') or '',
+            'stock': int(prod.get('stock') or 0),
+            'precio_venta': float(prod.get('precio_venta') or 0),
+            'cantidad': int(prod.get('cantidad') or 1),
+            'es_inventariable': prod.get('es_inventariable', True),
+        })
+    return pedidos
+
+
+def _productos_uno_de_cada_color(productos):
+    vistos = set()
+    elegidos = []
+    for p in productos:
+        clave = _norm_txt(p.get('color'))
+        if not clave or clave in vistos:
+            continue
+        vistos.add(clave)
+        elegidos.append(p)
+    return elegidos
+
+
+def _productos_top_vendidos(db, marca='', hilo='', limit=1):
+    where = ["1=1"]
+    params = []
+    if marca:
+        where.append("UPPER(COALESCE(p.marca,''))=UPPER(%s)")
+        params.append(marca)
+    if hilo:
+        where.append("UPPER(COALESCE(p.hilo,''))=UPPER(%s)")
+        params.append(hilo)
+    rows = db.execute(f"""
+        SELECT i.codigo,
+               COALESCE(i.marca, p.marca) AS marca,
+               COALESCE(i.hilo, p.hilo) AS hilo,
+               COALESCE(i.color, p.color) AS color,
+               COALESCE(p.stock,0) AS stock,
+               COALESCE(pr.venta, p.precio, i.precio, 0) AS precio_venta,
+               COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+               SUM(COALESCE(i.cantidad,0)) AS vendidas
+        FROM items i
+        LEFT JOIN notas n ON n.id = i.nota_id
+        LEFT JOIN productos p ON p.codigo = i.codigo
+        LEFT JOIN precios pr ON pr.marca = COALESCE(i.marca, p.marca)
+        WHERE {' AND '.join(where)}
+          AND COALESCE(n.estado,'') IN ('PAGADA','VENTA_PENDIENTE','EN_PROCESO')
+        GROUP BY i.codigo, COALESCE(i.marca, p.marca), COALESCE(i.hilo, p.hilo), COALESCE(i.color, p.color), COALESCE(p.stock,0), COALESCE(pr.venta, p.precio, i.precio, 0), COALESCE(p.es_inventariable, TRUE)
+        ORDER BY SUM(COALESCE(i.cantidad,0)) DESC, i.codigo ASC
+        LIMIT %s
+    """, tuple(params + [limit])).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _productos_surtido_bonito(productos, limit=6):
+    preferencia = ['beige','rosa','vino','gris','blanco','azul','verde','cafe','morado','rojo','amarillo','naranja','negro']
+    buckets = {c: [] for c in preferencia}
+    extras = []
+    for p in productos:
+        canon = (_color_canon(p.get('color') or '') or [''])[0]
+        if canon in buckets:
+            buckets[canon].append(p)
+        else:
+            extras.append(p)
+    elegidos = []
+    usados = set()
+    for canon in preferencia:
+        for p in buckets[canon]:
+            key = _norm_txt(p.get('color'))
+            if key and key not in usados:
+                elegidos.append(p)
+                usados.add(key)
+                break
+        if len(elegidos) >= limit:
+            break
+    for p in extras:
+        if len(elegidos) >= limit:
+            break
+        key = _norm_txt(p.get('color'))
+        if key and key not in usados:
+            elegidos.append(p)
+            usados.add(key)
+    return elegidos[:limit]
+
+
+def _buscar_tonos_parecidos(productos, texto, limit=6):
+    colores = _color_canon(texto)
+    if not colores:
+        return []
+    base = colores[0]
+    grupo = [base] + COMPATIBILIDAD_COLORES.get(base, [])[:2]
+    elegidos = []
+    for c in grupo:
+        for p in productos:
+            canon = (_color_canon(p.get('color') or '') or [''])[0]
+            if canon == c:
+                elegidos.append(p)
+        if len(elegidos) >= limit:
+            break
+    unicos = []
+    vistos = set()
+    for p in elegidos:
+        key = (str(p.get('codigo')), _norm_txt(p.get('color')))
+        if key in vistos:
+            continue
+        vistos.add(key)
+        unicos.append(p)
+        if len(unicos) >= limit:
+            break
+    return unicos
+
+
+def _productos_combinados(productos, texto, limit=6):
+    colores = _color_canon(texto)
+    if colores:
+        base = colores[0]
+        objetivo = [base] + COMPATIBILIDAD_COLORES.get(base, [])
+    else:
+        objetivo = ['beige','rosa','gris','blanco','vino','azul']
+    elegidos = []
+    usados = set()
+    for canon in objetivo:
+        for p in productos:
+            pc = (_color_canon(p.get('color') or '') or [''])[0]
+            key = _norm_txt(p.get('color'))
+            if pc == canon and key not in usados:
+                elegidos.append(p)
+                usados.add(key)
+                break
+        if len(elegidos) >= limit:
+            break
+    return elegidos
+
+
+def _detectar_intenciones_especiales(texto):
+    t = _norm_txt(texto)
+    out = {'uno_de_cada': False, 'surtidos': 0, 'surtido_bonito': False, 'mas_vendido': 0, 'parecidos': False, 'combinar': False, 'visual': False}
+    if any(x in t for x in ['uno de cada color','una de cada color','uno de cada tono','uno de cada','una de cada']):
+        out['uno_de_cada'] = True
+    m = re.search(r'(\d+)\s+surtid', t)
+    if m:
+        out['surtidos'] = int(m.group(1))
+    elif 'surtido' in t and 'bonito' not in t:
+        out['surtidos'] = 5
+    if 'surtido bonito' in t or 'bonito surtido' in t or 'armame bonito' in t or 'armame un bonito surtido' in t:
+        out['surtido_bonito'] = True
+    if 'mas vendido' in t or 'más vendido' in t or 'el que mas sale' in t or 'el que más sale' in t:
+        m2 = re.search(r'(\d+)\s+(?:mas vendidos|más vendidos)', t)
+        out['mas_vendido'] = int(m2.group(1)) if m2 else 1
+    if 'parecid' in t or 'similar' in t:
+        out['parecidos'] = True
+    if 'combinam' in t or 'combinal' in t or 'combinamel' in t or 'combinamelo' in t:
+        out['combinar'] = True
+    if any(x in t for x in ['foto','imagen','de ese','de la foto','de la imagen','circulo','flecha','tachado','arriba','abajo','izquierda','derecha']):
+        out['visual'] = True
+    return out
+
+
+def _respuesta_pedidos_especial(pedidos, marca, hilo, productos, modo_especial, advertencias=None, referencia_visual=None):
+    return jsonify(json_safe({
+        'ok': True,
+        'modo': modo_especial,
+        'modo_especial': modo_especial,
+        'contexto': {'marca': marca, 'hilo': hilo, 'productos_contexto': len(productos)},
+        'pedidos': pedidos,
+        'errores': [],
+        'advertencias': advertencias or [],
+        'sugerencias': {},
+        'referencia_visual': referencia_visual,
+    }))
+
+
 @app.route("/api/parser-whatsapp", methods=["POST"])
 def parser_whatsapp_mobile():
     """
-    Interpreta texto libre tipo WhatsApp usando la misma lógica del programa de PC.
-    Recibe contexto opcional de marca/hilo para que los números se interpreten dentro
-    del hilo correcto, igual que el combo de contexto en la PC.
+    Parser mejorado para pedidos tipo WhatsApp con contexto, referencias visuales,
+    frases abiertas, historial y sugerencias de combinación.
     """
     from parser_whatsapp import extraer_pedidos
 
@@ -673,9 +993,17 @@ def parser_whatsapp_mobile():
     texto = data.get("texto") or ""
     marca = (data.get("marca") or "").strip()
     hilo = (data.get("hilo") or "").strip()
+    texto_imagen = (data.get("texto_imagen") or "").strip()
+    cliente_nombre = (data.get("cliente_nombre") or "").strip()
+    telefono = (data.get("telefono") or "").strip()
+    imagen_referencia = bool(data.get("imagen_referencia"))
 
-    if not texto.strip():
+    if not texto.strip() and not texto_imagen.strip():
         return jsonify({"ok": False, "error": "Pega o escribe un pedido primero"}), 400
+
+    texto_total = ((texto or "").strip() + " " + (texto_imagen or "").strip()).strip()
+    intenciones = _detectar_intenciones_especiales(texto_total)
+    referencia_visual = _extraer_referencia_visual(texto_total) if (imagen_referencia or intenciones.get('visual')) else None
 
     params = []
     where = ["1=1"]
@@ -689,7 +1017,7 @@ def parser_whatsapp_mobile():
     with DB() as db:
         rows = db.execute(f"""
             SELECT
-                p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
                 COALESCE(p.stock,0) AS stock,
                 COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
                 COALESCE(pr.venta, p.precio, 0) AS precio_venta
@@ -699,9 +1027,79 @@ def parser_whatsapp_mobile():
             ORDER BY p.marca, p.hilo, p.codigo
             LIMIT 10000
         """, params).fetchall()
+        productos = [dict(r) for r in rows]
 
-    productos = [dict(r) for r in rows]
-    resultado = extraer_pedidos(texto, productos)
+        if _es_intencion_historial(texto_total):
+            nota_ref, items_previos = _resolver_items_ultima_nota(db, cliente_nombre, telefono)
+            if items_previos:
+                return _respuesta_pedidos_especial(
+                    _armar_pedidos_desde_items(items_previos), marca, hilo, productos, 'historial',
+                    [f"Se usó la nota reciente {nota_ref}."], referencia_visual
+                )
+
+        if intenciones.get('uno_de_cada'):
+            elegidos = _productos_uno_de_cada_color(productos)
+            pedidos = [{
+                'producto_id': p.get('id'), 'codigo': p.get('codigo'), 'marca': p.get('marca') or '',
+                'hilo': p.get('hilo') or '', 'color': p.get('color') or '', 'stock': int(p.get('stock') or 0),
+                'precio_venta': float(p.get('precio_venta') or 0), 'cantidad': 1,
+                'es_inventariable': p.get('es_inventariable', True),
+            } for p in elegidos]
+            return _respuesta_pedidos_especial(pedidos, marca, hilo, productos, 'uno_de_cada', ['Se agregó 1 por cada color del contexto.'], referencia_visual)
+
+        if intenciones.get('mas_vendido'):
+            top_rows = _productos_top_vendidos(db, marca=marca, hilo=hilo, limit=max(1, int(intenciones['mas_vendido'])))
+            pedidos = [{
+                'producto_id': None, 'codigo': p.get('codigo'), 'marca': p.get('marca') or '',
+                'hilo': p.get('hilo') or '', 'color': p.get('color') or '', 'stock': int(p.get('stock') or 0),
+                'precio_venta': float(p.get('precio_venta') or 0), 'cantidad': 1,
+                'es_inventariable': p.get('es_inventariable', True),
+            } for p in top_rows]
+            return _respuesta_pedidos_especial(pedidos, marca, hilo, productos, 'mas_vendido', ['Sugerencia basada en histórico de ventas.'], referencia_visual)
+
+    if intenciones.get('surtido_bonito'):
+        elegidos = _productos_surtido_bonito(productos, limit=6)
+        pedidos = [{
+            'producto_id': p.get('id'), 'codigo': p.get('codigo'), 'marca': p.get('marca') or '',
+            'hilo': p.get('hilo') or '', 'color': p.get('color') or '', 'stock': int(p.get('stock') or 0),
+            'precio_venta': float(p.get('precio_venta') or 0), 'cantidad': 1,
+            'es_inventariable': p.get('es_inventariable', True),
+        } for p in elegidos]
+        return _respuesta_pedidos_especial(pedidos, marca, hilo, productos, 'surtido_bonito', ['Se armó un surtido bonito con tonos variados.'], referencia_visual)
+
+    if intenciones.get('surtidos'):
+        elegidos = _productos_surtido_bonito(productos, limit=max(1, int(intenciones['surtidos'])))
+        pedidos = [{
+            'producto_id': p.get('id'), 'codigo': p.get('codigo'), 'marca': p.get('marca') or '',
+            'hilo': p.get('hilo') or '', 'color': p.get('color') or '', 'stock': int(p.get('stock') or 0),
+            'precio_venta': float(p.get('precio_venta') or 0), 'cantidad': 1,
+            'es_inventariable': p.get('es_inventariable', True),
+        } for p in elegidos]
+        return _respuesta_pedidos_especial(pedidos, marca, hilo, productos, 'surtidos', [f"Se armó un surtido sugerido de {len(pedidos)} producto(s)."], referencia_visual)
+
+    if intenciones.get('parecidos'):
+        elegidos = _buscar_tonos_parecidos(productos, texto_total, limit=6)
+        if elegidos:
+            pedidos = [{
+                'producto_id': p.get('id'), 'codigo': p.get('codigo'), 'marca': p.get('marca') or '',
+                'hilo': p.get('hilo') or '', 'color': p.get('color') or '', 'stock': int(p.get('stock') or 0),
+                'precio_venta': float(p.get('precio_venta') or 0), 'cantidad': 1,
+                'es_inventariable': p.get('es_inventariable', True),
+            } for p in elegidos]
+            return _respuesta_pedidos_especial(pedidos, marca, hilo, productos, 'parecidos', ['Se propusieron tonos parecidos según el color mencionado.'], referencia_visual)
+
+    if intenciones.get('combinar'):
+        elegidos = _productos_combinados(productos, texto_total, limit=6)
+        if elegidos:
+            pedidos = [{
+                'producto_id': p.get('id'), 'codigo': p.get('codigo'), 'marca': p.get('marca') or '',
+                'hilo': p.get('hilo') or '', 'color': p.get('color') or '', 'stock': int(p.get('stock') or 0),
+                'precio_venta': float(p.get('precio_venta') or 0), 'cantidad': 1,
+                'es_inventariable': p.get('es_inventariable', True),
+            } for p in elegidos]
+            return _respuesta_pedidos_especial(pedidos, marca, hilo, productos, 'combinar', ['Se propuso una combinación de tonos compatibles.'], referencia_visual)
+
+    resultado = extraer_pedidos(texto_total, productos)
 
     por_codigo = {}
     for p in productos:
@@ -736,15 +1134,20 @@ def parser_whatsapp_mobile():
         })
 
     errores.extend(resultado.get("errores") or [])
+    advertencias.extend(resultado.get("advertencias") or [])
+    if referencia_visual:
+        advertencias.append("Se detectó referencia visual; revisa posiciones, círculos, flechas o tachones antes de confirmar.")
 
     return jsonify(json_safe({
         "ok": True,
         "modo": resultado.get("modo"),
+        "modo_especial": None,
         "contexto": {"marca": marca, "hilo": hilo, "productos_contexto": len(productos)},
         "pedidos": pedidos,
         "errores": sorted(set(str(e) for e in errores if e)),
         "advertencias": sorted(set(str(a) for a in advertencias if a)),
         "sugerencias": resultado.get("sugerencias") or {},
+        "referencia_visual": referencia_visual,
     }))
 
 
@@ -1185,6 +1588,227 @@ def actualizar_empacado_item(nota_id):
         if int(totals.get("total") or 0) and int(totals.get("empacadas") or 0) >= int(totals.get("total") or 0):
             db.execute("UPDATE notas SET fecha_finalizacion=COALESCE(fecha_finalizacion,%s) WHERE id=%s", (now_mexico(), nota_id))
     return jsonify(json_safe({"ok": True, "item": dict(row)}))
+
+
+# =========================
+# Visión / OCR / Audio / PDF
+# =========================
+def _strip_acc(v):
+    v = (v or '').strip().lower()
+    return ''.join(c for c in unicodedata.normalize('NFD', v) if unicodedata.category(c) != 'Mn')
+
+
+def _extract_data_url_bytes(data_url):
+    if not data_url:
+        return None
+    if ',' in data_url:
+        data_url = data_url.split(',', 1)[1]
+    return base64.b64decode(data_url)
+
+
+def _image_reference_summary(texto):
+    t = _strip_acc(texto)
+    out = {'numbers': [], 'positions': [], 'marks': []}
+    out['numbers'] = [int(x) for x in re.findall(r'(\d{1,3})', t)]
+    mapping = [
+        ('arriba_derecha', r'arriba\s+(?:a\s+la\s+)?derecha'),
+        ('arriba_izquierda', r'arriba\s+(?:a\s+la\s+)?izquierda'),
+        ('abajo_derecha', r'abajo\s+(?:a\s+la\s+)?derecha'),
+        ('abajo_izquierda', r'abajo\s+(?:a\s+la\s+)?izquierda'),
+        ('arriba', r'arriba'), ('abajo', r'abajo'), ('derecha', r'derecha'),
+        ('izquierda', r'izquierda'), ('medio', r'en medio|del medio|centro'), ('primero', r'primero'),
+        ('segundo', r'segundo'), ('tercero', r'tercero'), ('ultimo', r'ultimo|ultima'),
+    ]
+    for name, pat in mapping:
+        if re.search(pat, t):
+            out['positions'].append(name)
+    if 'circulo' in t or 'encerrado' in t or 'rodeado' in t:
+        out['marks'].append('circulo')
+    if 'flecha' in t or 'senalado' in t or 'señalado' in t:
+        out['marks'].append('flecha')
+    if 'tachado' in t or 'tachon' in t or 'tacha' in t:
+        out['marks'].append('tachado')
+    out['numbers'] = list(dict.fromkeys(out['numbers']))
+    out['positions'] = list(dict.fromkeys(out['positions']))
+    out['marks'] = list(dict.fromkeys(out['marks']))
+    return out
+
+
+@app.route('/api/analizar-imagen-referencia', methods=['POST'])
+def analizar_imagen_referencia():
+    data = request.get_json(force=True) or {}
+    data_url = data.get('image_base64') or ''
+    comentario = (data.get('comentario') or '').strip()
+    if not data_url:
+        return jsonify({'ok': False, 'error': 'No se recibió imagen'}), 400
+    raw = _extract_data_url_bytes(data_url)
+    ocr_text = ''
+    vision_notes = []
+    circles = 0
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(raw))
+        try:
+            import pytesseract
+            ocr_text = (pytesseract.image_to_string(img, lang='spa+eng') or '').strip()
+            if ocr_text:
+                vision_notes.append('ocr')
+        except Exception:
+            pass
+        try:
+            import cv2
+            import numpy as np
+            arr = cv2.cvtColor(np.array(img.convert('RGB')), cv2.COLOR_RGB2BGR)
+            gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+            gray = cv2.medianBlur(gray, 5)
+            found = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1.2, 35, param1=80, param2=24, minRadius=10, maxRadius=140)
+            if found is not None:
+                circles = int(found.shape[1])
+                vision_notes.append(f'circulos:{circles}')
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    joined = ' '.join(x for x in [comentario, ocr_text] if x).strip()
+    resumen = _image_reference_summary(joined)
+    if circles and 'circulo' not in resumen['marks']:
+        resumen['marks'].append('circulo')
+    suggested = []
+    if resumen['numbers']:
+        suggested.append('numero ' + ' '.join(str(n) for n in resumen['numbers']))
+    if resumen['positions']:
+        suggested.append('posicion ' + ' '.join(resumen['positions']))
+    if resumen['marks']:
+        suggested.append('marca ' + ' '.join(resumen['marks']))
+    suggested_text = ('referencia visual ' + ' '.join(suggested)).strip() if suggested else comentario
+    return jsonify(json_safe({
+        'ok': True,
+        'ocr_text': ocr_text,
+        'summary': resumen,
+        'vision_notes': vision_notes,
+        'suggested_text': suggested_text,
+    }))
+
+
+@app.route('/api/transcribir-audio', methods=['POST'])
+def transcribir_audio():
+    data = request.get_json(force=True) or {}
+    data_url = data.get('audio_base64') or ''
+    filename = (data.get('filename') or 'audio.ogg').strip()
+    if not data_url:
+        return jsonify({'ok': False, 'error': 'No se recibió audio'}), 400
+    raw = _extract_data_url_bytes(data_url)
+    suffix = '.' + filename.split('.')[-1].lower() if '.' in filename else '.ogg'
+    transcript = ''
+    provider = ''
+    # Intento con OpenAI compatible
+    try:
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if api_key:
+            from openai import OpenAI
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(raw)
+                temp_path = tmp.name
+            try:
+                client = OpenAI(api_key=api_key)
+                with open(temp_path, 'rb') as f:
+                    resp = client.audio.transcriptions.create(model=os.environ.get('OPENAI_TRANSCRIBE_MODEL', 'whisper-1'), file=f)
+                transcript = getattr(resp, 'text', '') or (resp.get('text') if isinstance(resp, dict) else '') or ''
+                provider = 'openai'
+            finally:
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+    except Exception:
+        transcript = ''
+    # Intento con speech_recognition (si existe y el formato lo permite)
+    if not transcript:
+        try:
+            import speech_recognition as sr
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(raw)
+                temp_path = tmp.name
+            try:
+                rec = sr.Recognizer()
+                with sr.AudioFile(temp_path) as source:
+                    audio = rec.record(source)
+                transcript = rec.recognize_google(audio, language='es-MX')
+                provider = 'google-sr'
+            finally:
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+        except Exception:
+            transcript = ''
+    if not transcript:
+        return jsonify({'ok': False, 'error': 'No pude transcribir el audio. Para que funcione en Render, configura OPENAI_API_KEY o usa un formato compatible con SpeechRecognition/WAV.'}), 400
+    return jsonify({'ok': True, 'transcript': transcript, 'provider': provider})
+
+
+def _nota_full(db, nota_id):
+    nota = db.execute("""
+        SELECT n.*, c.nombre AS cliente_nombre_real, c.telefono, c.direccion
+        FROM notas n
+        LEFT JOIN clientes c ON c.id = n.cliente_id
+        WHERE n.id=%s
+    """, (nota_id,)).fetchone()
+    if not nota:
+        return None, []
+    items = db.execute("""
+        SELECT i.*, COALESCE(i.precio,0) AS precio_unit,
+               COALESCE(i.marca, p.marca) AS marca_final,
+               COALESCE(i.hilo, p.hilo) AS hilo_final,
+               COALESCE(i.color, p.color) AS color_final
+        FROM items i
+        LEFT JOIN productos p ON p.codigo = i.codigo
+        WHERE i.nota_id=%s
+        ORDER BY i.id
+    """, (nota_id,)).fetchall()
+    return dict(nota), [dict(x) for x in items]
+
+
+@app.route('/nota-pdf/<nota_id>')
+def nota_pdf_html(nota_id):
+    with DB() as db:
+        nota, items = _nota_full(db, nota_id)
+    if not nota:
+        return 'Nota no encontrada', 404
+    total = float(nota.get('total') or 0)
+    envio_txt = ''
+    try:
+        envio = nota.get('envio')
+        if isinstance(envio, str) and envio.strip():
+            envio = json.loads(envio)
+        if isinstance(envio, dict):
+            envio_txt = f"{envio.get('paqueteria','')} {envio.get('precio','')}"
+    except Exception:
+        envio_txt = ''
+    rows = ''.join(
+        f"<tr><td>{html.escape(str(i.get('codigo') or ''))}</td><td>{html.escape(str(i.get('color_final') or i.get('color') or ''))}</td><td>{html.escape(str(i.get('marca_final') or i.get('marca') or ''))}</td><td>{html.escape(str(i.get('hilo_final') or i.get('hilo') or ''))}</td><td>{int(i.get('cantidad') or 0)}</td><td>${float(i.get('precio_unit') or i.get('precio') or 0):,.2f}</td><td>${(float(i.get('precio_unit') or i.get('precio') or 0)*float(i.get('cantidad') or 0)):,.2f}</td></tr>"
+        for i in items
+    )
+    html_doc = f"""
+<!doctype html><html lang='es'><head><meta charset='utf-8'><title>{html.escape(nota_id)}</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<style>
+body{{font-family:Arial,sans-serif;background:#f3f4f7;margin:0;padding:0}} .page{{max-width:980px;margin:18px auto;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.08);position:relative;overflow:hidden;border-radius:16px}}
+.header{{background:url('/assets/fondo_premium.png') center/cover no-repeat;padding:24px 28px;color:#fff;position:relative}}
+.header::after{{content:'';position:absolute;inset:0;background:rgba(50,26,73,.55)}} .header-inner{{position:relative;z-index:2;display:flex;justify-content:space-between;gap:18px;align-items:center}}
+.logo{{height:72px;object-fit:contain}} .watermark{{position:absolute;right:20px;bottom:12px;height:74px;opacity:.14;z-index:1}}
+.section{{padding:20px 28px}} .grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}} .card{{background:#faf8ff;border:1px solid #ece6f7;border-radius:14px;padding:14px}}
+table{{width:100%;border-collapse:collapse;margin-top:14px}} th,td{{padding:10px;border-bottom:1px solid #ececec;font-size:14px;text-align:left}} th{{background:#f7f1ff;color:#5a2d82}} .tot{{text-align:right;font-size:22px;font-weight:bold;color:#5a2d82;margin-top:18px}} .printbar{{padding:14px 28px;display:flex;justify-content:flex-end;gap:10px}} .btn{{padding:10px 16px;border:none;border-radius:10px;background:#5a2d82;color:white;font-weight:700;cursor:pointer}} @media print{{body{{background:white}} .page{{box-shadow:none;margin:0;max-width:none;border-radius:0}} .printbar{{display:none}} }}
+</style></head><body>
+<div class='page'>
+<div class='printbar'><button class='btn' onclick='window.print()'>Imprimir / Guardar PDF</button></div>
+<div class='header'><div class='header-inner'><div><img class='logo' src='/assets/logo_hilorama.png' alt='Hilorama'><div style='margin-top:8px;font-size:13px;opacity:.95'>Cotización / Nota estilo móvil similar PC</div></div><div style='text-align:right'><div style='font-size:30px;font-weight:800'>{html.escape(nota_id)}</div><div>{html.escape(str(nota.get('estado') or ''))}</div><div>{html.escape(str(nota.get('fecha') or ''))}</div></div></div><img class='watermark' src='/assets/marca_agua.png' alt='marca'></div>
+<div class='section'><div class='grid'><div class='card'><strong>Cliente</strong><br>{html.escape(str(nota.get('cliente_nombre') or nota.get('cliente_nombre_real') or ''))}<br>Tel: {html.escape(str(nota.get('telefono') or ''))}<br>Dirección: {html.escape(str(nota.get('direccion') or ''))}</div><div class='card'><strong>Pedido / envío</strong><br>Pedido: {html.escape(str(nota.get('pedido') or '-'))}<br>Envío: {html.escape(envio_txt or '-')}<br>Empacador: {html.escape(str(nota.get('empacador') or ''))}</div></div>
+<h3 style='margin:22px 0 8px;color:#5a2d82'>Productos</h3>
+<table><thead><tr><th>Código</th><th>Color</th><th>Marca</th><th>Hilo</th><th>Cant.</th><th>P. Unit</th><th>Subtotal</th></tr></thead><tbody>{rows}</tbody></table>
+<div class='tot'>Total: ${total:,.2f}</div></div></div></body></html>"""
+    return html_doc
 
 
 if __name__ == "__main__":
