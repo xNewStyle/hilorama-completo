@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
 from psycopg2.extras import RealDictCursor
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1748,6 +1748,22 @@ def transcribir_audio():
     return jsonify({'ok': True, 'transcript': transcript, 'provider': provider})
 
 
+
+def _parse_json_field(value, default=None):
+    if default is None:
+        default = {}
+    if value is None:
+        return default
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        if isinstance(value, str) and value.strip():
+            return json.loads(value)
+    except Exception:
+        pass
+    return default
+
+
 def _nota_full(db, nota_id):
     nota = db.execute("""
         SELECT n.*, c.nombre AS cliente_nombre_real, c.telefono, c.direccion
@@ -1756,7 +1772,8 @@ def _nota_full(db, nota_id):
         WHERE n.id=%s
     """, (nota_id,)).fetchone()
     if not nota:
-        return None, []
+        return None
+
     items = db.execute("""
         SELECT i.*, COALESCE(i.precio,0) AS precio_unit,
                COALESCE(i.marca, p.marca) AS marca_final,
@@ -1767,48 +1784,88 @@ def _nota_full(db, nota_id):
         WHERE i.nota_id=%s
         ORDER BY i.id
     """, (nota_id,)).fetchall()
-    return dict(nota), [dict(x) for x in items]
+
+    n = dict(nota)
+    n["envio"] = _parse_json_field(n.get("envio"), {})
+    n["direccion"] = _parse_json_field(n.get("direccion"), {})
+    n["cliente_nombre"] = n.get("cliente_nombre") or n.get("cliente_nombre_real") or ""
+    n["telefono"] = n.get("telefono") or ""
+    n["items"] = []
+
+    for x in items:
+        d = dict(x)
+        precio = d.get("precio") if d.get("precio") is not None else d.get("precio_unit")
+        cantidad = d.get("cantidad") or 0
+        try:
+            precio = float(precio or 0)
+        except Exception:
+            precio = 0.0
+        try:
+            cantidad = int(cantidad or 0)
+        except Exception:
+            cantidad = 0
+        n["items"].append({
+            "id": d.get("id"),
+            "codigo": str(d.get("codigo") or ""),
+            "marca": d.get("marca_final") or d.get("marca") or "",
+            "hilo": d.get("hilo_final") or d.get("hilo") or "",
+            "color": d.get("color_final") or d.get("color") or "",
+            "cantidad": cantidad,
+            "precio": precio,
+        })
+    return n
+
+
+def _generate_pc_pdf_file(nota):
+    out_dir = os.path.join(tempfile.gettempdir(), "hilorama_pdfs")
+    os.makedirs(out_dir, exist_ok=True)
+    estado = (nota.get("estado") or "").upper()
+
+    if estado == "COTIZACION":
+        from generar_pdf_cotizacion import generar_pdf_cotizacion
+        ruta_pdf = os.path.join(out_dir, f"{nota['id']}.pdf")
+        generar_pdf_cotizacion(nota, ruta_pdf, ruta_logo="logo_hilorama.png")
+        nombre = f"{nota['id']}.pdf"
+    else:
+        from generar_pdf_venta_premium import generar_pdf_venta_premium
+        ruta_pdf = os.path.join(out_dir, f"{nota['id']}_premium.pdf")
+        generar_pdf_venta_premium(nota, ruta_pdf, ruta_logo="logo_hilorama.png")
+        nombre = f"{nota['id']}_premium.pdf"
+
+    if not os.path.exists(ruta_pdf):
+        raise RuntimeError("No se pudo generar el PDF")
+    return ruta_pdf, nombre
 
 
 @app.route('/nota-pdf/<nota_id>')
 def nota_pdf_html(nota_id):
+    """
+    Genera el PDF usando los mismos generadores del programa de PC:
+    - COTIZACION -> generar_pdf_cotizacion.py
+    - VENTA_PENDIENTE/PAGADA -> generar_pdf_venta_premium.py
+    """
     with DB() as db:
-        nota, items = _nota_full(db, nota_id)
+        nota = _nota_full(db, nota_id)
     if not nota:
         return 'Nota no encontrada', 404
-    total = float(nota.get('total') or 0)
-    envio_txt = ''
     try:
-        envio = nota.get('envio')
-        if isinstance(envio, str) and envio.strip():
-            envio = json.loads(envio)
-        if isinstance(envio, dict):
-            envio_txt = f"{envio.get('paqueteria','')} {envio.get('precio','')}"
-    except Exception:
-        envio_txt = ''
-    rows = ''.join(
-        f"<tr><td>{html.escape(str(i.get('codigo') or ''))}</td><td>{html.escape(str(i.get('color_final') or i.get('color') or ''))}</td><td>{html.escape(str(i.get('marca_final') or i.get('marca') or ''))}</td><td>{html.escape(str(i.get('hilo_final') or i.get('hilo') or ''))}</td><td>{int(i.get('cantidad') or 0)}</td><td>${float(i.get('precio_unit') or i.get('precio') or 0):,.2f}</td><td>${(float(i.get('precio_unit') or i.get('precio') or 0)*float(i.get('cantidad') or 0)):,.2f}</td></tr>"
-        for i in items
-    )
-    html_doc = f"""
-<!doctype html><html lang='es'><head><meta charset='utf-8'><title>{html.escape(nota_id)}</title>
-<meta name='viewport' content='width=device-width, initial-scale=1'>
-<style>
-body{{font-family:Arial,sans-serif;background:#f3f4f7;margin:0;padding:0}} .page{{max-width:980px;margin:18px auto;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.08);position:relative;overflow:hidden;border-radius:16px}}
-.header{{background:url('/assets/fondo_premium.png') center/cover no-repeat;padding:24px 28px;color:#fff;position:relative}}
-.header::after{{content:'';position:absolute;inset:0;background:rgba(50,26,73,.55)}} .header-inner{{position:relative;z-index:2;display:flex;justify-content:space-between;gap:18px;align-items:center}}
-.logo{{height:72px;object-fit:contain}} .watermark{{position:absolute;right:20px;bottom:12px;height:74px;opacity:.14;z-index:1}}
-.section{{padding:20px 28px}} .grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}} .card{{background:#faf8ff;border:1px solid #ece6f7;border-radius:14px;padding:14px}}
-table{{width:100%;border-collapse:collapse;margin-top:14px}} th,td{{padding:10px;border-bottom:1px solid #ececec;font-size:14px;text-align:left}} th{{background:#f7f1ff;color:#5a2d82}} .tot{{text-align:right;font-size:22px;font-weight:bold;color:#5a2d82;margin-top:18px}} .printbar{{padding:14px 28px;display:flex;justify-content:flex-end;gap:10px}} .btn{{padding:10px 16px;border:none;border-radius:10px;background:#5a2d82;color:white;font-weight:700;cursor:pointer}} @media print{{body{{background:white}} .page{{box-shadow:none;margin:0;max-width:none;border-radius:0}} .printbar{{display:none}} }}
-</style></head><body>
-<div class='page'>
-<div class='printbar'><button class='btn' onclick='window.print()'>Imprimir / Guardar PDF</button></div>
-<div class='header'><div class='header-inner'><div><img class='logo' src='/assets/logo_hilorama.png' alt='Hilorama'><div style='margin-top:8px;font-size:13px;opacity:.95'>Cotización / Nota estilo móvil similar PC</div></div><div style='text-align:right'><div style='font-size:30px;font-weight:800'>{html.escape(nota_id)}</div><div>{html.escape(str(nota.get('estado') or ''))}</div><div>{html.escape(str(nota.get('fecha') or ''))}</div></div></div><img class='watermark' src='/assets/marca_agua.png' alt='marca'></div>
-<div class='section'><div class='grid'><div class='card'><strong>Cliente</strong><br>{html.escape(str(nota.get('cliente_nombre') or nota.get('cliente_nombre_real') or ''))}<br>Tel: {html.escape(str(nota.get('telefono') or ''))}<br>Dirección: {html.escape(str(nota.get('direccion') or ''))}</div><div class='card'><strong>Pedido / envío</strong><br>Pedido: {html.escape(str(nota.get('pedido') or '-'))}<br>Envío: {html.escape(envio_txt or '-')}<br>Empacador: {html.escape(str(nota.get('empacador') or ''))}</div></div>
-<h3 style='margin:22px 0 8px;color:#5a2d82'>Productos</h3>
-<table><thead><tr><th>Código</th><th>Color</th><th>Marca</th><th>Hilo</th><th>Cant.</th><th>P. Unit</th><th>Subtotal</th></tr></thead><tbody>{rows}</tbody></table>
-<div class='tot'>Total: ${total:,.2f}</div></div></div></body></html>"""
-    return html_doc
+        ruta_pdf, nombre = _generate_pc_pdf_file(nota)
+        return send_file(ruta_pdf, mimetype='application/pdf', as_attachment=False, download_name=nombre)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo generar PDF estilo PC: {e}'}), 500
+
+
+@app.route('/api/notas/<nota_id>/pdf-pc')
+def nota_pdf_pc_api(nota_id):
+    with DB() as db:
+        nota = _nota_full(db, nota_id)
+    if not nota:
+        return jsonify({'ok': False, 'error': 'Nota no encontrada'}), 404
+    try:
+        ruta_pdf, nombre = _generate_pc_pdf_file(nota)
+        return send_file(ruta_pdf, mimetype='application/pdf', as_attachment=False, download_name=nombre)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo generar PDF estilo PC: {e}'}), 500
 
 
 if __name__ == "__main__":
