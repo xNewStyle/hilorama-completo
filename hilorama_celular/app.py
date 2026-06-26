@@ -52,7 +52,14 @@ class DB:
         return self
 
     def execute(self, query, params=None):
-        self.cur.execute(query, params or ())
+        # IMPORTANTE:
+        # Si params viene en None, no mandamos () a psycopg2.
+        # Esto evita errores cuando el SQL trae símbolos % literales,
+        # por ejemplo: WHERE id LIKE 'COT-%'
+        if params is None:
+            self.cur.execute(query)
+        else:
+            self.cur.execute(query, params)
         return self
 
     def fetchone(self):
