@@ -36,12 +36,15 @@ CANTIDAD_ALIAS = {
 }
 
 UNIDADES = (
-    r"pz|pza|pzas|pieza|piezas|madeja|madejas|madejita|madejitas|"
-    r"rollo|rollos|bolsa|bolsas|unidad|unidades|estambre|estambres"
+    r"pz|pza|pzas|pieza|piezas|pzs|pzas\.|pieza\.|piezas\.|"
+    r"madeja|madejas|madejita|madejitas|rollo|rollos|bolsa|bolsas|"
+    r"unidad|unidades|estambre|estambres|hilo|hilos|lana|lanas|"
+    r"velluto|vellutos|veluto|velutos|vello|vellos|komfy|komfis|komfy mini|"
+    r"trapillo|trapillos|kraft|chenille|chenil|algodon|algodón"
 )
 
 INTRO_PALABRAS = (
-    "quiero", "quisiera", "ocupo", "necesito", "dame", "mandame", "mándame",
+    "quiero", "quisiera", "ocupo", "necesito", "dame", "demen", "deme", "dem", "da", "mandame", "mándame",
     "ponme", "agrega", "agregame", "agrégame", "me das", "me puedes dar",
     "te encargo", "encargame", "encárgame", "pasame", "pásame", "echame",
     "échame", "apartame", "apártame", "anotame", "anótame", "meteme",
@@ -200,7 +203,17 @@ ALIAS_A_COLOR = {}
 for canon, aliases in COLOR_ALIAS.items():
     for a in aliases:
         ALIAS_A_COLOR[_sin_acentos(a)] = canon
+        # Plurales comunes de WhatsApp: negros, negras, blancos, blancas, etc.
+        aa = _sin_acentos(a)
+        if aa and aa.isalpha() and len(aa) >= 4:
+            ALIAS_A_COLOR.setdefault(aa + "s", canon)
+            if aa.endswith("o"):
+                ALIAS_A_COLOR.setdefault(aa[:-1] + "os", canon)
+                ALIAS_A_COLOR.setdefault(aa[:-1] + "as", canon)
+            if aa.endswith("a"):
+                ALIAS_A_COLOR.setdefault(aa[:-1] + "as", canon)
     ALIAS_A_COLOR[_sin_acentos(canon)] = canon
+    ALIAS_A_COLOR.setdefault(_sin_acentos(canon) + "s", canon)
 
 
 def _normalizar_color(valor):
@@ -321,6 +334,142 @@ def _extraer_lista_codigos(texto, codigos_validos):
     return cods
 
 
+def _tokenizar_numeros_y_cantidades(seg):
+    """Devuelve números y palabras de cantidad en orden.
+    Sirve para interpretar secuencias reales de WhatsApp:
+    - 55 1 56 2 16  => 55x1, 56x2, 16x1
+    - un 55 1 56 2 16 => 55x1, 56x1, 16x2
+    - 16 550 => 16 piezas del código 550 si 550 existe
+    """
+    palabras = sorted(list(NUM_PALABRA.keys()) + list(CANTIDAD_ALIAS.keys()), key=len, reverse=True)
+    # media docena debe detectarse como una sola cantidad
+    alternos = [re.escape(x) for x in palabras] + [r"\d+"]
+    pat = r"(?<!\w)(" + "|".join(alternos) + r")(?!\w)"
+    out = []
+    for m in re.finditer(pat, _sin_acentos(seg)):
+        tok = m.group(1)
+        qty = _cantidad_token(tok)
+        code = norm_codigo(tok) if tok.isdigit() else None
+        out.append({"tok": tok, "qty": qty, "code": code, "is_word": not tok.isdigit(), "start": m.start(), "end": m.end()})
+    return out
+
+
+def _try_qty_code(tokens, codigos_validos):
+    if len(tokens) < 2 or len(tokens) % 2 != 0:
+        return None
+    pairs = []
+    for i in range(0, len(tokens), 2):
+        qty = tokens[i].get("qty")
+        code = tokens[i+1].get("code")
+        if not qty or qty <= 0 or qty > 50 or code not in codigos_validos:
+            return None
+        pairs.append((code, qty))
+    return pairs
+
+
+def _try_code_qty(tokens, codigos_validos):
+    if len(tokens) < 2:
+        return None
+    pairs = []
+    i = 0
+    while i < len(tokens):
+        code = tokens[i].get("code")
+        if code not in codigos_validos:
+            return None
+        qty = 1
+        if i + 1 < len(tokens):
+            q = tokens[i+1].get("qty")
+            # Si el siguiente token es cantidad razonable y después viene otro código
+            # o termina la frase, lo tomamos como cantidad del código anterior.
+            if q and 1 <= q <= 50:
+                if i + 2 >= len(tokens) or tokens[i+2].get("code") in codigos_validos:
+                    qty = q
+                    i += 2
+                    pairs.append((code, qty))
+                    continue
+        pairs.append((code, qty))
+        i += 1
+    return pairs
+
+
+def _parsear_secuencia_numerica_contextual(seg, codigos_validos):
+    """Interpreta secuencias compactas sin palabras claras.
+    Da preferencia a códigos existentes y evita cantidades absurdas como 550 piezas.
+    Cuando realmente puede significar dos cosas (ej. "2 4" y ambos códigos existen),
+    no inventa: pide confirmación.
+    """
+    seg_norm = _sin_acentos(seg)
+    tokens = _tokenizar_numeros_y_cantidades(seg_norm)
+    if len(tokens) < 2:
+        return [], []
+
+    # No intervenir si hay símbolos explícitos; esos los resuelven reglas concretas.
+    if re.search(r"\b(?:del|de|d|tono|codigo|cod)\b|[:=x\*\-\>]", seg_norm):
+        return [], []
+
+    nums = [t for t in tokens if t.get("code") is not None]
+    preguntas = []
+
+    # Caso corto más problemático: "dame 2 4".
+    if len(tokens) == 2 and all(t.get("code") is not None for t in tokens):
+        a, b = tokens[0]["code"], tokens[1]["code"]
+        ia, ib = int(a), int(b)
+        a_es, b_es = a in codigos_validos, b in codigos_validos
+
+        # 16 550 => 16 piezas del 550 si el 550 existe.
+        if b_es and 1 <= ia <= 50 and (len(b) >= 3 or not a_es):
+            return [(b, ia)], []
+
+        # 55 2 => código 55 cantidad 2 si 2 no parece código o el 55 es claramente código largo.
+        if a_es and 1 <= ib <= 50 and (len(a) >= 3 or not b_es):
+            return [(a, ib)], []
+
+        # 55 56 => dos códigos, 1 de cada uno.
+        if a_es and b_es and (len(a) >= 2 and len(b) >= 2):
+            return [(a, 1), (b, 1)], []
+
+        # 2 4 => ambiguo: puede ser código 2 y código 4, o 2 piezas del 4.
+        if a_es and b_es:
+            preguntas.append(f"Confirma '{a} {b}': ¿son códigos {a} y {b}, o {a} piezas del código {b}?")
+            return [], preguntas
+
+        return [], []
+
+    # Si son varios códigos largos: 55 56 57 => 1 de cada uno.
+    if len(tokens) >= 3 and all(t.get("code") in codigos_validos for t in tokens) and all(len(t.get("code") or "") >= 2 for t in tokens):
+        # Pero primero intenta modo código-cantidad por si viene: 55 1 56 2 16.
+        cq = _try_code_qty(tokens, codigos_validos)
+        if cq and len(cq) < len(tokens):
+            return cq, []
+        return [(t["code"], 1) for t in tokens], []
+
+    # Modo cantidad-código: "un 55 1 56 2 16" o "1 55 2 16".
+    qc = _try_qty_code(tokens, codigos_validos)
+    # Modo código-cantidad: "55 1 56 2 16".
+    cq = _try_code_qty(tokens, codigos_validos)
+
+    if qc and not cq:
+        return qc, []
+    if cq and not qc:
+        return cq, []
+    if qc and cq:
+        # Si empieza con palabra de cantidad, se entiende cantidad-código.
+        if tokens[0].get("is_word"):
+            return qc, []
+        # Si empieza con código claramente largo, se entiende código-cantidad.
+        if tokens[0].get("code") in codigos_validos and len(tokens[0].get("code") or "") >= 2:
+            return cq, []
+        preguntas.append("Confirma la secuencia numérica: puede leerse como cantidad-código o código-cantidad.")
+        return [], preguntas
+
+    # Si hay muchos números y alguno no existe como código, avisa de forma útil.
+    if len(nums) >= 2:
+        desconocidos = [t["code"] for t in nums if t.get("code") not in codigos_validos and int(t["code"]) > 50]
+        if desconocidos:
+            preguntas.append("Revisa estos números; parecen códigos pero no están en el catálogo: " + ", ".join(desconocidos))
+    return [], preguntas
+
+
 def _cantidad_en_linea(linea):
     # 2 pz / 2 madejas / 2 rollos
     m = re.search(rf"\b(\d+)\s*(?:{UNIDADES})\b", linea)
@@ -403,6 +552,244 @@ def _extraer_pares_color_cantidad(linea, color_a_codigos, alias_ordenados):
                 resultados.append((color, cantidad))
 
     return resultados
+
+
+
+def _extraer_pares_color_cantidad_avanzado(linea, color_a_codigos, alias_ordenados):
+    """
+    Parser de colores más tolerante para mensajes reales de WhatsApp.
+    Entiende cosas como:
+    - dem 3 vellutos blanco, tres negros
+    - 3 blancos 2 negros
+    - blanco 3 negro 2
+    - dame tres negros y un blanco
+    - 2 de cada blanco negro
+    - blanco y negro 3 cada uno
+    """
+    linea = _sin_acentos(linea)
+    resultados = []
+    vistos = set()
+
+    # Normaliza errores/coloquialismos comunes.
+    linea = re.sub(r"\b(dem|deme|demen)\b", "dame", linea)
+    linea = re.sub(r"\bvelutos?\b", "velluto", linea)
+    linea = re.sub(r"\b(?:tambien|aparte|ademas|mas)\b", ",", linea)
+
+    # Caso: "2 de cada blanco negro", "3 c/u blanco y negro",
+    # o "blanco y negro 3 cada uno".
+    cant_pat = _cantidad_pat()
+
+    # Primero revisa cantidad al final, para no leer solo el último color:
+    # "blanco y negro 3 cada uno" => blanco=3, negro=3.
+    m_each_end = re.search(rf"^(.*?)\b({cant_pat})\s*(?:cada\s*uno|c/u|c/u\.|por\s+color|por\s+tono)\b", linea)
+    if m_each_end:
+        zona_colores = m_each_end.group(1)
+        cantidad = _cantidad_token(m_each_end.group(2))
+        colores = _detectar_colores_en_linea(zona_colores, color_a_codigos, alias_ordenados)
+        if cantidad and colores:
+            for color in colores:
+                key = (color, cantidad)
+                if key not in vistos:
+                    resultados.append((color, cantidad)); vistos.add(key)
+            return resultados
+
+    # Luego cantidad al inicio:
+    # "2 de cada blanco negro" => blanco=2, negro=2.
+    m_each_start = re.match(rf"^.*?\b({cant_pat})\s*(?:de\s*)?(?:cada|c/u|c/u\.|por\s+color|por\s+tono)\b(.*)$", linea)
+    if m_each_start:
+        cantidad = _cantidad_token(m_each_start.group(1))
+        zona_colores = m_each_start.group(2)
+        colores = _detectar_colores_en_linea(zona_colores, color_a_codigos, alias_ordenados)
+        if cantidad and colores:
+            for color in colores:
+                key = (color, cantidad)
+                if key not in vistos:
+                    resultados.append((color, cantidad)); vistos.add(key)
+            return resultados
+
+    # Cadenas sin comas: "3 blancos 2 negros" o "blanco 3 negro 2".
+    color_alt_chain = "|".join(re.escape(a) for a in alias_ordenados if a and len(a) >= 3)
+    producto_ruido_chain = r"(?:velluto|veluto|komfy\s+mini|komfy|estambre|hilo|madejas?|piezas?|pzas?|pz|rollos?|trapillos?|kraft|chenille|chenil|karina|alize|hilorama)"
+    cant_chain = _cantidad_pat()
+    qty_color_pat = rf"\b({cant_chain})\b\s*(?:{producto_ruido_chain}\s*)?(?:de\s+|del\s+|color\s+|tono\s+)?({color_alt_chain})(?=\b|s\b)"
+    color_qty_pat = rf"\b(?:color\s+|tono\s+)?({color_alt_chain})(?=\b|s\b)\s*(?:de\s*)?(?:{producto_ruido_chain}\s*)?({cant_chain})\b"
+    qty_matches = list(re.finditer(qty_color_pat, linea))
+    cq_matches = list(re.finditer(color_qty_pat, linea))
+    stripped = linea.strip()
+    starts_qty = bool(re.match(rf"^({cant_chain})\b", stripped))
+    starts_color = bool(color_alt_chain and re.match(rf"^(?:color\s+|tono\s+)?({color_alt_chain})(?=\b|s\b)", stripped))
+    preferred = qty_matches if (starts_qty or len(qty_matches) >= len(cq_matches)) else cq_matches
+    if preferred:
+        for m in preferred:
+            if m.re.pattern == qty_color_pat:
+                cantidad = _cantidad_token(m.group(1)) or 1
+                color_raw = m.group(2)
+            else:
+                color_raw = m.group(1)
+                cantidad = _cantidad_token(m.group(2)) or 1
+            color = _normalizar_color(color_raw)
+            if color not in color_a_codigos:
+                color = _sin_acentos(color_raw)
+            if color in color_a_codigos:
+                key = (color, cantidad)
+                if key not in vistos:
+                    resultados.append((color, cantidad)); vistos.add(key)
+        if resultados:
+            return resultados
+
+    # Patrones de cantidad + producto opcional + color.
+    color_alt = "|".join(re.escape(a) for a in alias_ordenados if a and len(a) >= 3)
+    producto_ruido = r"(?:velluto|veluto|komfy\s+mini|komfy|estambre|hilo|madejas?|piezas?|pzas?|pz|rollos?|trapillos?|kraft|chenille|chenil|karina|alize|hilorama)"
+    cant = _cantidad_pat()
+    patrones = [
+        # "3 vellutos blanco", "tres negros", "2 pzas color blanco"
+        rf"\b({cant})\b\s*(?:{producto_ruido}\s*)?(?:de\s+|del\s+|color\s+|tono\s+)?({color_alt})(?=\b|s\b)",
+        # "blanco 3", "negro dos", "color blanco 2 pz"
+        rf"\b(?:color\s+|tono\s+)?({color_alt})(?=\b|s\b)\s*(?:de\s*)?(?:{producto_ruido}\s*)?({cant})\b",
+        # "3 de color blanco"
+        rf"\b({cant})\b\s*(?:{producto_ruido}\s*)?(?:de\s+)?(?:color|tono)\s+({color_alt})(?=\b|s\b)",
+    ]
+    for pat in patrones:
+        for m in re.finditer(pat, linea):
+            g1, g2 = m.group(1), m.group(2)
+            if _cantidad_token(g1):
+                cantidad = _cantidad_token(g1)
+                color_raw = g2
+            else:
+                color_raw = g1
+                cantidad = _cantidad_token(g2)
+            if not cantidad:
+                cantidad = 1
+            color = _normalizar_color(color_raw)
+            if color not in color_a_codigos:
+                color = _sin_acentos(color_raw)
+            if color in color_a_codigos:
+                key = (color, cantidad, m.start(), m.end())
+                if key not in vistos:
+                    resultados.append((color, cantidad)); vistos.add(key)
+
+    # Si los patrones directos no encontraron nada, usa el parser base por pedazos.
+    # Evitamos correrlo siempre porque duplicaba casos como "tres negros" o "3 vellutos blanco".
+    if not resultados:
+        for parte in re.split(r"\s*(?:,|\by\b|\be\b|\+|/|;|\n)\s*", linea):
+            parte = parte.strip()
+            if not parte:
+                continue
+            for color, cantidad in _extraer_pares_color_cantidad(parte, color_a_codigos, alias_ordenados):
+                key = (color, cantidad, parte)
+                if key not in vistos:
+                    resultados.append((color, cantidad)); vistos.add(key)
+
+    # Último recurso: colores sueltos con una cantidad global de la frase.
+    if not resultados:
+        colores = _detectar_colores_en_linea(linea, color_a_codigos, alias_ordenados)
+        cantidad = _cantidad_en_linea(linea) or 1
+        for color in colores:
+            resultados.append((color, cantidad))
+
+    return resultados
+
+
+def _parsear_linea_mixta_codigos_y_colores(linea, codigos_validos, color_a_codigos, alias_ordenados):
+    """Procesa una frase mezclada con códigos y colores sin cancelar los colores.
+    Además detecta ambigüedades reales para pedir confirmación en vez de inventar.
+    """
+    pares_codigo = []
+    pares_color = []
+    preguntas = []
+    bloquear_colores_por_partes = False
+
+    # Primero, una lectura contextual de secuencias compactas sin separadores:
+    # "55 1 56 2 16", "un 55 1 56 2 16", "16 550", "2 4".
+    seq_pares, seq_preg = _parsear_secuencia_numerica_contextual(linea, codigos_validos)
+    if seq_preg:
+        preguntas.extend(seq_preg)
+        # Si hay ambigüedad fuerte, no seguimos con reglas genéricas que podrían inventar.
+        return [], [], preguntas
+    if seq_pares:
+        colores_linea = _detectar_colores_en_linea(linea, color_a_codigos, alias_ordenados)
+        for codigo, _cant in seq_pares:
+            for color in colores_linea:
+                posibles = color_a_codigos.get(color) or []
+                if posibles and codigo not in posibles:
+                    preguntas.append(
+                        f"Confirma código {codigo}: en el contexto no parece color '{color}'. "
+                        f"Para '{color}' encontré código(s): {', '.join(posibles[:5])}."
+                    )
+        return seq_pares, [], preguntas
+
+    # En frases tipo "blanco y negro 3 cada uno" no conviene partir por "y",
+    # porque la cantidad final aplica a todos los colores mencionados.
+    if re.search(r"\b(cada\s+uno|c/u|c/u\.|por\s+color|por\s+tono)\b", _sin_acentos(linea)):
+        pares_color = _extraer_pares_color_cantidad_avanzado(linea, color_a_codigos, alias_ordenados)
+        bloquear_colores_por_partes = bool(pares_color)
+
+    for parte in _split_partes_pedido(linea):
+        parte = parte.strip()
+        if not parte:
+            continue
+
+        seq_cods, seq_q = _parsear_secuencia_numerica_contextual(parte, codigos_validos)
+        if seq_q:
+            preguntas.extend(seq_q)
+            continue
+        colores_en_parte = _detectar_colores_en_linea(parte, color_a_codigos, alias_ordenados)
+        if seq_cods:
+            cods = seq_cods
+        else:
+            cods = _parsear_segmento_codigo_cantidad(parte, codigos_validos)
+
+        # Si hay color y un solo número pequeño, puede ser cantidad-color aunque ese número
+        # también exista como código. Ej: "3 blancos" debe ser 3 piezas del blanco.
+        # Pero si el código coincide con ese color, respetamos el código. Ej: "16 azul".
+        if cods and colores_en_parte:
+            nums_parte = _numeros(parte)
+            codigo_unico = cods[0][0] if len(cods) == 1 else None
+            color_coincide_codigo = any(codigo_unico in (color_a_codigos.get(c) or []) for c in colores_en_parte) if codigo_unico else False
+            sin_marcador_codigo = not re.search(r"\b(?:del|de|d|tono|codigo|cod|num|numero)\b|#", _sin_acentos(parte))
+            if (len(nums_parte) == 1 and int(nums_parte[0]) <= 50 and sin_marcador_codigo and not color_coincide_codigo):
+                n_unico = norm_codigo(nums_parte[0])
+                # 3 blancos => cantidad-color.
+                # 16 blanco, si 16 existe como código, ya es dudoso: mejor preguntar.
+                if n_unico in codigos_validos and int(n_unico) > 10:
+                    posibles_txt = []
+                    for c in colores_en_parte:
+                        posibles_txt.extend(color_a_codigos.get(c) or [])
+                    preguntas.append(
+                        f"Confirma '{nums_parte[0]} {colores_en_parte[0]}': ¿quieres el código {n_unico}, "
+                        f"o {nums_parte[0]} pieza(s) del color {colores_en_parte[0]}"
+                        + (f" (código {posibles_txt[0]})?" if posibles_txt else "?")
+                    )
+                    continue
+                cods = []
+
+        if cods:
+            pares_codigo.extend(cods)
+            # Si el cliente escribió código + color, mandan los códigos, pero se valida color.
+            for codigo, _cant in cods:
+                for color in colores_en_parte:
+                    posibles = color_a_codigos.get(color) or []
+                    if posibles and codigo not in posibles:
+                        preguntas.append(
+                            f"Confirma código {codigo}: en el contexto no parece color '{color}'. "
+                            f"Para '{color}' encontré código(s): {', '.join(posibles[:5])}."
+                        )
+            # Código gana sobre color para evitar duplicar: "55 blanco" no son 55 blancos.
+            continue
+
+        if not bloquear_colores_por_partes:
+            cols = _extraer_pares_color_cantidad_avanzado(parte, color_a_codigos, alias_ordenados)
+            if cols:
+                pares_color.extend(cols)
+
+    # Si no hubo separadores claros, intenta toda la línea, pero sin duplicar:
+    # si ya se entendió por código, no vuelvas a leer el número como cantidad-color;
+    # si ya se entendió por color, no vuelvas a leer la cantidad como código.
+    if not pares_color and not pares_codigo:
+        pares_color = _extraer_pares_color_cantidad_avanzado(linea, color_a_codigos, alias_ordenados)
+    if not pares_codigo and not pares_color:
+        pares_codigo = _parsear_linea_mixta(linea, codigos_validos)
+    return pares_codigo, pares_color, preguntas
 
 
 
@@ -521,6 +908,7 @@ def extraer_pedidos(texto, productos):
     errores = []
     sugerencias = {}
     advertencias = []
+    preguntas = []
 
     texto_limpio = texto.lower()
 
@@ -531,13 +919,14 @@ def extraer_pedidos(texto, productos):
         for n in _numeros(m.group(1)):
             excluidos.add(n)
 
+    hay_colores_mencionados = bool(_detectar_colores_en_linea(texto_limpio, color_a_codigos, alias_ordenados))
     modo_gama = bool(re.search(
         r"\b(dame|de|quiero|ocupo)?\s*(toda|todos|una)\s+(?:la\s+)?gama\b|"
         r"\bde\s+todos\s+uno\b|\buno\s+de\s+cada\b|\buna\s+de\s+cada\b|"
         r"\b1\s+de\s+cada\s+(?:uno|color|tono)?\b|\bdame\s+1\s+de\s+cada\s+(?:uno|color|tono)?\b|"
-        r"\bquiero\s+1\s+de\s+cada\s+(?:uno|color|tono)?\b|\bcada\s+uno\b|\bc/u\b",
+        r"\bquiero\s+1\s+de\s+cada\s+(?:uno|color|tono)?\b|\bc/u\b",
         texto_limpio
-    ))
+    ) or (re.search(r"\bcada\s+uno\b", texto_limpio) and not hay_colores_mencionados))
     if modo_gama:
         for c in codigos_validos:
             if c not in excluidos:
@@ -547,6 +936,7 @@ def extraer_pedidos(texto, productos):
             "errores": [],
             "sugerencias": {},
             "advertencias": [],
+            "preguntas": [],
             "modo": "gama"
         }
 
@@ -570,12 +960,29 @@ def extraer_pedidos(texto, productos):
                 continue
 
         # ================= parser mixto avanzado =================
-        # Ejemplos: "del 55 dame 2, 3 56 y un 310"
-        pares_mixtos = _parsear_linea_mixta(linea, codigos_validos)
-        if pares_mixtos:
-            usar_bloque = bool(cantidad_bloque and all(int(cant or 0) == 1 for _, cant in pares_mixtos))
+        # Ejemplos:
+        # - "del 55 dame 2, 3 56 y un 310"
+        # - "dem 3 vellutos blanco, tres negros, tambien agregame un velluto 429 y un 56"
+        # Importante: si encuentra códigos, NO debe saltarse los colores de la misma frase.
+        pares_mixtos, pares_color_mixtos, preguntas_mixtas = _parsear_linea_mixta_codigos_y_colores(
+            linea, codigos_validos, color_a_codigos, alias_ordenados
+        )
+        if preguntas_mixtas:
+            preguntas.extend(preguntas_mixtas)
+            continue
+        if pares_mixtos or pares_color_mixtos:
+            usar_bloque = bool(cantidad_bloque and pares_mixtos and all(int(cant or 0) == 1 for _, cant in pares_mixtos))
             for codigo, cantidad in pares_mixtos:
                 _add(pedidos, codigo, cantidad_bloque if usar_bloque else cantidad)
+            for color, cantidad in pares_color_mixtos:
+                cods = color_a_codigos.get(color) or []
+                if len(cods) == 1:
+                    _add(pedidos, cods[0], cantidad_bloque or cantidad)
+                elif len(cods) > 1:
+                    _add(pedidos, cods[0], cantidad_bloque or cantidad)
+                    preguntas.append(
+                        f"Confirma el color '{color}': coincide con varios códigos ({', '.join(cods[:8])}). Se usó {cods[0]} provisionalmente."
+                    )
             continue
 
 
@@ -704,7 +1111,7 @@ def extraer_pedidos(texto, productos):
             continue
 
         # ================= colores con cantidad =================
-        pares_color = _extraer_pares_color_cantidad(linea, color_a_codigos, alias_ordenados)
+        pares_color = _extraer_pares_color_cantidad_avanzado(linea, color_a_codigos, alias_ordenados)
         if pares_color:
             for color, cantidad in pares_color:
                 cods = color_a_codigos.get(color) or []
@@ -712,8 +1119,8 @@ def extraer_pedidos(texto, productos):
                     _add(pedidos, cods[0], cantidad)
                 elif len(cods) > 1:
                     _add(pedidos, cods[0], cantidad)
-                    advertencias.append(
-                        f"El color '{color}' coincide con varios códigos del contexto. Se usó {cods[0]}."
+                    preguntas.append(
+                        f"Confirma el color '{color}': coincide con varios códigos ({', '.join(cods[:8])}). Se usó {cods[0]} provisionalmente."
                     )
             continue
 
@@ -734,5 +1141,6 @@ def extraer_pedidos(texto, productos):
         "errores": sorted(set(errores)),
         "sugerencias": sugerencias,
         "advertencias": sorted(set(advertencias)),
+        "preguntas": sorted(set(preguntas)),
         "modo": "normal",
     }

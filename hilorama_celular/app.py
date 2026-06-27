@@ -1524,6 +1524,9 @@ def parser_whatsapp_mobile():
 
     errores.extend(resultado.get("errores") or [])
     advertencias.extend(resultado.get("advertencias") or [])
+    preguntas = resultado.get("preguntas") or []
+    if preguntas:
+        advertencias.extend(["Confirma: " + str(p) for p in preguntas])
     if referencia_visual:
         advertencias.append("Se detectó referencia visual; revisa posiciones, círculos, flechas o tachones antes de confirmar.")
 
@@ -1535,6 +1538,7 @@ def parser_whatsapp_mobile():
         "pedidos": pedidos,
         "errores": sorted(set(str(e) for e in errores if e)),
         "advertencias": sorted(set(str(a) for a in advertencias if a)),
+        "preguntas": sorted(set(str(p) for p in preguntas if p)),
         "sugerencias": resultado.get("sugerencias") or {},
         "referencia_visual": referencia_visual,
     }))

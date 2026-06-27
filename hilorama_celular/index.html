@@ -395,6 +395,7 @@ async function interpretarPedido(){
     if(r.modo_especial==='combinar')tituloModo=' · Combinación sugerida';
     let html=`<div class="result-mini"><div class="result-ok"><b>Detecté ${state.parserPedidos.length} producto(s)</b>${tituloModo}.<br><span class="small">Contexto: ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}</span></div></div>`;
     if(debeAutoAgregar)html+=`<div class="banner" style="margin-top:8px">Se agregó automáticamente al carrito porque pediste 1 de cada uno.</div>`;
+    if(r.preguntas&&r.preguntas.length)html+=`<details class="ai-block" open><summary>❓ Confirmar antes de agregar</summary><div class="small" style="margin-top:8px">${escapeHtml(r.preguntas.join(' · '))}</div></details>`;
     if(r.advertencias&&r.advertencias.length)html+=`<details class="ai-block"><summary>⚠️ Ver advertencias</summary><div class="small" style="margin-top:8px">${escapeHtml(r.advertencias.join(' · '))}</div></details>`;
     if(r.errores&&r.errores.length)html+=`<details class="ai-block"><summary>❓ No reconocidos</summary><div class="small" style="margin-top:8px">${escapeHtml(r.errores.join(', '))}</div></details>`;
     if(r.referencia_visual)html+=`<details class="ai-block admin-debug"><summary>🔒 Admin · referencia visual</summary><pre class="small" style="white-space:pre-wrap">${escapeHtml(JSON.stringify(r.referencia_visual,null,2))}</pre></details>`;
