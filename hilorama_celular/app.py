@@ -215,6 +215,16 @@ def validar_cliente_completo(cliente):
 def respuesta_cliente_incompleto(cliente, accion="continuar"):
     cliente = dict(cliente or {})
     cliente["direccion"] = normalizar_direccion(cliente.get("direccion"))
+
+    # Cuando esta función recibe una nota, la nota trae id=COT-xxxxx y cliente_id=<id real>.
+    # El formulario móvil debe editar el cliente real, no intentar hacer PUT /api/clientes/COT-xxxxx.
+    nota_id = cliente.get("nota_id")
+    if not nota_id and str(cliente.get("id") or "").upper().startswith(("COT-", "VEN-")):
+        nota_id = cliente.get("id")
+    if cliente.get("cliente_id"):
+        cliente["nota_id"] = nota_id
+        cliente["id"] = cliente.get("cliente_id")
+
     ok, faltantes = validar_cliente_completo(cliente)
     if ok:
         return None
@@ -811,8 +821,8 @@ def crear_cliente():
     return jsonify(json_safe({"ok": True, "cliente": c}))
 
 
-@app.route("/api/clientes/<int:cliente_id>", methods=["PUT", "PATCH"])
-def actualizar_cliente(cliente_id):
+@app.route("/api/clientes/<cliente_ref>", methods=["PUT", "PATCH"])
+def actualizar_cliente(cliente_ref):
     data = request.get_json(force=True) or {}
     nombre = (data.get("nombre") or "").strip()
     telefono = re.sub(r"\D+", "", str(data.get("telefono") or ""))
@@ -828,7 +838,20 @@ def actualizar_cliente(cliente_id):
         if not ok:
             return jsonify({"ok": False, "code": "CLIENTE_INCOMPLETO", "error": "Faltan datos del cliente", "faltantes": faltantes}), 400
 
+    cliente_ref = str(cliente_ref or "").strip()
     with DB() as db:
+        cliente_id = None
+        if cliente_ref.isdigit():
+            cliente_id = int(cliente_ref)
+        else:
+            # Respaldo móvil: si por caché o flujo viejo llega COT-xxxxx/VEN-xxxxx,
+            # buscamos el cliente ligado a esa nota en vez de regresar 404.
+            nota = db.execute("SELECT cliente_id FROM notas WHERE id=%s", (cliente_ref,)).fetchone()
+            if nota and nota.get("cliente_id"):
+                cliente_id = nota.get("cliente_id")
+        if not cliente_id:
+            return jsonify({"ok": False, "error": "Cliente no encontrado para actualizar", "ref": cliente_ref}), 404
+
         row = db.execute("""
             UPDATE clientes
             SET nombre=%s, telefono=%s, direccion=%s
@@ -3596,7 +3619,7 @@ def _crear_overlay_marcas_data_url(raw):
     return _image_bytes_to_data_url(bio.getvalue(), 'image/png')
 
 
-def _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentario, contexto, productos_contexto):
+def _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentario, contexto, productos_contexto, fast=False):
     """
     Modo principal: interpretación pura de IA visual.
     No usa mapa manual. No permite inventar códigos a partir del catálogo.
@@ -3607,17 +3630,22 @@ def _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentar
     from openai import OpenAI
     client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
 
-    # Evita mandar fotos enormes; mantiene suficiente calidad para leer códigos.
-    data_url = _optimizar_data_url_imagen(data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "900")))
+    # Evita mandar fotos enormes; en modo rápido bajamos más el tamaño y el catálogo.
+    max_side = int(os.environ.get("OPENAI_IMAGE_FAST_MAX_SIDE", "760")) if fast else int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "900"))
+    data_url = _optimizar_data_url_imagen(data_url, max_side=max_side)
     if original_data_url:
-        original_data_url = _optimizar_data_url_imagen(original_data_url, max_side=int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "900")))
+        original_data_url = _optimizar_data_url_imagen(original_data_url, max_side=max_side)
 
-    catalogo = _productos_contexto_para_vision(productos_contexto, max_items=int(os.environ.get("OPENAI_CATALOG_MAX_ITEMS", "250")))
+    max_items = int(os.environ.get("OPENAI_CATALOG_FAST_MAX_ITEMS", "120")) if fast else int(os.environ.get("OPENAI_CATALOG_MAX_ITEMS", "250"))
+    catalogo = _productos_contexto_para_vision(productos_contexto, max_items=max_items)
     overlay_url = None
-    try:
-        overlay_url = _crear_overlay_marcas_data_url(raw)
-    except Exception:
-        overlay_url = None
+    # El overlay ayuda, pero mandar 2-3 imágenes hace más lenta la respuesta.
+    # En modo rápido solo se manda si se solicita análisis preciso.
+    if not fast:
+        try:
+            overlay_url = _crear_overlay_marcas_data_url(raw)
+        except Exception:
+            overlay_url = None
 
     schema = """
 Devuelve SOLO JSON válido, sin markdown:
@@ -3756,14 +3784,14 @@ DEVUELVE ESTRICTAMENTE EL JSON:
 
     content = [
         {'type': 'text', 'text': prompt},
-        {'type': 'image_url', 'image_url': {'url': data_url, 'detail': 'high'}},
+        {'type': 'image_url', 'image_url': {'url': data_url, 'detail': 'auto' if fast else 'high'}},
     ]
     if overlay_url:
         content.append({'type': 'image_url', 'image_url': {'url': overlay_url, 'detail': 'high'}})
     if original_data_url:
         content.append({'type': 'image_url', 'image_url': {'url': original_data_url, 'detail': 'high'}})
 
-    model = os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o')
+    model = os.environ.get('OPENAI_VISION_FAST_MODEL' if fast else 'OPENAI_VISION_MODEL', os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o'))
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -3959,6 +3987,11 @@ def analizar_imagen_referencia():
     except Exception:
         return jsonify({'ok': False, 'error': 'No pude leer la imagen. Intenta subirla otra vez.'}), 400
 
+    modo = (data.get('modo') or '').strip().lower()
+    force_ia = bool(data.get('force_ia')) or modo == 'preciso'
+    prefer_local = bool(data.get('prefer_local')) or modo == 'rapido'
+    fast_vision = bool(prefer_local and not force_ia)
+
     vision_notes = []
     add_codes = []
     exclude_codes = []
@@ -3974,7 +4007,7 @@ def analizar_imagen_referencia():
         productos_contexto = _codigos_contexto_productos(db, marca, hilo)
 
     try:
-        parsed, provider = _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentario, contexto, productos_contexto)
+        parsed, provider = _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentario, contexto, productos_contexto, fast=fast_vision)
         vision_notes.append(provider)
         if parsed:
             phase_result = parsed
@@ -4013,17 +4046,19 @@ def analizar_imagen_referencia():
     except Exception as e:
         vision_notes.append('fallback_marcas_rojas_error:' + str(e)[:160])
 
-    try:
-        img = Image.open(io.BytesIO(raw))
+    # OCR local puede hacer lento Render y normalmente no se necesita; solo se activa en diagnóstico.
+    if bool(data.get('include_ocr')) or bool(data.get('admin_debug')):
         try:
-            import pytesseract
-            ocr_text = (pytesseract.image_to_string(img, lang='spa+eng') or '').strip()
-            if ocr_text:
-                vision_notes.append('ocr_debug')
+            img = Image.open(io.BytesIO(raw))
+            try:
+                import pytesseract
+                ocr_text = (pytesseract.image_to_string(img, lang='spa+eng') or '').strip()
+                if ocr_text:
+                    vision_notes.append('ocr_debug')
+            except Exception:
+                pass
         except Exception:
             pass
-    except Exception:
-        pass
 
     if not os.environ.get('OPENAI_API_KEY'):
         advertencias.append('No hay OPENAI_API_KEY. La interpretación pura de imagen necesita esa key.')
