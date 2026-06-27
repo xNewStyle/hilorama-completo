@@ -255,20 +255,50 @@ def ensure_schema():
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS pedido TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS comprobante TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS fecha_pago TEXT")
+        db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS metodo_pago TEXT")
+        db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS monto_pagado REAL DEFAULT 0")
+        db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS referencia_pago TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS paqueteria TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS empacador_id INTEGER")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS empacador TEXT")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS fecha_asignacion TIMESTAMP")
         db.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS fecha_finalizacion TIMESTAMP")
 
+        db.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS producto_id INTEGER")
         db.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS marca TEXT")
         db.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS hilo TEXT")
         db.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS color TEXT")
         db.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS empacadas INTEGER DEFAULT 0")
 
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS movimientos_almacen (
+                id SERIAL PRIMARY KEY,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                tipo TEXT,
+                nota_id TEXT,
+                producto_id INTEGER,
+                marca TEXT,
+                hilo TEXT,
+                color TEXT,
+                codigo TEXT,
+                codigo_barras TEXT,
+                stock_anterior INTEGER,
+                stock_nuevo INTEGER,
+                cantidad INTEGER,
+                campo TEXT,
+                valor_anterior TEXT,
+                valor_nuevo TEXT,
+                motivo TEXT,
+                usuario TEXT
+            )
+        """)
+
         db.execute("CREATE INDEX IF NOT EXISTS idx_notas_estado_fecha ON notas(estado, fecha DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_items_nota_mobile ON items(nota_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_items_producto_mobile ON items(producto_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_productos_busqueda_mobile ON productos(codigo, marca, hilo, color)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_mov_almacen_fecha_mobile ON movimientos_almacen(fecha DESC)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_mov_almacen_codigo_mobile ON movimientos_almacen(codigo)")
 
     _schema_ready = True
 
@@ -364,6 +394,143 @@ def listar_pedidos():
     return jsonify(json_safe(pedidos))
 
 
+
+def _es_inventariable(valor):
+    if isinstance(valor, str):
+        return valor.strip().lower() not in ("false", "f", "0", "no", "n", "item", "sin inventario")
+    return bool(True if valor is None else valor)
+
+
+def _stock_estado(stock):
+    try:
+        stock = int(stock or 0)
+    except Exception:
+        stock = 0
+    return "OK" if stock >= 50 else "RESURTIR"
+
+
+def _registrar_movimiento_almacen(db, tipo, producto=None, cantidad=0, stock_anterior=None, stock_nuevo=None,
+                                  campo="stock", valor_anterior=None, valor_nuevo=None, motivo="", nota_id=None,
+                                  usuario="movil"):
+    """Historial compatible con el almacén de PC. Nunca debe romper una venta si el historial falla."""
+    try:
+        producto = dict(producto or {})
+        db.execute("""
+            INSERT INTO movimientos_almacen
+            (fecha, tipo, nota_id, producto_id, marca, hilo, color, codigo, codigo_barras,
+             stock_anterior, stock_nuevo, cantidad, campo, valor_anterior, valor_nuevo, motivo, usuario)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            now_mexico(), tipo, nota_id, producto.get("id") or producto.get("producto_id"),
+            producto.get("marca"), producto.get("hilo"), producto.get("color"), producto.get("codigo"), producto.get("codigo_barras"),
+            stock_anterior, stock_nuevo, int(cantidad or 0), campo,
+            None if valor_anterior is None else str(valor_anterior),
+            None if valor_nuevo is None else str(valor_nuevo),
+            motivo, usuario,
+        ))
+    except Exception as exc:
+        print("WARN movimiento_almacen no registrado:", exc, flush=True)
+
+
+def _items_para_descontar_stock(db, nota_id):
+    rows = db.execute("""
+        SELECT
+            i.id AS item_id,
+            COALESCE(i.producto_id, p.id) AS producto_id,
+            i.codigo,
+            COALESCE(NULLIF(i.marca,''), p.marca, '') AS marca,
+            COALESCE(NULLIF(i.hilo,''), p.hilo, '') AS hilo,
+            COALESCE(NULLIF(i.color,''), p.color, '') AS color,
+            COALESCE(i.cantidad,0) AS cantidad,
+            p.codigo_barras,
+            COALESCE(p.stock,0) AS stock,
+            COALESCE(p.es_inventariable, TRUE) AS es_inventariable
+        FROM items i
+        LEFT JOIN LATERAL (
+            SELECT p2.*
+            FROM productos p2
+            WHERE
+                (i.producto_id IS NOT NULL AND p2.id=i.producto_id)
+                OR (
+                    i.producto_id IS NULL
+                    AND (p2.codigo=i.codigo OR p2.codigo_barras=i.codigo)
+                    AND (NULLIF(i.marca,'') IS NULL OR UPPER(COALESCE(p2.marca,''))=UPPER(i.marca))
+                    AND (NULLIF(i.hilo,'') IS NULL OR UPPER(COALESCE(p2.hilo,''))=UPPER(i.hilo))
+                    AND (NULLIF(i.color,'') IS NULL OR UPPER(COALESCE(p2.color,''))=UPPER(i.color))
+                )
+            ORDER BY
+                CASE WHEN i.producto_id IS NOT NULL AND p2.id=i.producto_id THEN 0 ELSE 1 END,
+                CASE WHEN UPPER(COALESCE(p2.marca,''))=UPPER(COALESCE(i.marca,'')) THEN 0 ELSE 1 END,
+                CASE WHEN UPPER(COALESCE(p2.hilo,''))=UPPER(COALESCE(i.hilo,'')) THEN 0 ELSE 1 END,
+                CASE WHEN UPPER(COALESCE(p2.color,''))=UPPER(COALESCE(i.color,'')) THEN 0 ELSE 1 END,
+                COALESCE(p2.stock,0) DESC,
+                p2.id ASC
+            LIMIT 1
+        ) p ON TRUE
+        WHERE i.nota_id=%s
+        ORDER BY i.id
+    """, (nota_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _descontar_stock_de_nota(db, nota_id):
+    """Descuenta stock una sola vez: al convertir cotización a venta o al pagar directo una cotización."""
+    items = _items_para_descontar_stock(db, nota_id)
+    for it in items:
+        cantidad = int(it.get("cantidad") or 0)
+        if cantidad <= 0:
+            continue
+        if not it.get("producto_id"):
+            raise ValueError(f"No encontré producto exacto para {it.get('codigo')}")
+        es_inv = _es_inventariable(it.get("es_inventariable"))
+        stock = int(it.get("stock") or 0)
+        if es_inv and stock < cantidad:
+            raise ValueError(f"Stock insuficiente {it.get('codigo')} {it.get('marca','')}/{it.get('hilo','')} ({stock} disponibles)")
+    descontados = []
+    for it in items:
+        cantidad = int(it.get("cantidad") or 0)
+        es_inv = _es_inventariable(it.get("es_inventariable"))
+        if not es_inv or cantidad <= 0:
+            continue
+        stock_anterior = int(it.get("stock") or 0)
+        stock_nuevo = stock_anterior - cantidad
+        prod_id = int(it.get("producto_id"))
+        row = db.execute("""
+            UPDATE productos
+            SET stock=%s, estado=%s
+            WHERE id=%s
+            RETURNING id, codigo, codigo_barras, marca, hilo, color, stock, estado
+        """, (stock_nuevo, _stock_estado(stock_nuevo), prod_id)).fetchone()
+        prod = dict(row) if row else {"id": prod_id, "codigo": it.get("codigo"), "marca": it.get("marca"), "hilo": it.get("hilo"), "color": it.get("color")}
+        _registrar_movimiento_almacen(
+            db, "SALIDA_STOCK", prod, cantidad=-cantidad,
+            stock_anterior=stock_anterior, stock_nuevo=stock_nuevo,
+            motivo="Venta desde celular", nota_id=nota_id,
+        )
+        descontados.append({"codigo": prod.get("codigo"), "cantidad": cantidad, "stock_anterior": stock_anterior, "stock_nuevo": stock_nuevo})
+    return descontados
+
+
+@app.route("/api/almacen/movimientos")
+def listar_movimientos_almacen():
+    q = (request.args.get("q") or "").strip().lower()
+    limit = min(int(request.args.get("limit") or 80), 200)
+    params = []
+    where = ["1=1"]
+    if q:
+        like = f"%{q}%"
+        where.append("(LOWER(COALESCE(codigo,'')) LIKE %s OR LOWER(COALESCE(color,'')) LIKE %s OR LOWER(COALESCE(marca,'')) LIKE %s OR LOWER(COALESCE(hilo,'')) LIKE %s OR LOWER(COALESCE(nota_id,'')) LIKE %s)")
+        params.extend([like, like, like, like, like])
+    with DB() as db:
+        rows = db.execute(f"""
+            SELECT * FROM movimientos_almacen
+            WHERE {' AND '.join(where)}
+            ORDER BY fecha DESC, id DESC
+            LIMIT {limit}
+        """, params).fetchall()
+    return jsonify(json_safe([dict(r) for r in rows]))
+
+
 @app.route("/api/envios")
 def listar_envios():
     # Opciones básicas para app móvil. La PC puede seguir usando su configuración completa.
@@ -404,6 +571,7 @@ def listar_notas():
             SELECT
                 n.id, n.cliente_id, n.cliente_nombre, n.fecha, n.estado,
                 n.total, n.envio, n.pedido, n.comprobante, n.fecha_pago,
+                n.metodo_pago, n.monto_pagado, n.referencia_pago,
                 n.paqueteria, n.empacador_id, n.empacador, n.fecha_asignacion,
                 c.telefono,
                 COUNT(i.id) AS items_count,
@@ -438,6 +606,7 @@ def detalle_nota(nota_id):
         items = db.execute("""
             SELECT
                 MIN(i.id) AS id,
+                MIN(COALESCE(i.producto_id, p.id)) AS producto_id,
                 i.codigo,
                 COALESCE(NULLIF(i.marca,''), p.marca, '') AS marca,
                 COALESCE(NULLIF(i.hilo,''), p.hilo, '') AS hilo,
@@ -451,15 +620,24 @@ def detalle_nota(nota_id):
             LEFT JOIN LATERAL (
                 SELECT p2.*
                 FROM productos p2
-                WHERE (p2.codigo=i.codigo OR p2.codigo_barras=i.codigo)
-                  AND (NULLIF(i.marca,'') IS NULL OR UPPER(p2.marca)=UPPER(i.marca))
-                  AND (NULLIF(i.hilo,'') IS NULL OR UPPER(p2.hilo)=UPPER(i.hilo))
+                WHERE
+                    (i.producto_id IS NOT NULL AND p2.id=i.producto_id)
+                    OR (
+                        i.producto_id IS NULL
+                        AND (p2.codigo=i.codigo OR p2.codigo_barras=i.codigo)
+                        AND (NULLIF(i.marca,'') IS NULL OR UPPER(COALESCE(p2.marca,''))=UPPER(i.marca))
+                        AND (NULLIF(i.hilo,'') IS NULL OR UPPER(COALESCE(p2.hilo,''))=UPPER(i.hilo))
+                        AND (NULLIF(i.color,'') IS NULL OR UPPER(COALESCE(p2.color,''))=UPPER(i.color))
+                    )
                 ORDER BY
+                    CASE WHEN i.producto_id IS NOT NULL AND p2.id=i.producto_id THEN 0 ELSE 1 END,
                     CASE
                         WHEN UPPER(COALESCE(p2.marca,''))=UPPER(COALESCE(i.marca,''))
                          AND UPPER(COALESCE(p2.hilo,''))=UPPER(COALESCE(i.hilo,'')) THEN 0
                         ELSE 1
                     END,
+                    CASE WHEN UPPER(COALESCE(p2.color,''))=UPPER(COALESCE(i.color,'')) THEN 0 ELSE 1 END,
+                    COALESCE(p2.stock,0) DESC,
                     p2.id
                 LIMIT 1
             ) p ON TRUE
@@ -600,8 +778,10 @@ def buscar_productos():
     return jsonify(json_safe([dict(r) for r in rows]))
 
 
+
 @app.route("/api/productos/<codigo>", methods=["PATCH"])
 def actualizar_producto(codigo):
+    """Compatibilidad: actualiza por código, pero si hay códigos repetidos es mejor usar /api/productos/id/<id>."""
     data = request.get_json(force=True) or {}
     allowed = []
     params = []
@@ -609,27 +789,41 @@ def actualizar_producto(codigo):
     if "color" in data:
         allowed.append("color=%s")
         params.append((data.get("color") or "").strip())
+    stock_nuevo_req = None
     if "stock" in data:
         try:
-            stock = int(data.get("stock"))
+            stock_nuevo_req = int(data.get("stock"))
         except Exception:
             return jsonify({"ok": False, "error": "Stock inválido"}), 400
         allowed.append("stock=%s")
-        params.append(stock)
+        params.append(stock_nuevo_req)
+        allowed.append("estado=%s")
+        params.append(_stock_estado(stock_nuevo_req))
 
     if not allowed:
         return jsonify({"ok": False, "error": "No hay cambios"}), 400
 
-    params.append(codigo)
     with DB() as db:
+        antes = db.execute("SELECT * FROM productos WHERE codigo=%s ORDER BY id LIMIT 1", (codigo,)).fetchone()
+        if not antes:
+            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
+        params2 = list(params) + [codigo]
         row = db.execute(f"""
             UPDATE productos
             SET {', '.join(allowed)}
             WHERE codigo=%s
-            RETURNING id, codigo, marca, hilo, color, stock
-        """, params).fetchone()
-        if not row:
-            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
+            RETURNING id, codigo, codigo_barras, marca, hilo, color, stock, estado
+        """, params2).fetchone()
+        if row and stock_nuevo_req is not None:
+            ant = dict(antes)
+            prod = dict(row)
+            stock_anterior = int(ant.get("stock") or 0)
+            _registrar_movimiento_almacen(
+                db, "AJUSTE_STOCK", prod, cantidad=stock_nuevo_req-stock_anterior,
+                stock_anterior=stock_anterior, stock_nuevo=stock_nuevo_req,
+                valor_anterior=stock_anterior, valor_nuevo=stock_nuevo_req,
+                motivo="Edición manual de stock desde celular",
+            )
     return jsonify(json_safe({"ok": True, "producto": dict(row)}))
 
 
@@ -642,28 +836,49 @@ def actualizar_producto_por_id(producto_id):
     if "color" in data:
         allowed.append("color=%s")
         params.append((data.get("color") or "").strip())
+    stock_nuevo_req = None
     if "stock" in data:
         try:
-            stock = int(data.get("stock"))
+            stock_nuevo_req = int(data.get("stock"))
         except Exception:
             return jsonify({"ok": False, "error": "Stock inválido"}), 400
         allowed.append("stock=%s")
-        params.append(stock)
+        params.append(stock_nuevo_req)
+        allowed.append("estado=%s")
+        params.append(_stock_estado(stock_nuevo_req))
 
     if not allowed:
         return jsonify({"ok": False, "error": "No hay cambios"}), 400
 
-    params.append(producto_id)
     with DB() as db:
+        antes = db.execute("SELECT * FROM productos WHERE id=%s", (producto_id,)).fetchone()
+        if not antes:
+            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
+        params2 = list(params) + [producto_id]
         row = db.execute(f"""
             UPDATE productos
             SET {', '.join(allowed)}
             WHERE id=%s
-            RETURNING id, codigo, marca, hilo, color, stock
-        """, params).fetchone()
-        if not row:
-            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
-    return jsonify(json_safe({"ok": True, "producto": dict(row)}))
+            RETURNING id, codigo, codigo_barras, marca, hilo, color, stock, estado
+        """, params2).fetchone()
+        prod = dict(row)
+        ant = dict(antes)
+        if stock_nuevo_req is not None:
+            stock_anterior = int(ant.get("stock") or 0)
+            _registrar_movimiento_almacen(
+                db, "AJUSTE_STOCK", prod, cantidad=stock_nuevo_req-stock_anterior,
+                stock_anterior=stock_anterior, stock_nuevo=stock_nuevo_req,
+                valor_anterior=stock_anterior, valor_nuevo=stock_nuevo_req,
+                motivo="Edición manual de stock desde celular",
+            )
+        if "color" in data and (ant.get("color") or "") != (prod.get("color") or ""):
+            _registrar_movimiento_almacen(
+                db, "AJUSTE_COLOR", prod, cantidad=0,
+                stock_anterior=ant.get("stock"), stock_nuevo=prod.get("stock"), campo="color",
+                valor_anterior=ant.get("color"), valor_nuevo=prod.get("color"),
+                motivo="Edición manual de color desde celular",
+            )
+    return jsonify(json_safe({"ok": True, "producto": prod}))
 
 
 @app.route("/api/catalogo/marcas")
@@ -1420,9 +1635,9 @@ def crear_cotizacion_movil():
 
         for p in items_finales:
             db.execute("""
-                INSERT INTO items (nota_id, codigo, marca, hilo, color, cantidad, precio)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
-            """, (nota_id, p["codigo"], p["marca"], p["hilo"], p["color"], p["cantidad"], p["precio"]))
+                INSERT INTO items (nota_id, producto_id, codigo, marca, hilo, color, cantidad, precio)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (nota_id, p.get("producto_id"), p["codigo"], p["marca"], p["hilo"], p["color"], p["cantidad"], p["precio"]))
 
     return jsonify(json_safe({"ok": True, "nota_id": nota_id, "total": total, "items": items_finales, "cliente": {"id": cliente["id"], "nombre": cliente["nombre"]}}))
 
@@ -1469,9 +1684,9 @@ def editar_cotizacion(nota_id):
         db.execute("DELETE FROM items WHERE nota_id=%s", (nota_id,))
         for p in items_finales:
             db.execute("""
-                INSERT INTO items (nota_id, codigo, marca, hilo, color, cantidad, precio)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
-            """, (nota_id, p["codigo"], p["marca"], p["hilo"], p["color"], p["cantidad"], p["precio"]))
+                INSERT INTO items (nota_id, producto_id, codigo, marca, hilo, color, cantidad, precio)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (nota_id, p.get("producto_id"), p["codigo"], p["marca"], p["hilo"], p["color"], p["cantidad"], p["precio"]))
 
     return jsonify(json_safe({"ok": True, "nota_id": nota_id, "total": total}))
 
@@ -1498,6 +1713,7 @@ def actualizar_envio_nota(nota_id):
     return jsonify({"ok": True, "nota_id": nota_id, "total": total})
 
 
+
 @app.route("/api/notas/<nota_id>/convertir", methods=["POST"])
 def convertir_a_venta(nota_id):
     with DB() as db:
@@ -1506,47 +1722,49 @@ def convertir_a_venta(nota_id):
             return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
         if nota.get("estado") != "COTIZACION":
             return jsonify({"ok": False, "error": "Solo se puede convertir una COTIZACION"}), 400
-
-        items = db.execute("""
-            SELECT i.codigo, COALESCE(i.cantidad,0) AS cantidad, COALESCE(p.stock,0) AS stock,
-                   COALESCE(p.es_inventariable, TRUE) AS es_inventariable
-            FROM items i
-            LEFT JOIN productos p ON p.codigo=i.codigo
-            WHERE i.nota_id=%s
-        """, (nota_id,)).fetchall()
-
-        for it in items:
-            es_inv = it.get("es_inventariable")
-            if isinstance(es_inv, str):
-                es_inv = es_inv.lower() not in ("false", "f", "0", "no", "n")
-            if es_inv and int(it.get("stock") or 0) < int(it.get("cantidad") or 0):
-                return jsonify({"ok": False, "error": f"Stock insuficiente {it['codigo']}"}), 400
-
-        for it in items:
-            es_inv = it.get("es_inventariable")
-            if isinstance(es_inv, str):
-                es_inv = es_inv.lower() not in ("false", "f", "0", "no", "n")
-            if es_inv:
-                db.execute("UPDATE productos SET stock=COALESCE(stock,0)-%s WHERE codigo=%s", (int(it["cantidad"] or 0), it["codigo"]))
-
+        try:
+            descontados = _descontar_stock_de_nota(db, nota_id)
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
         db.execute("UPDATE notas SET estado='VENTA_PENDIENTE' WHERE id=%s", (nota_id,))
-    return jsonify({"ok": True, "nota_id": nota_id, "estado": "VENTA_PENDIENTE"})
+    return jsonify({"ok": True, "nota_id": nota_id, "estado": "VENTA_PENDIENTE", "descontados": descontados})
 
 
 @app.route("/api/notas/<nota_id>/pagar", methods=["POST"])
 def marcar_pagada(nota_id):
     data = request.get_json(force=True) or {}
     comprobante = data.get("comprobante") or None
+    metodo_pago = (data.get("metodo_pago") or data.get("metodo") or "").strip()
+    referencia_pago = (data.get("referencia_pago") or data.get("referencia") or "").strip()
+    monto_pagado = data.get("monto_pagado")
+    try:
+        monto_pagado = float(monto_pagado) if monto_pagado not in (None, "") else None
+    except Exception:
+        return jsonify({"ok": False, "error": "Monto pagado inválido"}), 400
+
     with DB() as db:
-        nota = db.execute("SELECT id, estado FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        nota = db.execute("SELECT id, estado, total FROM notas WHERE id=%s", (nota_id,)).fetchone()
         if not nota:
             return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+        estado_anterior = nota.get("estado")
+        descontados = []
+        # Si se paga directo una cotización, también debe descontar almacén.
+        # Si ya era VENTA_PENDIENTE, el stock ya se descontó al convertir y no se repite.
+        if estado_anterior == "COTIZACION":
+            try:
+                descontados = _descontar_stock_de_nota(db, nota_id)
+            except ValueError as e:
+                return jsonify({"ok": False, "error": str(e)}), 400
+        if monto_pagado is None:
+            monto_pagado = float(nota.get("total") or 0)
         db.execute("""
             UPDATE notas
-            SET estado='PAGADA', fecha_pago=%s, comprobante=COALESCE(%s, comprobante)
+            SET estado='PAGADA', fecha_pago=%s, comprobante=COALESCE(%s, comprobante),
+                metodo_pago=%s, monto_pagado=%s, referencia_pago=%s
             WHERE id=%s
-        """, (now_mexico().isoformat(sep=" ", timespec="seconds"), comprobante, nota_id))
-    return jsonify({"ok": True, "nota_id": nota_id, "estado": "PAGADA"})
+        """, (now_mexico().isoformat(sep=" ", timespec="seconds"), comprobante,
+              metodo_pago or None, monto_pagado, referencia_pago or None, nota_id))
+    return jsonify({"ok": True, "nota_id": nota_id, "estado": "PAGADA", "metodo_pago": metodo_pago, "monto_pagado": monto_pagado, "descontados": descontados})
 
 
 # =========================
