@@ -4030,21 +4030,43 @@ def analizar_imagen_referencia():
             vision_notes.append('fallback_marcas_rojas')
             advertencias.append('Usé respaldo de marcas rojas porque la IA no respondió con productos. Revisa el carrito antes de guardar.')
         elif add_codes and marca and hilo and fb_debug:
-            # Caso típico: la IA interpreta un óvalo grande alrededor del código como X/tachón.
-            # Solo se rescatan círculos MUY claros para no convertir X reales en productos.
-            rescue_codes = _fallback_strong_circle_codes(fb_debug)
-            rescued = []
-            for c in rescue_codes:
-                # Precisión: un óvalo grande y bajo alrededor de código/nombre suele ser selección,
-                # incluso si la IA lo omitió o lo confundió con tachón.
-                if c not in add_codes:
-                    add_codes.append(c)
-                    quantities[c] = quantities.get(c, 1)
-                    rescued.append(c)
-            if rescued:
-                exclude_codes = [c for c in exclude_codes if c not in set(rescued)]
-                vision_notes.append('rescate_ovalos_grandes')
-                advertencias.append('Rescaté como seleccionados estos códigos por óvalo grande claro: ' + ', '.join(rescued) + '. Revisa antes de guardar.')
+            # PRECISIÓN PRIMERO:
+            # Antes se hacía un "rescate" automático de óvalos detectados por geometría local.
+            # Ese respaldo puede confundir trazos de una celda con otra y agregar códigos que no pidió
+            # la clienta (por ejemplo 1, 14, 25, 61 o 73).
+            # Ahora, si la IA ya devolvió productos, NO mezclamos resultados del fallback.
+            # El fallback solo se usa cuando la IA no devuelve ningún producto.
+            if str(os.environ.get('ALLOW_VISUAL_RESCUE', '')).strip().lower() in ('1', 'true', 'yes', 'si'):
+                # Modo opcional para diagnóstico/admin. Aun así solo rescata códigos que la IA haya
+                # marcado como ambiguos o excluidos con razón de círculo/óvalo, no códigos nuevos.
+                rescue_codes = _fallback_strong_circle_codes(fb_debug)
+                allowed_to_rescue = set()
+                try:
+                    if isinstance(phase_result, dict):
+                        for group_name in ('ambiguous_products', 'excluded_products'):
+                            for it in (phase_result.get(group_name) or []):
+                                if not isinstance(it, dict):
+                                    continue
+                                cc = _norm_code_list([it.get('code')])
+                                if not cc:
+                                    continue
+                                reason = _strip_acc(str(it.get('reason') or '') + ' ' + str(it.get('mark_type') or ''))
+                                if any(w in reason for w in ('circulo', 'circle', 'oval', 'ovalo', 'encierro', 'contorno')):
+                                    allowed_to_rescue.add(cc[0])
+                except Exception:
+                    allowed_to_rescue = set()
+                rescued = []
+                for c in rescue_codes:
+                    if c in allowed_to_rescue and c not in add_codes:
+                        add_codes.append(c)
+                        quantities[c] = quantities.get(c, 1)
+                        rescued.append(c)
+                if rescued:
+                    exclude_codes = [c for c in exclude_codes if c not in set(rescued)]
+                    vision_notes.append('rescate_ovalos_grandes_admin')
+                    advertencias.append('Rescaté como seleccionados estos códigos por óvalo grande claro: ' + ', '.join(rescued) + '. Revisa antes de guardar.')
+            else:
+                vision_notes.append('fallback_marcas_rojas_solo_diagnostico')
     except Exception as e:
         vision_notes.append('fallback_marcas_rojas_error:' + str(e)[:160])
 
