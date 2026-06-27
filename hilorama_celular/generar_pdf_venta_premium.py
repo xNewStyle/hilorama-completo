@@ -1,6 +1,8 @@
 
 
 import os
+import io
+import base64
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
@@ -233,10 +235,20 @@ def draw_comprobante_pagado(
 ):
 
     ruta = nota.get("comprobante")
-    if not ruta or not os.path.exists(ruta):
+    if not ruta:
         return
 
-    img = Image.open(ruta)
+    try:
+        if isinstance(ruta, str) and ruta.startswith("data:image"):
+            raw = ruta.split(",", 1)[1] if "," in ruta else ruta
+            img = Image.open(io.BytesIO(base64.b64decode(raw))).convert("RGB")
+        elif os.path.exists(ruta):
+            img = Image.open(ruta)
+        else:
+            return
+    except Exception as e:
+        print("⚠ No se pudo abrir comprobante:", e)
+        return
 
     # rotar si hace falta
     if rotacion:

@@ -159,6 +159,75 @@ def nota_sort_key(n):
     return (fecha_orden(f), str(n.get("id") or ""))
 
 
+DIRECCION_VACIA = {
+    "calle": "",
+    "numero_ext": "",
+    "numero_int": "",
+    "colonia": "",
+    "codigo_postal": "",
+    "estado": "",
+    "municipio": "",
+    "referencia": "",
+}
+
+
+def direccion_vacia():
+    return dict(DIRECCION_VACIA)
+
+
+def normalizar_direccion(value):
+    d = parse_json_text(value, {}) if not isinstance(value, dict) else dict(value)
+    base = direccion_vacia()
+    base.update({k: ("" if v is None else str(v).strip()) for k, v in (d or {}).items()})
+    return base
+
+
+def validar_cliente_completo(cliente):
+    """Misma regla del programa de PC para poder convertir/pagar una venta."""
+    cliente = dict(cliente or {})
+    faltantes = []
+    nombre = str(cliente.get("nombre") or cliente.get("cliente_nombre") or cliente.get("cliente_nombre_real") or "").strip()
+    telefono = re.sub(r"\D+", "", str(cliente.get("telefono") or ""))
+    direccion = normalizar_direccion(cliente.get("direccion"))
+
+    if not nombre:
+        faltantes.append("Nombre completo")
+    if len(telefono) != 10:
+        faltantes.append("Teléfono de 10 dígitos")
+
+    labels = {
+        "calle": "Calle",
+        "numero_ext": "No. exterior",
+        "colonia": "Colonia",
+        "codigo_postal": "Código postal",
+        "estado": "Estado",
+        "municipio": "Municipio / alcaldía",
+    }
+    for key, label in labels.items():
+        if not str(direccion.get(key) or "").strip():
+            faltantes.append(label)
+    if len(str(direccion.get("referencia") or "")) > 100:
+        faltantes.append("Referencia menor a 100 caracteres")
+
+    return len(faltantes) == 0, faltantes
+
+
+def respuesta_cliente_incompleto(cliente, accion="continuar"):
+    cliente = dict(cliente or {})
+    cliente["direccion"] = normalizar_direccion(cliente.get("direccion"))
+    ok, faltantes = validar_cliente_completo(cliente)
+    if ok:
+        return None
+    return jsonify({
+        "ok": False,
+        "code": "CLIENTE_INCOMPLETO",
+        "error": "Completa los datos del cliente para continuar",
+        "accion": accion,
+        "faltantes": faltantes,
+        "cliente": json_safe(cliente),
+    }), 400
+
+
 def require_pin():
     expected = os.environ.get("MOBILE_PIN", "").strip()
     if not expected:
@@ -293,12 +362,28 @@ def ensure_schema():
             )
         """)
 
+        # Historial de comprobantes/pagos como en el programa de PC.
+        # En móvil guardamos el comprobante optimizado como data:image/jpeg;base64
+        # para que siga disponible en Render aunque el disco sea temporal.
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS pagos (
+                id SERIAL PRIMARY KEY,
+                nota_id TEXT REFERENCES notas(id) ON DELETE CASCADE,
+                comprobante TEXT,
+                metodo_pago TEXT,
+                monto_pagado REAL DEFAULT 0,
+                referencia_pago TEXT,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         db.execute("CREATE INDEX IF NOT EXISTS idx_notas_estado_fecha ON notas(estado, fecha DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_items_nota_mobile ON items(nota_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_items_producto_mobile ON items(producto_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_productos_busqueda_mobile ON productos(codigo, marca, hilo, color)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_mov_almacen_fecha_mobile ON movimientos_almacen(fecha DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_mov_almacen_codigo_mobile ON movimientos_almacen(codigo)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_pagos_nota_mobile ON pagos(nota_id, fecha DESC)")
 
     _schema_ready = True
 
@@ -724,6 +809,64 @@ def crear_cliente():
     c = dict(row)
     c["direccion"] = parse_json_text(c.get("direccion"), {})
     return jsonify(json_safe({"ok": True, "cliente": c}))
+
+
+@app.route("/api/clientes/<int:cliente_id>", methods=["PUT", "PATCH"])
+def actualizar_cliente(cliente_id):
+    data = request.get_json(force=True) or {}
+    nombre = (data.get("nombre") or "").strip()
+    telefono = re.sub(r"\D+", "", str(data.get("telefono") or ""))
+    direccion = normalizar_direccion(data.get("direccion") or {})
+    validar = bool(data.get("validar", False))
+
+    if not nombre:
+        return jsonify({"ok": False, "error": "Nombre obligatorio"}), 400
+    if validar and len(telefono) != 10:
+        return jsonify({"ok": False, "error": "Teléfono inválido. Deben ser 10 dígitos."}), 400
+    if validar:
+        ok, faltantes = validar_cliente_completo({"nombre": nombre, "telefono": telefono, "direccion": direccion})
+        if not ok:
+            return jsonify({"ok": False, "code": "CLIENTE_INCOMPLETO", "error": "Faltan datos del cliente", "faltantes": faltantes}), 400
+
+    with DB() as db:
+        row = db.execute("""
+            UPDATE clientes
+            SET nombre=%s, telefono=%s, direccion=%s
+            WHERE id=%s
+            RETURNING id, nombre, telefono, direccion
+        """, (nombre, telefono, json.dumps(direccion, ensure_ascii=False), cliente_id)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+    c = dict(row)
+    c["direccion"] = normalizar_direccion(c.get("direccion"))
+    c["completo"], c["faltantes"] = validar_cliente_completo(c)
+    return jsonify(json_safe({"ok": True, "cliente": c}))
+
+
+@app.route("/api/cp/<cp>")
+def buscar_cp(cp):
+    cp = str(cp or "").strip()
+    if not re.fullmatch(r"\d{5}", cp):
+        return jsonify({"ok": False, "error": "CP inválido"}), 400
+    ruta = os.path.join(APP_DIR, "cp_offline.json")
+    if not os.path.exists(ruta):
+        return jsonify({"ok": False, "error": "No está cargada la base de códigos postales"}), 404
+    try:
+        with open(ruta, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        info = data.get(cp) or data.get(str(cp).zfill(5))
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"No pude leer la base de CP: {exc}"}), 500
+    if not info:
+        return jsonify({"ok": False, "error": "No encontré ese CP"}), 404
+    colonias = info.get("colonias") if isinstance(info.get("colonias"), list) else []
+    return jsonify(json_safe({
+        "ok": True,
+        "cp": cp,
+        "estado": info.get("estado", ""),
+        "municipio": info.get("municipio", ""),
+        "colonias": colonias,
+    }))
 
 
 @app.route("/api/productos")
@@ -1467,9 +1610,8 @@ def _item_key(raw):
 
 def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
     """
-    Normaliza y consolida productos por código + marca + hilo + color.
-    Esto evita duplicados raros cuando un mismo código existe en varios hilos/marcas
-    y conserva el contexto seleccionado en el celular.
+    Normaliza y consolida productos conservando producto_id cuando viene del móvil.
+    Esto hace que el almacén descuente el producto exacto, aunque haya códigos repetidos.
     """
     agrupados = {}
     for raw in items_req:
@@ -1477,15 +1619,21 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
         marca = str(raw.get("marca") or "").strip()
         hilo = str(raw.get("hilo") or "").strip()
         color = str(raw.get("color") or "").strip()
+        producto_id = raw.get("producto_id") or raw.get("id")
+        try:
+            producto_id = int(producto_id) if producto_id not in (None, "") else None
+        except Exception:
+            producto_id = None
         try:
             cantidad = int(float(raw.get("cantidad") or 0))
         except Exception:
             cantidad = 0
-        if not codigo or cantidad <= 0:
+        if not (codigo or producto_id) or cantidad <= 0:
             continue
-        key = _item_key({"codigo": codigo, "marca": marca, "hilo": hilo, "color": color})
+        key = f"ID:{producto_id}" if producto_id else _item_key({"codigo": codigo, "marca": marca, "hilo": hilo, "color": color})
         if key not in agrupados:
             agrupados[key] = {
+                "producto_id": producto_id,
                 "codigo": codigo,
                 "marca": marca,
                 "hilo": hilo,
@@ -1502,45 +1650,61 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
     total = 0.0
 
     for raw in agrupados.values():
+        producto_id = raw.get("producto_id")
         codigo = str(raw.get("codigo") or "").strip()
         marca = str(raw.get("marca") or "").strip()
         hilo = str(raw.get("hilo") or "").strip()
         color = str(raw.get("color") or "").strip()
         cantidad = int(raw.get("cantidad") or 0)
         precio_manual = raw.get("precio")
-        if not codigo or cantidad <= 0:
+        if not (codigo or producto_id) or cantidad <= 0:
             continue
 
-        prod = db.execute("""
-            SELECT
-                p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
-                COALESCE(p.stock,0) AS stock,
-                COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
-                COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
-                COALESCE(pr.venta, p.precio, 0) AS precio_venta
-            FROM productos p
-            LEFT JOIN precios pr ON pr.marca = p.marca
-            WHERE (p.codigo=%s OR p.codigo_barras=%s)
-              AND (%s='' OR UPPER(COALESCE(p.marca,''))=UPPER(%s))
-              AND (%s='' OR UPPER(COALESCE(p.hilo,''))=UPPER(%s))
-              AND (%s='' OR UPPER(COALESCE(p.color,''))=UPPER(%s))
-            ORDER BY
-                CASE
-                    WHEN %s<>'' AND UPPER(COALESCE(p.marca,''))=UPPER(%s)
-                     AND %s<>'' AND UPPER(COALESCE(p.hilo,''))=UPPER(%s) THEN 0
-                    WHEN %s<>'' AND UPPER(COALESCE(p.marca,''))=UPPER(%s) THEN 1
-                    ELSE 2
-                END,
-                p.id
-            LIMIT 1
-        """, (codigo, codigo, marca, marca, hilo, hilo, color, color,
-              marca, marca, hilo, hilo, marca, marca)).fetchone()
+        if producto_id:
+            prod = db.execute("""
+                SELECT
+                    p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                    COALESCE(p.stock,0) AS stock,
+                    COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+                    COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
+                    COALESCE(pr.venta, p.precio, 0) AS precio_venta
+                FROM productos p
+                LEFT JOIN precios pr ON pr.marca = p.marca
+                WHERE p.id=%s
+                LIMIT 1
+            """, (producto_id,)).fetchone()
+        else:
+            prod = db.execute("""
+                SELECT
+                    p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                    COALESCE(p.stock,0) AS stock,
+                    COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+                    COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
+                    COALESCE(pr.venta, p.precio, 0) AS precio_venta
+                FROM productos p
+                LEFT JOIN precios pr ON pr.marca = p.marca
+                WHERE (p.codigo=%s OR p.codigo_barras=%s)
+                  AND (%s='' OR UPPER(COALESCE(p.marca,''))=UPPER(%s))
+                  AND (%s='' OR UPPER(COALESCE(p.hilo,''))=UPPER(%s))
+                  AND (%s='' OR UPPER(COALESCE(p.color,''))=UPPER(%s))
+                ORDER BY
+                    CASE
+                        WHEN %s<>'' AND UPPER(COALESCE(p.marca,''))=UPPER(%s)
+                         AND %s<>'' AND UPPER(COALESCE(p.hilo,''))=UPPER(%s) THEN 0
+                        WHEN %s<>'' AND UPPER(COALESCE(p.marca,''))=UPPER(%s) THEN 1
+                        ELSE 2
+                    END,
+                    CASE WHEN %s<>'' AND UPPER(COALESCE(p.color,''))=UPPER(%s) THEN 0 ELSE 1 END,
+                    p.id
+                LIMIT 1
+            """, (codigo, codigo, marca, marca, hilo, hilo, color, color,
+                  marca, marca, hilo, hilo, marca, marca, color, color)).fetchone()
 
         if not prod:
             contexto = ""
             if marca or hilo:
                 contexto = f" en contexto {marca or 'todas'} / {hilo or 'todos'}"
-            errores.append(f"No existe el producto {codigo}{contexto}")
+            errores.append(f"No existe el producto {codigo or producto_id}{contexto}")
             continue
 
         prod = dict(prod)
@@ -1717,11 +1881,19 @@ def actualizar_envio_nota(nota_id):
 @app.route("/api/notas/<nota_id>/convertir", methods=["POST"])
 def convertir_a_venta(nota_id):
     with DB() as db:
-        nota = db.execute("SELECT id, estado FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        nota = db.execute("""
+            SELECT n.id, n.estado, n.cliente_id, c.nombre, c.telefono, c.direccion
+            FROM notas n
+            LEFT JOIN clientes c ON c.id=n.cliente_id
+            WHERE n.id=%s
+        """, (nota_id,)).fetchone()
         if not nota:
             return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
         if nota.get("estado") != "COTIZACION":
             return jsonify({"ok": False, "error": "Solo se puede convertir una COTIZACION"}), 400
+        incompleto = respuesta_cliente_incompleto(nota, accion="convertir")
+        if incompleto:
+            return incompleto
         try:
             descontados = _descontar_stock_de_nota(db, nota_id)
         except ValueError as e:
@@ -1733,8 +1905,8 @@ def convertir_a_venta(nota_id):
 @app.route("/api/notas/<nota_id>/pagar", methods=["POST"])
 def marcar_pagada(nota_id):
     data = request.get_json(force=True) or {}
-    comprobante = data.get("comprobante") or None
-    metodo_pago = (data.get("metodo_pago") or data.get("metodo") or "").strip()
+    comprobante_in = data.get("comprobante_base64") or data.get("comprobante") or None
+    metodo_pago = (data.get("metodo_pago") or data.get("metodo") or "Transferencia").strip()
     referencia_pago = (data.get("referencia_pago") or data.get("referencia") or "").strip()
     monto_pagado = data.get("monto_pagado")
     try:
@@ -1743,13 +1915,45 @@ def marcar_pagada(nota_id):
         return jsonify({"ok": False, "error": "Monto pagado inválido"}), 400
 
     with DB() as db:
-        nota = db.execute("SELECT id, estado, total FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        nota = db.execute("""
+            SELECT n.id, n.estado, n.total, n.comprobante,
+                   n.cliente_id, c.nombre, c.telefono, c.direccion
+            FROM notas n
+            LEFT JOIN clientes c ON c.id=n.cliente_id
+            WHERE n.id=%s
+        """, (nota_id,)).fetchone()
         if not nota:
             return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+        nota = dict(nota)
         estado_anterior = nota.get("estado")
+        if estado_anterior not in ("COTIZACION", "VENTA_PENDIENTE", "PAGADA"):
+            return jsonify({"ok": False, "error": "Esta nota no se puede marcar como pagada"}), 400
+
+        # Igual que en la PC: antes de continuar el proceso de venta/pago,
+        # si el cliente está incompleto, se pide completar datos y luego se reintenta.
+        if estado_anterior != "PAGADA":
+            incompleto = respuesta_cliente_incompleto(nota, accion="pagar")
+            if incompleto:
+                return incompleto
+
+        comprobante_final = None
+        if comprobante_in:
+            comprobante_final = _normalizar_comprobante_data_url(comprobante_in)
+        elif nota.get("comprobante"):
+            comprobante_final = nota.get("comprobante")
+
+        metodo_norm = _strip_acc(metodo_pago)
+        if not comprobante_final and metodo_norm not in ("efectivo", "cash"):
+            return jsonify({
+                "ok": False,
+                "code": "FALTA_COMPROBANTE",
+                "error": "Sube o arrastra la imagen del comprobante antes de confirmar el pago",
+            }), 400
+
         descontados = []
-        # Si se paga directo una cotización, también debe descontar almacén.
+        # Si se paga directo una cotización, también descuenta almacén.
         # Si ya era VENTA_PENDIENTE, el stock ya se descontó al convertir y no se repite.
+        # Si ya era PAGADA, solo actualizamos/cambiamos el comprobante, sin tocar stock.
         if estado_anterior == "COTIZACION":
             try:
                 descontados = _descontar_stock_de_nota(db, nota_id)
@@ -1757,14 +1961,53 @@ def marcar_pagada(nota_id):
                 return jsonify({"ok": False, "error": str(e)}), 400
         if monto_pagado is None:
             monto_pagado = float(nota.get("total") or 0)
+
         db.execute("""
             UPDATE notas
-            SET estado='PAGADA', fecha_pago=%s, comprobante=COALESCE(%s, comprobante),
-                metodo_pago=%s, monto_pagado=%s, referencia_pago=%s
+            SET estado='PAGADA',
+                fecha_pago=COALESCE(fecha_pago, %s),
+                comprobante=COALESCE(%s, comprobante),
+                metodo_pago=%s,
+                monto_pagado=%s,
+                referencia_pago=%s
             WHERE id=%s
-        """, (now_mexico().isoformat(sep=" ", timespec="seconds"), comprobante,
+        """, (now_mexico().isoformat(sep=" ", timespec="seconds"), comprobante_final,
               metodo_pago or None, monto_pagado, referencia_pago or None, nota_id))
-    return jsonify({"ok": True, "nota_id": nota_id, "estado": "PAGADA", "metodo_pago": metodo_pago, "monto_pagado": monto_pagado, "descontados": descontados})
+
+        if comprobante_final:
+            db.execute("""
+                INSERT INTO pagos (nota_id, comprobante, metodo_pago, monto_pagado, referencia_pago, fecha)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (nota_id, comprobante_final, metodo_pago or None, monto_pagado, referencia_pago or None, now_mexico()))
+
+    return jsonify({
+        "ok": True,
+        "nota_id": nota_id,
+        "estado": "PAGADA",
+        "metodo_pago": metodo_pago,
+        "monto_pagado": monto_pagado,
+        "comprobante": bool(comprobante_final),
+        "descontados": descontados,
+    })
+
+
+@app.route("/api/notas/<nota_id>/comprobante", methods=["POST"])
+def guardar_comprobante_nota(nota_id):
+    data = request.get_json(force=True) or {}
+    comprobante_in = data.get("comprobante_base64") or data.get("comprobante")
+    if not comprobante_in:
+        return jsonify({"ok": False, "error": "Falta imagen de comprobante"}), 400
+    comprobante_final = _normalizar_comprobante_data_url(comprobante_in)
+    with DB() as db:
+        row = db.execute("""
+            UPDATE notas
+            SET comprobante=%s
+            WHERE id=%s
+            RETURNING id, comprobante
+        """, (comprobante_final, nota_id)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+    return jsonify({"ok": True, "nota_id": nota_id, "comprobante": comprobante_final})
 
 
 # =========================
@@ -1874,6 +2117,28 @@ def _optimizar_data_url_imagen(data_url, max_side=1400, quality=86):
         return _image_bytes_to_data_url(bio.getvalue(), "image/jpeg")
     except Exception:
         return data_url
+
+
+def _normalizar_comprobante_data_url(data_url, max_side=1400, quality=82):
+    """Optimiza y devuelve comprobante como data URL persistente para Render."""
+    if not data_url:
+        return None
+    data_url = str(data_url).strip()
+    if not data_url.startswith("data:image"):
+        # Compatibilidad con rutas viejas del programa de PC.
+        return data_url
+    try:
+        raw = _extract_data_url_bytes(data_url)
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        w, h = img.size
+        if max(w, h) > max_side:
+            scale = max_side / max(w, h)
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+        bio = io.BytesIO()
+        img.save(bio, format="JPEG", quality=quality, optimize=True)
+        return _image_bytes_to_data_url(bio.getvalue(), "image/jpeg")
+    except Exception as exc:
+        raise ValueError(f"No pude procesar el comprobante: {exc}")
 
 
 def _image_reference_summary(texto):
@@ -3905,20 +4170,30 @@ def _nota_full(db, nota_id):
         LEFT JOIN LATERAL (
             SELECT p2.*
             FROM productos p2
-            WHERE p2.codigo = i.codigo
+            WHERE (
+                    (i.producto_id IS NOT NULL AND p2.id = i.producto_id)
+                    OR (
+                        i.producto_id IS NULL
+                        AND p2.codigo = i.codigo
+                    )
+                  )
               AND (
-                    COALESCE(NULLIF(i.marca,''),'') = ''
+                    i.producto_id IS NOT NULL
+                    OR COALESCE(NULLIF(i.marca,''),'') = ''
                     OR UPPER(COALESCE(p2.marca,'')) = UPPER(COALESCE(i.marca,''))
                   )
               AND (
-                    COALESCE(NULLIF(i.hilo,''),'') = ''
+                    i.producto_id IS NOT NULL
+                    OR COALESCE(NULLIF(i.hilo,''),'') = ''
                     OR UPPER(COALESCE(p2.hilo,'')) = UPPER(COALESCE(i.hilo,''))
                   )
               AND (
-                    COALESCE(NULLIF(i.color,''),'') = ''
+                    i.producto_id IS NOT NULL
+                    OR COALESCE(NULLIF(i.color,''),'') = ''
                     OR UPPER(COALESCE(p2.color,'')) = UPPER(COALESCE(i.color,''))
                   )
             ORDER BY
+                CASE WHEN i.producto_id IS NOT NULL AND p2.id=i.producto_id THEN 0 ELSE 1 END,
                 CASE WHEN UPPER(COALESCE(p2.marca,'')) = UPPER(COALESCE(i.marca,'')) THEN 0 ELSE 1 END,
                 CASE WHEN UPPER(COALESCE(p2.hilo,'')) = UPPER(COALESCE(i.hilo,'')) THEN 0 ELSE 1 END,
                 CASE WHEN UPPER(COALESCE(p2.color,'')) = UPPER(COALESCE(i.color,'')) THEN 0 ELSE 1 END,
