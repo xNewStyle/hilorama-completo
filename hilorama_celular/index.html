@@ -104,8 +104,9 @@
           <button class="light" type="button" onclick="limpiarPedidoTexto()">Limpiar</button>
         </div>
         <details class="ai-block"><summary>🎤 Voz y audios</summary>
-          <div class="speech-controls" style="margin-top:8px"><button class="secondary" id="btnStartDictado" type="button" onclick="startDictadoPedido()">🎙️ Iniciar dictado largo</button><button class="red" id="btnStopDictado" type="button" onclick="stopDictadoPedido()">✅ Terminar dictado</button></div>
-          <div id="pedidoDictadoStatus" class="speech-live"><span class="voice-dot"></span>Dictado: detenido. Puedes dictar mensajes largos; presiona Terminar cuando acabes.</div>
+          <div class="speech-controls" style="margin-top:8px"><button class="secondary" id="btnStartDictado" type="button" onclick="startDictadoPedido()">🎙️ Iniciar dictado preciso</button><button class="red" id="btnStopDictado" type="button" onclick="stopDictadoPedido()">✅ Terminar dictado</button></div>
+          <div id="pedidoDictadoStatus" class="speech-live"><span class="voice-dot"></span>Dictado: detenido. Graba todo el pedido; la transcripción final se hace cuando presionas Terminar.</div>
+          <div class="small" style="margin-top:6px">Modo preciso: usa el micrófono con reducción de ruido del celular y transcribe el audio completo al terminar. Habla cerca del teléfono y evita música/TV de fondo.</div>
           <label>Audio de WhatsApp</label><input id="pedidoAudio" type="file" accept="audio/*">
           <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="transcribirAudioSubido()">Transcribir audio</button><button class="light" onclick="limpiarAudioSubido()">Limpiar audio</button></div>
           <div id="pedidoAudioStatus" class="small" style="margin-top:8px">Audio: sin transcribir.</div>
@@ -143,7 +144,7 @@
 <div class="footer"><div class="footer-inner"><button id="tabNotas" onclick="showView('notas')">Notas</button><button id="tabCrear" class="green" onclick="startCrearNueva()">Crear</button><button id="tabAlmacen" class="secondary" onclick="showView('almacen')">Almacén</button><button id="tabEmpacador" class="orange" onclick="showView('empacador')">Empacar</button></div></div>
 <script>
 const $=id=>document.getElementById(id);
-let state={pin:localStorage.getItem('hilorama_mobile_pin')||'',notas:[],cliente:null,cart:[],productos:[],almacen:[],movimientos:[],empacador:[],pending:JSON.parse(localStorage.getItem('hilorama_pending')||'[]'),editing:null,currentView:'notas',viewStack:[],saving:false,currentDetail:null,parserPedidos:[],pedidoImagenActiva:false,pedidoImagenAnalizada:'',speechRec:null,speechOn:false,speechKeepAlive:false,speechManualStop:false,speechSeen:[],speechInterim:'',audioTranscript:''};
+let state={pin:localStorage.getItem('hilorama_mobile_pin')||'',notas:[],cliente:null,cart:[],productos:[],almacen:[],movimientos:[],empacador:[],pending:JSON.parse(localStorage.getItem('hilorama_pending')||'[]'),editing:null,currentView:'notas',viewStack:[],saving:false,currentDetail:null,parserPedidos:[],pedidoImagenActiva:false,pedidoImagenAnalizada:'',speechRec:null,speechOn:false,speechKeepAlive:false,speechManualStop:false,speechSeen:[],speechInterim:'',voiceMode:'idle',voiceRecorder:null,voiceStream:null,voiceChunks:[],voiceStartedAt:0,voiceTimer:null,audioTranscript:''};
 function isAdminDebug(){const q=new URLSearchParams(location.search);if(q.get('admin')==='1'){localStorage.setItem('hilorama_admin_debug','1');return true}if(q.get('admin')==='0'){localStorage.removeItem('hilorama_admin_debug');return false}return localStorage.getItem('hilorama_admin_debug')==='1'}
 function applyAdminDebugMode(){document.documentElement.classList.toggle('admin-on',isAdminDebug())}
 function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}function money(v){return new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(v||0))}
@@ -164,62 +165,89 @@ async function loadHilos(marcaId,hiloId){const marca=$(marcaId).value;const old=
 async function loadPedidos(){const p=await apiFetch('/api/pedidos');$('pedidoSelect').innerHTML=p.map(x=>`<option value="${escapeAttr(x.numero)}">Pedido ${escapeHtml(x.numero)}${x.activo?' · activo':''}</option>`).join('')||'<option value="">Sin pedido</option>'}
 async function loadEnvios(){const e=await apiFetch('/api/envios');$('envioSelect').innerHTML=e.map(x=>`<option value="${escapeAttr(x.paqueteria)}">${escapeHtml(x.paqueteria)}</option>`).join('');}
 function syncParserCliente(){const c=state.cliente||{};if($('parserCliente'))$('parserCliente').value=c.nombre||$('nuevoClienteNombre').value||'';if($('parserTelefono'))$('parserTelefono').value=c.telefono||$('nuevoClienteTel').value||''}
-function limpiarPedidoTexto(){if($('pedidoTexto'))$('pedidoTexto').value='';if($('pedidoImagenTexto'))$('pedidoImagenTexto').value='';if($('parserResult'))$('parserResult').innerHTML='';state.parserPedidos=[];state.pedidoImagenActiva=false;state.pedidoImagenAnalizada='';state.audioTranscript='';if($('pedidoImagen'))$('pedidoImagen').value='';if($('pedidoImagenPreview')){$('pedidoImagenPreview').innerHTML='';$('pedidoImagenPreview').classList.add('hidden')}if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML='';if($('pedidoAudio'))$('pedidoAudio').value='';if($('pedidoAudioStatus'))$('pedidoAudioStatus').textContent='Audio: sin transcribir.';if($('pedidoDictadoStatus'))$('pedidoDictadoStatus').textContent='Dictado: detenido.'}
+function limpiarPedidoTexto(){if($('pedidoTexto'))$('pedidoTexto').value='';if($('pedidoImagenTexto'))$('pedidoImagenTexto').value='';if($('parserResult'))$('parserResult').innerHTML='';state.parserPedidos=[];state.pedidoImagenActiva=false;state.pedidoImagenAnalizada='';state.audioTranscript='';if($('pedidoImagen'))$('pedidoImagen').value='';if($('pedidoImagenPreview')){$('pedidoImagenPreview').innerHTML='';$('pedidoImagenPreview').classList.add('hidden')}if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML='';if($('pedidoAudio'))$('pedidoAudio').value='';if($('pedidoAudioStatus'))$('pedidoAudioStatus').textContent='Audio: sin transcribir.';if($('pedidoDictadoStatus'))$('pedidoDictadoStatus').innerHTML='<span class="voice-dot"></span>Dictado: detenido.'}
 function onPedidoImagenChange(ev){const f=ev.target.files&&ev.target.files[0];const box=$('pedidoImagenPreview');if(!f){state.pedidoImagenActiva=false;box.innerHTML='';box.classList.add('hidden');return}state.pedidoImagenActiva=true;const url=URL.createObjectURL(f);box.classList.remove('hidden');box.innerHTML=`<div class="banner image-preview"><strong>Imagen cargada:</strong> ${escapeHtml(f.name)}<div style="margin-top:8px"><img src="${url}" alt="Imagen cargada"></div></div>`}
 function _normalizaDictadoTexto(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9ñ\s]/g,'').replace(/\s+/g,' ').trim()}
-function _appendDictadoTexto(txt){txt=String(txt||'').replace(/\s+/g,' ').trim();if(!txt)return;const norm=_normalizaDictadoTexto(txt);if(!norm)return;if(!state.speechSeen)state.speechSeen=[];if(state.speechSeen.includes(norm))return;const last=state.speechSeen[state.speechSeen.length-1]||'';if(last&&(last===norm||last.includes(norm)||norm.includes(last)))return;state.speechSeen.push(norm);if(state.speechSeen.length>80)state.speechSeen=state.speechSeen.slice(-80);const e=$('pedidoTexto');const actual=e.value.trim();e.value=(actual?actual+' ':'')+txt;e.dispatchEvent(new Event('input',{bubbles:true}))}
+function _appendDictadoTexto(txt){txt=String(txt||'').replace(/\s+/g,' ').trim();if(!txt)return;const norm=_normalizaDictadoTexto(txt);if(!norm)return;if(!state.speechSeen)state.speechSeen=[];if(state.speechSeen.includes(norm))return;const last=state.speechSeen[state.speechSeen.length-1]||'';if(last&&(last===norm||last.includes(norm)||norm.includes(last)))return;state.speechSeen.push(norm);if(state.speechSeen.length>120)state.speechSeen=state.speechSeen.slice(-120);const e=$('pedidoTexto');const actual=e.value.trim();e.value=(actual?actual+' ':'')+txt;e.value=e.value.replace(/\s+/g,' ').trim();e.dispatchEvent(new Event('input',{bubbles:true}))}
 function _setDictadoStatus(txt,on=false){const el=$('pedidoDictadoStatus');if(!el)return;el.classList.toggle('voice-on',!!on);el.innerHTML='<span class="voice-dot"></span>'+escapeHtml(txt)}
+function _voiceMime(){if(!window.MediaRecorder)return '';const opts=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm','audio/mp4'];return opts.find(x=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(x))||''}
+function _voiceExt(mime){mime=String(mime||'').toLowerCase();if(mime.includes('mp4'))return 'm4a';if(mime.includes('ogg'))return 'ogg';if(mime.includes('wav'))return 'wav';return 'webm'}
+function _voiceStopTracks(){try{if(state.voiceStream){state.voiceStream.getTracks().forEach(t=>{try{t.stop()}catch(_){}})}}catch(_){ }state.voiceStream=null}
+function _voiceSetButtons(recording=false,busy=false){const a=$('btnStartDictado'),b=$('btnStopDictado');if(a){a.disabled=recording||busy;a.textContent=busy?'⏳ Transcribiendo...':'🎙️ Iniciar dictado preciso'}if(b){b.disabled=(!recording&& !busy);b.textContent=recording?'✅ Terminar dictado':'✅ Terminar dictado'}}
+function _voiceStartTimer(){clearInterval(state.voiceTimer);state.voiceTimer=setInterval(()=>{if(state.voiceMode==='recording'){const sec=Math.max(0,Math.round((Date.now()-state.voiceStartedAt)/1000));_setDictadoStatus('Grabando audio completo con reducción de ruido… '+sec+'s. Presiona Terminar cuando acabes.',true)}},1000)}
+function _voiceStopTimer(){clearInterval(state.voiceTimer);state.voiceTimer=null}
+async function _transcribirBlobDictado(blob,mime){
+  if(!blob||blob.size<800){_setDictadoStatus('No detecté audio suficiente. Acerca el celular y vuelve a intentar.',false);return}
+  state.voiceMode='uploading';_voiceSetButtons(false,true);_voiceStopTimer();
+  const secs=Math.max(1,Math.round((Date.now()-(state.voiceStartedAt||Date.now()))/1000));
+  _setDictadoStatus('Procesando dictado de '+secs+'s… espera un momento.',true);
+  try{
+    const filename='dictado_hilorama_'+Date.now()+'.'+_voiceExt(mime);
+    const file=new File([blob],filename,{type:mime||blob.type||'audio/webm'});
+    const audio_base64=await fileToDataUrl(file);
+    const marca=$('marcaCtx')?$('marcaCtx').value:'';
+    const hilo=$('hiloCtx')?$('hiloCtx').value:'';
+    const prompt='Pedido de mercería Hilorama en español de México. Puede contener códigos de colores y cantidades: Velluto, Komfy Mini, Karina, Alize, tonos, números, piezas, madejas, dame, surtido. Transcribe literal, conservando números como dígitos cuando sean códigos o cantidades.';
+    const r=await apiFetch('/api/transcribir-audio',{method:'POST',body:JSON.stringify({audio_base64,filename,prompt,marca,hilo,source:'dictado_preciso'})});
+    const txt=(r.transcript||'').trim();
+    if(!txt){_setDictadoStatus('No pude obtener texto del dictado. Intenta hablar más cerca del micrófono.',false);return}
+    _appendDictadoTexto(txt);
+    _setDictadoStatus('Dictado transcrito: '+txt.slice(0,160)+(txt.length>160?'…':''),false);
+  }catch(e){
+    _setDictadoStatus('Error al transcribir dictado: '+(e.message||e)+'. Revisa OPENAI_API_KEY o intenta con audio de WhatsApp.',false);
+  }finally{
+    state.voiceMode='idle';state.voiceChunks=[];_voiceSetButtons(false,false);_voiceStopTracks();
+  }
+}
+async function startDictadoPedido(){
+  if(state.voiceMode==='recording'||state.voiceMode==='uploading'){_setDictadoStatus('Ya hay un dictado activo. Presiona Terminar dictado.',true);return}
+  state.speechSeen=state.speechSeen||[];state.voiceChunks=[];state.voiceStartedAt=Date.now();
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder){
+    try{
+      const constraints={audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,sampleRate:16000,sampleSize:16}};
+      const stream=await navigator.mediaDevices.getUserMedia(constraints);
+      const mime=_voiceMime();
+      const rec=mime?new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000}):new MediaRecorder(stream);
+      state.voiceStream=stream;state.voiceRecorder=rec;state.voiceMode='recording';
+      rec.ondataavailable=(ev)=>{if(ev.data&&ev.data.size>0)state.voiceChunks.push(ev.data)};
+      rec.onerror=()=>{_setDictadoStatus('El grabador tuvo un error. Intenta de nuevo o sube audio de WhatsApp.',false);_voiceSetButtons(false,false);_voiceStopTimer();_voiceStopTracks();state.voiceMode='idle'};
+      rec.onstop=()=>{const finalMime=rec.mimeType||mime||'audio/webm';const blob=new Blob(state.voiceChunks,{type:finalMime});_voiceStopTracks();_transcribirBlobDictado(blob,finalMime)};
+      rec.start(1000);
+      _voiceSetButtons(true,false);_voiceStartTimer();
+      _setDictadoStatus('Grabando con reducción de ruido… habla todo el pedido y presiona Terminar cuando acabes.',true);
+      return;
+    }catch(e){
+      _voiceStopTracks();
+      _setDictadoStatus('No pude abrir el micrófono con grabación precisa. Intento dictado básico del navegador…',true);
+      setTimeout(()=>startDictadoBasicoPedido(),250);
+      return;
+    }
+  }
+  startDictadoBasicoPedido();
+}
+function stopDictadoPedido(){
+  if(state.voiceMode==='recording'&&state.voiceRecorder){
+    _setDictadoStatus('Terminando grabación… ahora voy a transcribir el audio completo.',true);_voiceSetButtons(false,true);_voiceStopTimer();
+    try{state.voiceRecorder.stop()}catch(e){_voiceStopTracks();state.voiceMode='idle';_setDictadoStatus('No pude cerrar la grabación. Intenta de nuevo.',false);_voiceSetButtons(false,false)}
+    return;
+  }
+  if(state.voiceMode==='uploading'){_setDictadoStatus('Ya estoy transcribiendo. Espera a que termine.',true);return}
+  stopDictadoBasicoPedido();
+}
+function toggleDictadoPedido(){if(state.voiceMode==='recording'||state.speechOn)stopDictadoPedido();else startDictadoPedido()}
 function _crearReconocedorDictado(){
   const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!Speech)return null;
   const rec=new Speech();
-  rec.lang='es-MX';
-  rec.continuous=true;
-  rec.interimResults=true;
-  rec.maxAlternatives=1;
-  rec.onstart=()=>{state.speechOn=true;_setDictadoStatus('Escuchando dictado largo... habla todo el pedido y presiona Terminar dictado cuando acabes.',true)};
-  rec.onresult=(ev)=>{
-    let finalTxt='';let interim='';
-    for(let i=ev.resultIndex;i<ev.results.length;i++){
-      const part=(ev.results[i][0]&&ev.results[i][0].transcript)||'';
-      if(ev.results[i].isFinal)finalTxt+=part+' '; else interim+=part+' ';
-    }
-    finalTxt=finalTxt.trim();interim=interim.trim();
-    if(finalTxt){_appendDictadoTexto(finalTxt);state.speechInterim='';_setDictadoStatus('Agregado: '+finalTxt+' · Sigue hablando o presiona Terminar dictado.',true)}
-    else if(interim){state.speechInterim=interim;_setDictadoStatus('Escuchando: '+interim,true)}
-  };
-  rec.onerror=(ev)=>{
-    const err=ev.error||'desconocido';
-    if(err==='no-speech'&&state.speechKeepAlive&&!state.speechManualStop){_setDictadoStatus('Sigo escuchando... habla cuando quieras o presiona Terminar.',true);return}
-    state.speechOn=false;
-    _setDictadoStatus('Error de dictado: '+err+'. Puedes continuar con Iniciar o subir audio de WhatsApp.',false);
-  };
-  rec.onend=()=>{
-    state.speechOn=false;
-    if(state.speechKeepAlive&&!state.speechManualStop){
-      setTimeout(()=>{if(state.speechKeepAlive&&!state.speechOn){try{state.speechRec=_crearReconocedorDictado();state.speechRec.start()}catch(e){_setDictadoStatus('El navegador pausó el dictado. Presiona Iniciar para continuar.',false)}}},350);
-      return;
-    }
-    _setDictadoStatus('Dictado terminado. Revisa el texto y presiona Interpretar.',false);
-  };
+  rec.lang='es-MX';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=3;
+  rec.onstart=()=>{state.speechOn=true;_setDictadoStatus('Dictado básico activo… habla el pedido y presiona Terminar.',true)};
+  rec.onresult=(ev)=>{let finalTxt='';let interim='';for(let i=ev.resultIndex;i<ev.results.length;i++){const alt=ev.results[i][0];const part=(alt&&alt.transcript)||'';if(ev.results[i].isFinal)finalTxt+=part+' ';else interim+=part+' '}finalTxt=finalTxt.trim();interim=interim.trim();if(finalTxt){_appendDictadoTexto(finalTxt);state.speechInterim='';_setDictadoStatus('Agregado: '+finalTxt+' · Sigue hablando o presiona Terminar.',true)}else if(interim){state.speechInterim=interim;_setDictadoStatus('Escuchando: '+interim,true)}};
+  rec.onerror=(ev)=>{const err=ev.error||'desconocido';if(err==='no-speech'&&state.speechKeepAlive&&!state.speechManualStop){_setDictadoStatus('Sigo escuchando… habla cuando quieras o presiona Terminar.',true);return}state.speechOn=false;_setDictadoStatus('Error de dictado básico: '+err+'. Usa dictado preciso o sube audio de WhatsApp.',false)};
+  rec.onend=()=>{state.speechOn=false;if(state.speechKeepAlive&&!state.speechManualStop){setTimeout(()=>{if(state.speechKeepAlive&&!state.speechOn){try{state.speechRec=_crearReconocedorDictado();state.speechRec.start()}catch(e){_setDictadoStatus('El navegador pausó el dictado básico. Presiona Iniciar para continuar.',false)}}},350);return}_setDictadoStatus('Dictado terminado. Revisa el texto y presiona Interpretar.',false)};
   return rec;
 }
-function startDictadoPedido(){
-  const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!Speech){alert('Tu navegador no soporta dictado continuo. Usa subir audio de WhatsApp para mejor resultado.');return}
-  if(state.speechOn||state.speechKeepAlive){_setDictadoStatus('Dictado activo. Presiona Terminar dictado cuando acabes.',true);return}
-  state.speechManualStop=false;state.speechKeepAlive=true;state.speechSeen=state.speechSeen||[];state.speechInterim='';
-  try{state.speechRec=_crearReconocedorDictado();state.speechRec.start()}catch(e){state.speechKeepAlive=false;state.speechOn=false;_setDictadoStatus('No pude iniciar dictado. Cierra y vuelve a abrir la app.',false)}
-}
-function stopDictadoPedido(){
-  state.speechManualStop=true;state.speechKeepAlive=false;
-  const rec=state.speechRec;
-  if(rec){try{rec.stop()}catch(e){try{rec.abort()}catch(_){}}}
-  state.speechOn=false;
-  _setDictadoStatus('Terminando dictado... si falta una última frase espera 1 segundo y luego interpreta.',false);
-  setTimeout(()=>_setDictadoStatus('Dictado terminado. Revisa el texto y presiona Interpretar.',false),900);
-}
-function toggleDictadoPedido(){if(state.speechOn)stopDictadoPedido();else startDictadoPedido()}
+function startDictadoBasicoPedido(){const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Speech){alert('Tu navegador no soporta dictado. Usa audio de WhatsApp.');return}if(state.speechOn||state.speechKeepAlive){_setDictadoStatus('Dictado activo. Presiona Terminar dictado cuando acabes.',true);return}state.speechManualStop=false;state.speechKeepAlive=true;state.speechSeen=state.speechSeen||[];state.speechInterim='';try{state.speechRec=_crearReconocedorDictado();state.speechRec.start();_voiceSetButtons(true,false)}catch(e){state.speechKeepAlive=false;state.speechOn=false;_setDictadoStatus('No pude iniciar dictado. Cierra y vuelve a abrir la app.',false);_voiceSetButtons(false,false)}}
+function stopDictadoBasicoPedido(){state.speechManualStop=true;state.speechKeepAlive=false;const rec=state.speechRec;if(rec){try{rec.stop()}catch(e){try{rec.abort()}catch(_){}}}state.speechOn=false;_voiceSetButtons(false,false);_setDictadoStatus('Dictado terminado. Revisa el texto y presiona Interpretar.',false)}
 function abrirPdfNota(id){window.open('/nota-pdf/'+encodeURIComponent(id),'_blank')}
 async function fileToDataUrl(file){return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(new Error('No pude leer el archivo'));r.readAsDataURL(file)})}
 function limpiarAnalisisImagen(){state.pedidoImagenAnalizada='';if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML=''}
@@ -304,7 +332,7 @@ async function analizarImagenReferencia(){
     }
   }catch(e){$('pedidoImagenAnalisis').innerHTML=`<div class="result-warn"><b>No pude analizar la imagen.</b><br>${escapeHtml(e.message)}<br>Si vuelve a pasar, entra con ?admin=1 y copia el diagnóstico.</div>`;if($('mapaVisualDebug')){$('mapaVisualDebug').textContent='ERROR AL ANALIZAR:\n'+e.message}}
 }
-async function transcribirAudioSubido(){const f=$('pedidoAudio').files&&$('pedidoAudio').files[0];if(!f)return alert('Primero selecciona un audio.');$('pedidoAudioStatus').textContent='Transcribiendo audio...';try{const audio_base64=await fileToDataUrl(f);const r=await apiFetch('/api/transcribir-audio',{method:'POST',body:JSON.stringify({audio_base64,filename:f.name})});state.audioTranscript=r.transcript||'';$('pedidoAudioStatus').textContent='Audio transcrito.';const base=$('pedidoTexto').value.trim();$('pedidoTexto').value=(base+' '+state.audioTranscript).replace(/\s+/g,' ').trim()}catch(e){$('pedidoAudioStatus').textContent='Error al transcribir: '+e.message}}
+async function transcribirAudioSubido(){const f=$('pedidoAudio').files&&$('pedidoAudio').files[0];if(!f)return alert('Primero selecciona un audio.');$('pedidoAudioStatus').textContent='Transcribiendo audio con modo preciso...';try{const audio_base64=await fileToDataUrl(f);const prompt='Pedido de mercería Hilorama en español de México. Puede contener códigos y cantidades de hilos/estambres; conserva números como dígitos.';const r=await apiFetch('/api/transcribir-audio',{method:'POST',body:JSON.stringify({audio_base64,filename:f.name,prompt,source:'audio_whatsapp'})});state.audioTranscript=r.transcript||'';$('pedidoAudioStatus').textContent='Audio transcrito.';const base=$('pedidoTexto').value.trim();$('pedidoTexto').value=(base+' '+state.audioTranscript).replace(/\s+/g,' ').trim();$('pedidoTexto').dispatchEvent(new Event('input',{bubbles:true}))}catch(e){$('pedidoAudioStatus').textContent='Error al transcribir: '+e.message}}
 
 
 async function loadNotas(){const params=new URLSearchParams({estado:$('estadoFiltro').value,q:$('buscarNota').value.trim(),limit:'150'});try{state.notas=await apiFetch('/api/notas?'+params);$('notasCount').textContent=state.notas.length;renderNotas()}catch(e){$('notasList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}}

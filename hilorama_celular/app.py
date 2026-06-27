@@ -4070,12 +4070,15 @@ def transcribir_audio():
     data = request.get_json(force=True) or {}
     data_url = data.get('audio_base64') or ''
     filename = (data.get('filename') or 'audio.ogg').strip()
+    user_prompt = (data.get('prompt') or '').strip()
+    marca_ctx = (data.get('marca') or '').strip()
+    hilo_ctx = (data.get('hilo') or '').strip()
     if not data_url:
         return jsonify({'ok': False, 'error': 'No se recibió audio'}), 400
     try:
         raw = _extract_data_url_bytes(data_url)
     except Exception:
-        return jsonify({'ok': False, 'error': 'No pude leer la imagen. Intenta subirla otra vez o usa una imagen más pequeña.'}), 400
+        return jsonify({'ok': False, 'error': 'No pude leer el audio. Intenta grabarlo otra vez o sube un audio compatible.'}), 400
     suffix = '.' + filename.split('.')[-1].lower() if '.' in filename else '.ogg'
     transcript = ''
     provider = ''
@@ -4088,9 +4091,32 @@ def transcribir_audio():
                 tmp.write(raw)
                 temp_path = tmp.name
             try:
-                client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
+                client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "90")))
+                base_prompt = (
+                    'Pedido de mercería Hilorama en español de México. '
+                    'Puede incluir códigos numéricos de colores, cantidades, piezas, madejas, nombres de tonos y marcas. '
+                    'Transcribe de forma literal y conserva los números como dígitos cuando sean códigos o cantidades.'
+                )
+                ctx_bits = []
+                if marca_ctx:
+                    ctx_bits.append('Marca contexto: ' + marca_ctx)
+                if hilo_ctx:
+                    ctx_bits.append('Hilo contexto: ' + hilo_ctx)
+                final_prompt = ' '.join([base_prompt, user_prompt] + ctx_bits).strip()[:900]
                 with open(temp_path, 'rb') as f:
-                    resp = client.audio.transcriptions.create(model=os.environ.get('OPENAI_TRANSCRIBE_MODEL', 'whisper-1'), file=f)
+                    kwargs = {
+                        'model': os.environ.get('OPENAI_TRANSCRIBE_MODEL', 'whisper-1'),
+                        'file': f,
+                        'language': 'es',
+                    }
+                    if final_prompt:
+                        kwargs['prompt'] = final_prompt
+                    try:
+                        resp = client.audio.transcriptions.create(**kwargs)
+                    except TypeError:
+                        kwargs.pop('prompt', None)
+                        kwargs.pop('language', None)
+                        resp = client.audio.transcriptions.create(**kwargs)
                 transcript = getattr(resp, 'text', '') or (resp.get('text') if isinstance(resp, dict) else '') or ''
                 provider = 'openai'
             finally:
