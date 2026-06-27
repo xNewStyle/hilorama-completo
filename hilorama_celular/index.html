@@ -116,7 +116,7 @@
           <div class="small">Para fotos alteradas: “de ese 2”, “arriba derecha”, “tachado no”.</div>
           <textarea id="pedidoImagenTexto" placeholder="Comentario sobre la foto: de ese 2 por favor / el de arriba a la derecha / el tachado no"></textarea>
           <div id="pedidoImagenPreview" class="hidden" style="margin-top:8px"></div>
-          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia(false)">Analizar rápido</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div><button class="light admin-debug" type="button" style="margin-top:8px" onclick="analizarImagenReferencia(true)">🔒 Admin: análisis IA preciso</button>
+          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia(true)">Analizar imagen con IA precisa</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
           <div id="pedidoImagenAnalisis" class="small" style="margin-top:8px"></div><details id="mapaVisualDebugWrap" class="ai-block admin-debug" style="margin-top:8px"><summary>🔒 Admin · diagnóstico técnico</summary><div class="small" style="margin-top:6px">Solo aparece en modo admin. Para activarlo usa <b>?admin=1</b> en la URL.</div><div id="mapaVisualDebug" class="small" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;max-height:360px;overflow:auto">Aquí aparecerá el diagnóstico después de analizar.</div><button class="light debug-copy" type="button" onclick="copiarMapaVisual()">Copiar mapa para ChatGPT</button></details>
         </details>
         <details class="ai-block"><summary>👤 Historial de cliente opcional</summary>
@@ -299,11 +299,11 @@ function copiarMapaVisual(){
 async function analizarImagenReferencia(preciso=false){
   const f=$('pedidoImagen').files&&$('pedidoImagen').files[0];
   if(!f)return alert('Primero selecciona una imagen.');
-  $('pedidoImagenAnalisis').innerHTML=preciso?'Analizando con IA precisa...':'Analizando rápido marcas y códigos...';
+  $('pedidoImagenAnalisis').innerHTML='Analizando con IA precisa...';
   try{
-    const image_base64=await imageFileToCompressedDataUrl(f,preciso?1200:900,preciso ? .86 : .78);
+    const image_base64=await imageFileToCompressedDataUrl(f,1400,.9);
     const originalFile=$('pedidoImagenOriginal')&&$('pedidoImagenOriginal').files&&$('pedidoImagenOriginal').files[0];
-    const original_image_base64=originalFile?await imageFileToCompressedDataUrl(originalFile,preciso?1200:900,preciso ? .86 : .78):'';
+    const original_image_base64=originalFile?await imageFileToCompressedDataUrl(originalFile,1400,.9):'';
     const comentario=$('pedidoImagenTexto').value.trim();
     const r=await apiFetch('/api/analizar-imagen-referencia',{method:'POST',body:JSON.stringify({
       image_base64,
@@ -311,9 +311,9 @@ async function analizarImagenReferencia(preciso=false){
       comentario,
       marca:$('marcaCtx').value,
       hilo:$('hiloCtx').value,
-      modo:preciso?'preciso':'rapido',
-      prefer_local:!preciso,
-      force_ia:!!preciso,
+      modo:'preciso',
+      prefer_local:false,
+      force_ia:true,
       contexto:($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos')
     })});
     if($('mapaVisualDebug')){$('mapaVisualDebug').textContent=formatMapaVisual(r);}

@@ -3630,22 +3630,20 @@ def _analizar_seleccion_hilos_ia_pura(data_url, raw, original_data_url, comentar
     from openai import OpenAI
     client = OpenAI(api_key=api_key, timeout=float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60")))
 
-    # Evita mandar fotos enormes; en modo rápido bajamos más el tamaño y el catálogo.
-    max_side = int(os.environ.get("OPENAI_IMAGE_FAST_MAX_SIDE", "760")) if fast else int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "900"))
-    data_url = _optimizar_data_url_imagen(data_url, max_side=max_side)
+    # Modo preciso por defecto: mantiene más resolución y SIEMPRE manda imagen auxiliar de marcas.
+    # El parámetro fast queda solo por compatibilidad, pero aquí no se usa para bajar precisión.
+    max_side = int(os.environ.get("OPENAI_IMAGE_MAX_SIDE", "1400"))
+    data_url = _optimizar_data_url_imagen(data_url, max_side=max_side, quality=int(os.environ.get("OPENAI_IMAGE_QUALITY", "90")))
     if original_data_url:
-        original_data_url = _optimizar_data_url_imagen(original_data_url, max_side=max_side)
+        original_data_url = _optimizar_data_url_imagen(original_data_url, max_side=max_side, quality=int(os.environ.get("OPENAI_IMAGE_QUALITY", "90")))
 
-    max_items = int(os.environ.get("OPENAI_CATALOG_FAST_MAX_ITEMS", "120")) if fast else int(os.environ.get("OPENAI_CATALOG_MAX_ITEMS", "250"))
+    max_items = int(os.environ.get("OPENAI_CATALOG_MAX_ITEMS", "350"))
     catalogo = _productos_contexto_para_vision(productos_contexto, max_items=max_items)
     overlay_url = None
-    # El overlay ayuda, pero mandar 2-3 imágenes hace más lenta la respuesta.
-    # En modo rápido solo se manda si se solicita análisis preciso.
-    if not fast:
-        try:
-            overlay_url = _crear_overlay_marcas_data_url(raw)
-        except Exception:
-            overlay_url = None
+    try:
+        overlay_url = _crear_overlay_marcas_data_url(raw)
+    except Exception:
+        overlay_url = None
 
     schema = """
 Devuelve SOLO JSON válido, sin markdown:
@@ -3784,14 +3782,14 @@ DEVUELVE ESTRICTAMENTE EL JSON:
 
     content = [
         {'type': 'text', 'text': prompt},
-        {'type': 'image_url', 'image_url': {'url': data_url, 'detail': 'auto' if fast else 'high'}},
+        {'type': 'image_url', 'image_url': {'url': data_url, 'detail': 'high'}},
     ]
     if overlay_url:
         content.append({'type': 'image_url', 'image_url': {'url': overlay_url, 'detail': 'high'}})
     if original_data_url:
         content.append({'type': 'image_url', 'image_url': {'url': original_data_url, 'detail': 'high'}})
 
-    model = os.environ.get('OPENAI_VISION_FAST_MODEL' if fast else 'OPENAI_VISION_MODEL', os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o'))
+    model = os.environ.get('OPENAI_VISION_MODEL', 'gpt-4o')
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -3802,7 +3800,7 @@ DEVUELVE ESTRICTAMENTE EL JSON:
         response_format={'type': 'json_object'},
     )
     parsed = _safe_json_from_text(resp.choices[0].message.content or '{}')
-    return parsed, 'openai_pura_marcas'
+    return parsed, 'openai_pura_marcas_preciso'
 
 
 def _resolver_ia_pura_marcas(parsed, productos_contexto, comentario):
@@ -3988,9 +3986,11 @@ def analizar_imagen_referencia():
         return jsonify({'ok': False, 'error': 'No pude leer la imagen. Intenta subirla otra vez.'}), 400
 
     modo = (data.get('modo') or '').strip().lower()
-    force_ia = bool(data.get('force_ia')) or modo == 'preciso'
-    prefer_local = bool(data.get('prefer_local')) or modo == 'rapido'
-    fast_vision = bool(prefer_local and not force_ia)
+    # Se desactiva el modo rápido: el analizador visual debe priorizar precisión.
+    # Aun si una versión vieja del navegador manda modo=rapido/prefer_local, el servidor usa IA precisa.
+    force_ia = True
+    prefer_local = False
+    fast_vision = False
 
     vision_notes = []
     add_codes = []
@@ -4035,7 +4035,9 @@ def analizar_imagen_referencia():
             rescue_codes = _fallback_strong_circle_codes(fb_debug)
             rescued = []
             for c in rescue_codes:
-                if c in exclude_codes and c not in add_codes:
+                # Precisión: un óvalo grande y bajo alrededor de código/nombre suele ser selección,
+                # incluso si la IA lo omitió o lo confundió con tachón.
+                if c not in add_codes:
                     add_codes.append(c)
                     quantities[c] = quantities.get(c, 1)
                     rescued.append(c)
