@@ -1018,7 +1018,7 @@ def buscar_productos():
                 COALESCE(p.volumetrico,1) AS volumetrico,
                 COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
                 COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
-                COALESCE(pr.venta, p.precio, 0) AS precio_venta,
+                COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta,
                 COALESCE(p.costo_neto,0) AS costo_neto
             FROM productos p
             LEFT JOIN precios pr ON pr.marca = p.marca
@@ -1290,7 +1290,7 @@ def _resolver_items_ultima_nota(db, cliente_nombre='', telefono=''):
                COALESCE(i.hilo, p.hilo) AS hilo,
                COALESCE(i.color, p.color) AS color,
                COALESCE(p.stock,0) AS stock,
-               COALESCE(pr.venta, p.precio, i.precio, 0) AS precio_venta,
+               COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), NULLIF(i.precio,0), 0) AS precio_venta,
                COALESCE(p.es_inventariable, TRUE) AS es_inventariable
         FROM items i
         LEFT JOIN productos p ON p.codigo = i.codigo
@@ -1345,7 +1345,7 @@ def _productos_top_vendidos(db, marca='', hilo='', limit=1):
                COALESCE(i.hilo, p.hilo) AS hilo,
                COALESCE(i.color, p.color) AS color,
                COALESCE(p.stock,0) AS stock,
-               COALESCE(pr.venta, p.precio, i.precio, 0) AS precio_venta,
+               COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), NULLIF(i.precio,0), 0) AS precio_venta,
                COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
                SUM(COALESCE(i.cantidad,0)) AS vendidas
         FROM items i
@@ -1354,7 +1354,7 @@ def _productos_top_vendidos(db, marca='', hilo='', limit=1):
         LEFT JOIN precios pr ON pr.marca = COALESCE(i.marca, p.marca)
         WHERE {' AND '.join(where)}
           AND COALESCE(n.estado,'') IN ('PAGADA','VENTA_PENDIENTE','EN_PROCESO')
-        GROUP BY i.codigo, COALESCE(i.marca, p.marca), COALESCE(i.hilo, p.hilo), COALESCE(i.color, p.color), COALESCE(p.stock,0), COALESCE(pr.venta, p.precio, i.precio, 0), COALESCE(p.es_inventariable, TRUE)
+        GROUP BY i.codigo, COALESCE(i.marca, p.marca), COALESCE(i.hilo, p.hilo), COALESCE(i.color, p.color), COALESCE(p.stock,0), COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), NULLIF(i.precio,0), 0), COALESCE(p.es_inventariable, TRUE)
         ORDER BY SUM(COALESCE(i.cantidad,0)) DESC, i.codigo ASC
         LIMIT %s
     """, tuple(params + [limit])).fetchall()
@@ -1852,7 +1852,7 @@ def parser_whatsapp_mobile():
                 p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
                 COALESCE(p.stock,0) AS stock,
                 COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
-                COALESCE(pr.venta, p.precio, 0) AS precio_venta
+                COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta
             FROM productos p
             LEFT JOIN precios pr ON pr.marca = p.marca
             WHERE {' AND '.join(where)}
@@ -2463,7 +2463,7 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
                     COALESCE(p.stock,0) AS stock,
                     COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
                     COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
-                    COALESCE(pr.venta, p.precio, 0) AS precio_venta
+                    COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta
                 FROM productos p
                 LEFT JOIN precios pr ON pr.marca = p.marca
                 WHERE p.id=%s
@@ -2476,7 +2476,7 @@ def _calcular_items_y_total(db, items_req, envio=None, validar_stock=False):
                     COALESCE(p.stock,0) AS stock,
                     COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
                     COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
-                    COALESCE(pr.venta, p.precio, 0) AS precio_venta
+                    COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta
                 FROM productos p
                 LEFT JOIN precios pr ON pr.marca = p.marca
                 WHERE (p.codigo=%s OR p.codigo_barras=%s)
@@ -3001,7 +3001,7 @@ def _codigos_contexto_productos(db, marca='', hilo=''):
         SELECT p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
                COALESCE(p.stock,0) AS stock,
                COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
-               COALESCE(pr.venta, p.precio, 0) AS precio_venta
+               COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta
         FROM productos p
         LEFT JOIN precios pr ON pr.marca = p.marca
         WHERE {' AND '.join(where)}
