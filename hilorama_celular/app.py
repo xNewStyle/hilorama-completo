@@ -6573,3 +6573,808 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
     if (parsed.get('pedidos') or parsed.get('preguntas') or parsed.get('errores') or parsed.get('respuesta_preferida') or parsed.get('sugerencias_almacen')):
         return _fallback_respuesta_wa(texto, parsed, meta), 'reglas_hilorama_v5'
     return _fallback_respuesta_wa(texto, parsed, meta), 'reglas_hilorama_v5_base'
+
+
+# ==========================================================
+# WhatsApp IA V6 - cerebro comercial basado en almacén real
+# ==========================================================
+# Esta capa final reemplaza la lógica V5 en tiempo de ejecución.
+# Objetivo: NO mezclar hilos, NO convertir consultas en pedidos,
+# responder como vendedor humano y usar el almacén como fuente de verdad.
+
+V6_QTY_WORDS = {
+    'un': 1, 'uno': 1, 'una': 1, 'unos': 1, 'unas': 1,
+    'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5, 'seis': 6,
+    'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10, 'once': 11,
+    'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15,
+    'dieciseis': 16, 'dieciséis': 16, 'veinte': 20, 'treinta': 30,
+    'cuarenta': 40, 'cincuenta': 50,
+}
+
+V6_HILO_FALLBACK_PRICE = {
+    'velluto': 59.99,
+    'komfy_mini': 28.99,
+    'kurumi': 25.99,
+}
+
+V6_COMBOS_VELLUTO = {
+    10: 690,
+    20: 1250,
+    40: 2400,
+}
+
+V6_COLOR_GROUPS_EXTRA = {
+    'negro': ['negro', 'negra', 'black', 'negros', 'oscurito'],
+    'blanco': ['blanco', 'blanca', 'white', 'whit', 'hueso', 'marfil', 'ivory', 'crudo', 'cream', 'crema', 'beige clarito'],
+    'hueso': ['hueso', 'marfil', 'ivory', 'crudo', 'cream', 'crema', 'amarillento', 'amarillentito', 'medio amarillo', 'blanco calido', 'blanco cálido'],
+    'rosa': ['rosa', 'rosita', 'rosa bte', 'rosa bb', 'pink', 'sandia', 'sandía'],
+    'rojo_escolar': ['rojo escolar', 'rojo esc', 'rojo fuerte', 'rojo bandera'],
+    'rojo': ['rojo', 'roja', 'red'],
+    'verde': ['verde', 'green', 'bandera', 'chicharo', 'chícharo', 'pistache', 'limon', 'limón', 'olivo'],
+    'azul': ['azul', 'blue', 'cielo', 'celeste', 'turquesa', 'pepsi', 'marino'],
+    'amarillo': ['amarillo', 'yellow', 'mango', 'mimosa', 'canario', 'oro', 'marigold', 'mostaza'],
+    'naranja': ['naranja', 'orange', 'mirinda', 'mandarina'],
+    'cafe': ['cafe', 'café', 'brown', 'tabaco', 'camello', 'arena', 'ladrillo', 'beige', 'camel'],
+    'morado': ['morado', 'lila', 'lilac', 'purple', 'lavanda', 'violeta'],
+    'gris': ['gris', 'plata', 'gray', 'grey', 'oxford'],
+}
+
+
+def _v6_norm(v):
+    try:
+        return _norm_txt(v or '')
+    except Exception:
+        v = (v or '').strip().lower()
+        return ''.join(c for c in unicodedata.normalize('NFD', v) if unicodedata.category(c) != 'Mn')
+
+
+def _v6_hilo_family(hilo):
+    h = _v6_norm(hilo)
+    compact = h.replace(' ', '')
+    if 'komfymini' in compact or 'komfimini' in compact or 'konfymini' in compact or 'comfymini' in compact:
+        return 'komfy_mini'
+    if 'komfy' in h or 'komfi' in h or 'konfy' in h or 'comfy' in h:
+        # Si el nombre real del catálogo solo dice KOMFY, también lo agrupamos, pero
+        # al detectar texto explícito "komfy mini" se preferirá el HILO exacto KOMFY MINI.
+        return 'komfy_mini'
+    if 'velluto' in h or 'veluto' in h or 'vello' in h or 'alize' in h:
+        return 'velluto'
+    if 'kurumi' in h:
+        return 'kurumi'
+    if 'trapillo' in h or 'kraft' in h:
+        return 'trapillo'
+    if 'kairo' in h:
+        return 'kairo'
+    if 'fiorentino' in h:
+        return 'fiorentino'
+    if 'fosfo' in h:
+        return 'fosfo'
+    return h
+
+
+def _v6_hilo_display(hilo):
+    fam = _v6_hilo_family(hilo)
+    if fam == 'velluto':
+        return 'Velluto'
+    if fam == 'komfy_mini':
+        return 'Komfy Mini'
+    if fam == 'kurumi':
+        return 'Kurumi'
+    if fam == 'trapillo':
+        return 'Trapillo'
+    return (hilo or '').title()
+
+
+def _v6_producto_linea(p):
+    hilo = _v6_hilo_display(p.get('hilo') or '')
+    codigo = str(p.get('codigo') or '').strip()
+    color = str(p.get('color') or '').strip()
+    cantidad = int(p.get('cantidad') or 1)
+    base = ' '.join(x for x in [hilo, codigo, color] if x)
+    return f"- {base} x{cantidad}"
+
+
+def _v6_all_hilos(productos):
+    out = []
+    seen = set()
+    for p in productos or []:
+        h = str(p.get('hilo') or '').strip()
+        if not h:
+            continue
+        key = _v6_norm(h)
+        if key not in seen:
+            seen.add(key)
+            out.append(h)
+    return out
+
+
+def _v6_best_hilo_for_family(productos, fam, texto=''):
+    hilos = _v6_all_hilos(productos)
+    t = _v6_norm(texto)
+    candidates = [h for h in hilos if _v6_hilo_family(h) == fam]
+    if not candidates:
+        return ''
+    def score(h):
+        hn = _v6_norm(h)
+        s = 0
+        if fam == 'komfy_mini':
+            if hn == 'komfy mini':
+                s += 200
+            if 'mini' in hn:
+                s += 80
+            if 'komfy mini' in t or 'komfi mini' in t or 'konfy mini' in t or 'comfy mini' in t:
+                if 'mini' in hn:
+                    s += 200
+                elif hn == 'komfy':
+                    s -= 60
+            if hn == 'komfy':
+                s -= 10
+        elif fam == 'velluto':
+            if hn == 'velluto':
+                s += 200
+            if 'velluto' in hn:
+                s += 120
+            if 'alize' in hn:
+                s += 20
+        elif fam == 'kurumi':
+            if hn == 'kurumi':
+                s += 200
+            if 'kurumi' in hn:
+                s += 100
+        elif fam == 'kairo':
+            if hn == 'kairo':
+                s += 200
+        return s
+    return sorted(candidates, key=score, reverse=True)[0]
+
+
+def _v6_detect_hilos(texto, productos):
+    t = _v6_norm(texto)
+    found = []
+    rules = [
+        ('komfy_mini', [r'komfy\s*mini', r'komfi\s*mini', r'konfy\s*mini', r'comfy\s*mini', r'komfymini', r'komfimini', r'konfymini', r'komfy', r'komfi', r'konfy', r'comfy']),
+        ('velluto', [r'alize\s+velluto', r'alize\s+veluto', r'\bvellutos?\b', r'\bvelutos?\b', r'\bvello\b', r'\balize\b']),
+        ('kurumi', [r'\bkurumi\b', r'\bkurumis\b']),
+        ('trapillo', [r'\btrapillo\b', r'\btrapillo\s+kraft\b', r'\bkraft\b']),
+        ('kairo', [r'\bkairo\b']),
+        ('fiorentino', [r'\bfiorentino\b', r'\bflorentino\b']),
+        ('fosfo', [r'\bfosfo\b', r'\bneon\b', r'\bneón\b']),
+    ]
+    for fam, pats in rules:
+        if any(re.search(p, t) for p in pats):
+            h = _v6_best_hilo_for_family(productos, fam, t)
+            if h and h not in found:
+                found.append(h)
+    return found
+
+
+def _v6_products_for_hilo(productos, hilo):
+    if not hilo:
+        return list(productos or [])
+    hn = _v6_norm(hilo)
+    exact = [p for p in productos or [] if _v6_norm(p.get('hilo') or '') == hn]
+    if exact:
+        return exact
+    fam = _v6_hilo_family(hilo)
+    return [p for p in productos or [] if _v6_hilo_family(p.get('hilo') or '') == fam]
+
+
+def _v6_code_map(productos):
+    mp = {}
+    for p in productos or []:
+        c = str(p.get('codigo') or '').strip()
+        if not c:
+            continue
+        key = c.lstrip('0') or c
+        mp.setdefault(key, []).append(p)
+    return mp
+
+
+def _v6_choose_by_code(productos, codigo, hilo_ctx=''):
+    key = str(codigo or '').strip().lstrip('0') or str(codigo or '').strip()
+    matches = _v6_code_map(productos).get(key) or []
+    if not matches:
+        return None, []
+    if hilo_ctx:
+        ctx = _v6_products_for_hilo(matches, hilo_ctx)
+        if ctx:
+            matches = ctx
+    # Evitar combos/surtidos si el código también existe como tono normal.
+    normales = [p for p in matches if not any(x in _v6_norm(p.get('color') or '') for x in ['combo', 'paquete', 'surtido'])]
+    if normales:
+        matches = normales
+    return sorted(matches, key=lambda p: int(p.get('stock') or 0), reverse=True)[0], matches
+
+
+def _v6_price_range(productos, fam=None):
+    vals = []
+    for p in productos or []:
+        try:
+            val = float(p.get('precio_venta') or 0)
+        except Exception:
+            val = 0
+        if val > 0:
+            vals.append(val)
+    if not vals and fam in V6_HILO_FALLBACK_PRICE:
+        vals = [V6_HILO_FALLBACK_PRICE[fam]]
+    if not vals:
+        return None, None
+    return min(vals), max(vals)
+
+
+def _v6_price_text(productos, fam=None):
+    mn, mx = _v6_price_range(productos, fam)
+    if mn is None:
+        return ''
+    if abs(mn - mx) < 0.01:
+        return f"${mn:,.2f}"
+    return f"desde ${mn:,.2f}"
+
+
+def _v6_color_groups(texto):
+    t = _v6_norm(texto)
+    found = []
+    merged = {}
+    try:
+        for k, v in COLOR_GRUPOS.items():
+            merged.setdefault(k, []).extend(v)
+    except Exception:
+        pass
+    for k, v in V6_COLOR_GROUPS_EXTRA.items():
+        merged.setdefault(k, []).extend(v)
+    for group, aliases in merged.items():
+        for a in aliases:
+            aa = _v6_norm(a)
+            if aa and (re.search(rf'(?<!\w){re.escape(aa)}(?!\w)', t) or (len(aa) >= 5 and aa in t)):
+                if group not in found:
+                    found.append(group)
+                break
+    return found
+
+
+def _v6_color_score(producto, desc):
+    color = _v6_norm(producto.get('color') or '')
+    descn = _v6_norm(desc or '')
+    if not color or any(x in color for x in ['combo', 'paquete', 'surtido']):
+        return -999
+    # Remueve ruido de venta.
+    clean = re.sub(r'\b(de|del|la|el|los|las|pieza|piezas|pz|pzas|madeja|madejas|color|tono|tonos|quiero|dame|deme|ocupo|agrega|agregame|tambien|también|pero|uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b', ' ', descn)
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    score = 0
+    if clean:
+        if color == clean:
+            score += 300
+        if clean in color:
+            score += 220
+        words = [w for w in clean.split() if len(w) >= 2]
+        if words and all(w in color for w in words):
+            score += 170
+        elif words and any(w in color for w in words):
+            score += 75
+    groups = _v6_color_groups(descn)
+    for g in groups:
+        if g == 'rojo_escolar':
+            if 'rojo escolar' in color:
+                score += 260
+            elif 'rojo' in color:
+                score += 80
+        elif g == 'hueso':
+            if any(x in color for x in ['hueso', 'marfil', 'ivory', 'cream', 'crema', 'light cream']):
+                score += 230
+            elif 'blanco' in color or 'white' in color:
+                score += 85
+            elif 'canario' in color or 'amarillo' in color:
+                score += 35
+        elif g == 'rosa':
+            if 'rosa' in color:
+                score += 220
+            elif 'sandia' in color or 'sandía' in color or 'pink' in color:
+                score += 120
+            elif 'fucsia' in color or 'fiusha' in color:
+                score += 45
+        elif g == 'negro':
+            if color == 'negro' or 'negro' in color or color == 'black':
+                score += 250
+        elif g == 'blanco':
+            if any(x in color for x in ['blanco', 'white']):
+                score += 200
+            elif any(x in color for x in ['hueso', 'cream', 'crema', 'marfil']):
+                score += 130
+        else:
+            aliases = V6_COLOR_GROUPS_EXTRA.get(g, [])
+            if any(_v6_norm(a) in color for a in aliases):
+                score += 150
+    try:
+        stock = int(producto.get('stock') or 0)
+        if stock > 0:
+            score += 10
+    except Exception:
+        pass
+    return score
+
+
+def _v6_resolve_color(productos_ctx, desc):
+    # Código explícito gana sobre color.
+    for cod in re.findall(r'(?<!\d)\d{1,4}(?!\d)', _v6_norm(desc)):
+        prod, matches = _v6_choose_by_code(productos_ctx, cod)
+        if prod:
+            return prod, []
+    scored = []
+    for p in products_ctx if False else []:
+        pass
+    scored = [(_v6_color_score(p, desc), p) for p in productos_ctx or []]
+    scored = [(s, p) for s, p in scored if s > 0]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    if not scored:
+        return None, []
+    top_score, top = scored[0]
+    # Opciones relevantes: no mostrar demasiadas ni repetidas por color.
+    opts = []
+    seen = set()
+    for s, p in scored[:8]:
+        key = (str(p.get('codigo') or ''), _v6_norm(p.get('color') or ''))
+        if key not in seen:
+            seen.add(key)
+            opts.append(p)
+    # Si la diferencia es clara o hubo match fuerte, agregar directo.
+    if len(scored) == 1 or top_score >= 230 or (len(scored) > 1 and top_score - scored[1][0] >= 80):
+        return top, opts
+    # Para texto simple como "negro" dentro de un hilo, si solo hay un color negro real, agregar.
+    descn = _v6_norm(desc)
+    groups = _v6_color_groups(descn)
+    if groups:
+        g = groups[0]
+        exactish = [p for _s, p in scored if _v6_color_score(p, desc) >= 180]
+        if len(exactish) == 1:
+            return exactish[0], opts
+    return None, opts[:5]
+
+
+def _v6_qty_token(tok):
+    s = _v6_norm(tok or '')
+    if s.isdigit():
+        try:
+            return int(s)
+        except Exception:
+            return None
+    return V6_QTY_WORDS.get(s)
+
+
+def _v6_normalize_order_text(t):
+    # Divide "y 1 rojo" como otro item sin romper "rojo escolar".
+    t = _v6_norm(t)
+    t = re.sub(r'\b(tambien|también|ademas|además|agregame|agrégame|agrega|agregar|dame|deme|quiero|ocupo|seria|sería|serian|serían|con|los colores siguientes|los siguientes colores)\b', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
+def _v6_split_qty_items(texto):
+    t = _v6_normalize_order_text(texto)
+    qty_words = sorted(V6_QTY_WORDS.keys(), key=len, reverse=True)
+    qty_alt = r'\d+|' + '|'.join(re.escape(w) for w in qty_words)
+    # Marcar separadores antes de cantidad.
+    pat = re.compile(rf'(?<!\w)({qty_alt})(?!\w)')
+    matches = list(pat.finditer(t))
+    out = []
+    for i, m in enumerate(matches):
+        qty = _v6_qty_token(m.group(1))
+        if qty is None:
+            continue
+        start = m.end()
+        end = matches[i+1].start() if i+1 < len(matches) else len(t)
+        desc = t[start:end]
+        desc = re.sub(r'^[\s,;\.\-]*(de|del|la|el|las|los)?\s*', '', desc)
+        desc = re.sub(r'[\s,;\.\-]+$', '', desc).strip()
+        # Evitar CP / teléfono / importes como productos.
+        if qty >= 100 and not re.search(r'\b(piezas|pz|madejas|colores|surtidos?)\b', desc):
+            continue
+        if desc:
+            out.append((qty, desc))
+    return out
+
+
+def _v6_contains_order_intent(texto):
+    t = _v6_norm(texto)
+    if any(x in t for x in ['dame', 'deme', 'quiero', 'ocupo', 'agrega', 'agregame', 'agrégame', 'seria', 'sería', 'serian', 'serían', 'pedido', 'paquete', 'combo']):
+        return True
+    # Lista con varias líneas/cantidades también cuenta como pedido.
+    if len(_v6_split_qty_items(t)) >= 2:
+        return True
+    return False
+
+
+def _v6_is_consultation(texto):
+    t = _v6_norm(texto)
+    # Si hay intención de pedido explícita con cantidades, no es solo consulta.
+    if _v6_contains_order_intent(t) and _v6_split_qty_items(t) and not any(x in t for x in ['cuanto', 'precio', 'cuesta', 'sale', 'manejan', 'tienen', 'disponible', 'colores']):
+        return False
+    consult_words = ['cuanto', 'cuánto', 'precio', 'cuesta', 'costo', 'vale', 'sale', 'manejan', 'maneja', 'tienen', 'tiene', 'disponible', 'disponibilidad', 'colores', 'carta', 'catalogo', 'catálogo', 'envio', 'envío', 'envios', 'envíos', 'mandan', 'paqueteria', 'paquetería']
+    return any(w in t for w in consult_words)
+
+
+def _v6_detect_combo(texto):
+    t = _v6_norm(texto)
+    if not any(x in t for x in ['combo', 'paquete']):
+        return None
+    m = re.search(r'\b(10|20|40)\b', t)
+    cantidad = int(m.group(1)) if m else None
+    return {'cantidad': cantidad, 'hilo': 'Velluto' if any(x in t for x in ['velluto', 'veluto', 'alize']) else ''}
+
+
+def _v6_public_answer_for_combo(texto):
+    info = _v6_detect_combo(texto)
+    if not info:
+        return ''
+    cantidad = info.get('cantidad')
+    if cantidad in V6_COMBOS_VELLUTO:
+        precio = V6_COMBOS_VELLUTO[cantidad]
+        if cantidad == 40:
+            return f"Sí 😊 el paquete de {cantidad} Velluto puede ir con colores a elegir, sujeto a disponibilidad. El paquete está en ${precio:,.0f} y se maneja con envío gratis en la promo activa. Mándeme su lista de tonos o códigos y le preparo su nota."
+        return f"Sí 😊 el combo de {cantidad} Velluto puede ir con colores a elegir, sujeto a disponibilidad. El combo está en ${precio:,.0f}. Mándeme su lista de tonos o códigos y le preparo su nota."
+    return "Sí 😊 puede armarse por combo o paquete según disponibilidad. Mándeme cuántas piezas y qué tonos busca para cotizarle bien."
+
+
+def _v6_format_color_options(options, limit=5):
+    lines = []
+    for p in (options or [])[:limit]:
+        codigo = str(p.get('codigo') or '').strip()
+        color = str(p.get('color') or '').strip()
+        stock = p.get('stock')
+        extra = f" (stock {stock})" if stock not in (None, '') else ''
+        lines.append(f"{codigo} {color}{extra}".strip())
+    return ', '.join(lines)
+
+
+def _v6_respuesta_consulta(texto, productos, hilos=None, marcas=None):
+    t = _v6_norm(texto)
+    combo = _v6_public_answer_for_combo(t)
+    if combo:
+        return combo
+    if 'abuelita' in t:
+        if any(x in t for x in ['parecid', 'similar', 'recomiendas', 'recomienda']):
+            return "La Abuelita por el momento no la manejamos 😊 pero puedo ofrecerle opciones parecidas según su proyecto: Kurumi si busca algo más firme/delgado para amigurumi, o Komfy Mini si quiere algo suave tipo chenille. ¿Para qué trabajo lo ocuparía?"
+        return "La Abuelita por el momento no la manejamos 😊 pero sí tengo otras opciones. ¿La busca para amigurumi, tejido o algún proyecto en especial?"
+    if any(x in t for x in ['karineta', 'carineta', 'karinita']):
+        return "Sí manejamos productos Karina 😊 ¿Me podría confirmar si busca Kurumi, Komfy Mini, Kairo u otro hilo de Karina?"
+    if any(x in t for x in ['envio', 'envío', 'envios', 'envíos', 'mandan', 'paqueteria', 'paquetería']):
+        cp = re.search(r'\b\d{5}\b', t)
+        if cp:
+            return f"Sí hacemos envíos a todo México 😊 Con su código postal {cp.group(0)} puedo revisar opciones de paquetería."
+        return "Sí hacemos envíos a todo México 😊 Para cotizarle el envío me comparte su código postal, por favor."
+    hilos = hilos or _v6_detect_hilos(t, productos)
+    if hilos:
+        bloques = []
+        color_groups = _v6_color_groups(t)
+        for h in hilos[:2]:
+            prods_h = _v6_products_for_hilo(productos, h)
+            fam = _v6_hilo_family(h)
+            nombre = _v6_hilo_display(h)
+            precio = _v6_price_text(prods_h, fam)
+            if any(x in t for x in ['precio', 'cuanto', 'cuánto', 'cuesta', 'costo', 'vale']):
+                if precio:
+                    bloques.append(f"El {nombre} está en {precio} por madeja 😊 ¿Busca algún color o código en especial?")
+                else:
+                    bloques.append(f"Sí manejamos {nombre} 😊 ¿Qué color o código busca para revisar precio y disponibilidad?")
+            elif color_groups:
+                partes = []
+                for g in color_groups[:3]:
+                    prod, opts = _v6_resolve_color(prods_h, g)
+                    if prod:
+                        partes.append(f"{prod.get('codigo')} {prod.get('color')}")
+                    elif opts:
+                        partes.append(_v6_format_color_options(opts, 3))
+                if partes:
+                    bloques.append(f"Sí 😊 en {nombre} tengo opciones para esos tonos: " + '; '.join(partes) + ". ¿Cuántas piezas le aparto?")
+                else:
+                    bloques.append(f"Sí manejamos {nombre} 😊 ¿Me indica qué tono o código busca?")
+            elif any(x in t for x in ['color', 'colores', 'disponib', 'carta', 'catalogo', 'catálogo']):
+                muestra = []
+                seen = set()
+                for p in prods_h:
+                    cn = _v6_norm(p.get('color') or '')
+                    if not cn or any(x in cn for x in ['combo', 'paquete', 'surtido']):
+                        continue
+                    key = (str(p.get('codigo') or ''), cn)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    muestra.append(f"{p.get('codigo')} {p.get('color')}")
+                    if len(muestra) >= 8:
+                        break
+                extra = ' Algunos tonos disponibles son: ' + ', '.join(muestra) + '.' if muestra else ''
+                bloques.append(f"Sí 😊 tenemos {nombre} disponible.{extra}\nLe puedo compartir la carta de colores completa.")
+            else:
+                if precio:
+                    bloques.append(f"Sí 😊 manejamos {nombre}, está en {precio} por madeja. ¿Busca algún color o código en especial?")
+                else:
+                    bloques.append(f"Sí 😊 manejamos {nombre}. ¿Busca algún color o código en especial?")
+        return '\n\n'.join(bloques).strip()
+    return ''
+
+
+def _wa_es_consulta_catalogo(texto):
+    return _v6_is_consultation(texto)
+
+
+def _wa_respuesta_consulta_almacen(texto, productos, hilos=None, marcas=None):
+    return _v6_respuesta_consulta(texto, productos, hilos, marcas)
+
+
+def _v6_add_or_sum(dest, p):
+    key = str(p.get('producto_id') or '') or '|'.join([str(p.get('codigo') or ''), _v6_norm(p.get('marca') or ''), _v6_norm(p.get('hilo') or ''), _v6_norm(p.get('color') or '')])
+    if key in dest:
+        dest[key]['cantidad'] = int(dest[key].get('cantidad') or 0) + int(p.get('cantidad') or 0)
+    else:
+        dest[key] = dict(p)
+
+
+def _v6_parse_order(texto, productos, hilos_globales=None, contexto_global=''):
+    t = _v6_norm(texto)
+    hilos_globales = hilos_globales or _v6_detect_hilos(t, productos)
+    ultimo_hilo = contexto_global or (hilos_globales[0] if len(hilos_globales) == 1 else '')
+    pedidos = {}
+    preguntas = []
+    errores = []
+    advertencias = []
+
+    # Códigos puros o códigos con cantidad tienen prioridad.
+    items = _v6_split_qty_items(t)
+    for qty, desc in items:
+        hilos_desc = _v6_detect_hilos(desc, productos)
+        if hilos_desc:
+            ultimo_hilo = hilos_desc[0]
+        hilo_ctx = hilos_desc[0] if hilos_desc else ultimo_hilo
+        prods_ctx = _v6_products_for_hilo(productos, hilo_ctx) if hilo_ctx else productos
+
+        # Quitar palabras de hilo de la descripción para dejar color/código.
+        desc_clean = desc
+        for h in hilos_desc or ([hilo_ctx] if hilo_ctx else []):
+            for alias in sorted(_wa_aliases_hilo(h), key=len, reverse=True):
+                a = _v6_norm(alias)
+                if len(a) >= 3:
+                    desc_clean = re.sub(rf'(?<!\w){re.escape(a)}(?!\w)', ' ', _v6_norm(desc_clean))
+                    desc_clean = desc_clean.replace(a.replace(' ', ''), ' ')
+        desc_clean = re.sub(r'\b(de|del|la|el|los|las|pieza|piezas|pz|pzas|madeja|madejas)\b', ' ', _v6_norm(desc_clean))
+        desc_clean = re.sub(r'\s+', ' ', desc_clean).strip()
+
+        # Código exacto.
+        codigos = re.findall(r'(?<!\d)\d{1,4}(?!\d)', desc_clean)
+        if codigos:
+            cod = codigos[0]
+            prod, matches = _v6_choose_by_code(prods_ctx if hilo_ctx else productos, cod, hilo_ctx)
+            if prod:
+                _v6_add_or_sum(pedidos, {
+                    'producto_id': prod.get('id'), 'codigo': prod.get('codigo'), 'marca': prod.get('marca') or '',
+                    'hilo': prod.get('hilo') or '', 'color': prod.get('color') or '', 'stock': int(prod.get('stock') or 0),
+                    'precio_venta': float(prod.get('precio_venta') or 0), 'cantidad': int(qty),
+                    'es_inventariable': prod.get('es_inventariable', True),
+                })
+                continue
+            else:
+                errores.append(cod)
+                continue
+
+        if not desc_clean:
+            if hilo_ctx:
+                preguntas.append(f"Me falta el tono o código para {qty} pieza(s) de {_v6_hilo_display(hilo_ctx)}.")
+            else:
+                preguntas.append(f"Me falta el hilo y tono para {qty} pieza(s).")
+            continue
+
+        prod, opts = _v6_resolve_color(prods_ctx, desc_clean)
+        if prod:
+            _v6_add_or_sum(pedidos, {
+                'producto_id': prod.get('id'), 'codigo': prod.get('codigo'), 'marca': prod.get('marca') or '',
+                'hilo': prod.get('hilo') or '', 'color': prod.get('color') or '', 'stock': int(prod.get('stock') or 0),
+                'precio_venta': float(prod.get('precio_venta') or 0), 'cantidad': int(qty),
+                'es_inventariable': prod.get('es_inventariable', True),
+            })
+        elif opts:
+            nombre = _v6_hilo_display(hilo_ctx) if hilo_ctx else 'ese hilo'
+            preguntas.append(f"Para {nombre}, tengo varias opciones parecidas a '{desc_clean}': {_v6_format_color_options(opts, 5)}. ¿Cuál le agrego x{qty}?")
+        else:
+            if hilo_ctx:
+                preguntas.append(f"Sí cuento con {_v6_hilo_display(hilo_ctx)}, pero no ubiqué el tono '{desc_clean}'. ¿Me manda código o una foto de la carta para confirmarlo?")
+            else:
+                preguntas.append(f"No ubiqué '{desc_clean}' con seguridad. ¿Me confirma hilo y tono/código?")
+
+    # Códigos sin cantidad en mensajes tipo "dame 55 56 429".
+    if not pedidos and not preguntas and not errores and _v6_contains_order_intent(t):
+        codigos = re.findall(r'(?<!\d)\d{1,4}(?!\d)', t)
+        for cod in codigos:
+            prod, _matches = _v6_choose_by_code(productos, cod, ultimo_hilo)
+            if prod:
+                _v6_add_or_sum(pedidos, {
+                    'producto_id': prod.get('id'), 'codigo': prod.get('codigo'), 'marca': prod.get('marca') or '',
+                    'hilo': prod.get('hilo') or '', 'color': prod.get('color') or '', 'stock': int(prod.get('stock') or 0),
+                    'precio_venta': float(prod.get('precio_venta') or 0), 'cantidad': 1,
+                    'es_inventariable': prod.get('es_inventariable', True),
+                })
+            elif len(cod) <= 4:
+                errores.append(cod)
+
+    # Cambios de opinión: quitar un hilo mencionado.
+    if any(x in t for x in ['quitame', 'quítame', 'quita', 'quitar', 'ya no', 'pensandolo mejor', 'pensándolo mejor']):
+        for h in _v6_detect_hilos(t, productos):
+            fam = _v6_hilo_family(h)
+            before = len(pedidos)
+            pedidos = {k: v for k, v in pedidos.items() if _v6_hilo_family(v.get('hilo') or '') != fam}
+            if len(pedidos) != before:
+                advertencias.append(f"Se quitaron los productos de {_v6_hilo_display(h)} por cambio de la clienta.")
+
+    return list(pedidos.values()), preguntas, errores, advertencias
+
+
+def _wa_parsear_con_contexto_almacen(texto_total, productos_all, marca='', hilo='', extraer_pedidos_func=None):
+    productos_base = _wa_filtrar_por_marca_hilo(productos_all, marca, hilo)
+    t = _v6_norm(texto_total or '')
+    hilos_detectados = _v6_detect_hilos(t, productos_base)
+    contexto_global = hilo or (hilos_detectados[0] if len(hilos_detectados) == 1 else '')
+    combo_resp = _v6_public_answer_for_combo(t)
+
+    # Consultas comerciales: responder, no agregar carrito.
+    if combo_resp:
+        return {
+            'pedidos_full': [], 'errores': [], 'advertencias': [], 'preguntas': [], 'sugerencias_almacen': [],
+            'hilos_detectados': hilos_detectados, 'contexto_inferido': {'marca': marca or '', 'hilo': contexto_global or '', 'hilos_mencionados': hilos_detectados},
+            'respuesta_preferida': combo_resp, 'ventas_info': {'tipo': 'combo_v6'}
+        }
+
+    # Si es pregunta sin pedido claro, no extraer productos aunque mencione colores.
+    if _v6_is_consultation(t) and not (_v6_contains_order_intent(t) and _v6_split_qty_items(t)):
+        resp = _v6_respuesta_consulta(t, productos_base, hilos_detectados, _wa_detectar_marcas(t, productos_base))
+        if resp:
+            return {
+                'pedidos_full': [], 'errores': [], 'advertencias': [], 'preguntas': [], 'sugerencias_almacen': [],
+                'hilos_detectados': hilos_detectados, 'contexto_inferido': {'marca': marca or '', 'hilo': contexto_global or '', 'hilos_mencionados': hilos_detectados},
+                'respuesta_preferida': resp, 'ventas_info': {'tipo': 'consulta_v6'}
+            }
+
+    pedidos, preguntas, errores, advertencias = _v6_parse_order(t, productos_base, hilos_detectados, contexto_global)
+
+    # Mensaje solo con código desconocido como "57000".
+    if not pedidos and not preguntas and not errores:
+        only_nums = re.findall(r'(?<!\d)\d{4,6}(?!\d)', t)
+        if only_nums and len(t.replace(' ', '')) <= 8:
+            errores.extend(only_nums)
+
+    # Producto externo o parecido.
+    respuesta_preferida = ''
+    sugerencias = []
+    if not pedidos and not preguntas and not errores:
+        resp = _v6_respuesta_consulta(t, productos_base, hilos_detectados, _wa_detectar_marcas(t, productos_base))
+        if resp:
+            respuesta_preferida = resp
+        else:
+            respuesta_preferida = ''
+
+    return {
+        'pedidos_full': pedidos,
+        'errores': sorted(set(str(e) for e in errores if e)),
+        'advertencias': sorted(set(str(a) for a in advertencias if a)),
+        'preguntas': sorted(set(str(p) for p in preguntas if p)),
+        'sugerencias_almacen': sugerencias,
+        'hilos_detectados': hilos_detectados,
+        'contexto_inferido': {'marca': marca or '', 'hilo': contexto_global or '', 'hilos_mencionados': hilos_detectados},
+        'respuesta_preferida': respuesta_preferida,
+        'ventas_info': {'tipo': 'cerebro_comercial_v6'}
+    }
+
+
+def _fallback_respuesta_wa(texto, parsed, meta):
+    if parsed.get('respuesta_preferida'):
+        return str(parsed.get('respuesta_preferida')).strip()
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    if errores:
+        base = ''
+        if pedidos:
+            base += 'Claro 😊 ya tengo claro esto:\n' + '\n'.join(_v6_producto_linea(p) for p in pedidos[:25]) + '\n\n'
+        return base + 'Estos códigos no me aparecen en el catálogo: ' + ', '.join(map(str, errores[:8])) + '. ¿Me los confirma por favor?'
+    if pedidos and preguntas:
+        return 'Claro 😊 ya tengo claro esto:\n' + '\n'.join(_v6_producto_linea(p) for p in pedidos[:25]) + '\n\n' + preguntas[0]
+    if preguntas:
+        return 'Solo para confirmar 😊 ' + preguntas[0]
+    if pedidos:
+        txt = 'Claro 😊 le agrego:\n' + '\n'.join(_v6_producto_linea(p) for p in pedidos[:40])
+        if len(pedidos) > 40:
+            txt += f"\nY {len(pedidos)-40} producto(s) más."
+        return txt + '\n\nLe preparo su cotización.'
+    intent = (meta or {}).get('intencion')
+    if intent == 'pregunta_envio':
+        return 'Sí hacemos envíos a todo México 😊 Para cotizarle el envío me comparte su código postal, por favor.'
+    if intent == 'comprobante_pago':
+        return 'Perfecto 😊 mándeme la imagen del comprobante y reviso monto, referencia y datos para continuar con su pedido.'
+    if intent == 'sugerir_tonos':
+        return 'Sí 😊 mándeme la foto o referencia y le sugiero tonos parecidos según el catálogo disponible. No agrego nada hasta que usted confirme.'
+    return 'Claro 😊 dígame qué hilo, color o código necesita y le ayudo a armar su cotización.'
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    # V6: determinístico con almacén. Evita que el modelo invente, mezcle hilos o pregunte de más.
+    return _fallback_respuesta_wa(texto, parsed, meta), 'reglas_hilorama_v6'
+
+# V6.1 - corrige separación de cantidades vs códigos.
+def _v6_split_qty_items(texto):
+    t = _v6_normalize_order_text(texto)
+    qty_words = sorted(V6_QTY_WORDS.keys(), key=len, reverse=True)
+    qty_alt = r'\d+|' + '|'.join(re.escape(w) for w in qty_words)
+    # Separar "y 1 rojo", "también 2 negro" solo cuando después viene una cantidad.
+    t = re.sub(rf'\s+(?:y|e|tambien|también|ademas|además)\s+(?=({qty_alt})\b)', ', ', t)
+    raw_parts = [p.strip() for p in re.split(r'[,;\n]+', t) if p.strip()]
+    out = []
+    for part in raw_parts:
+        m = re.match(rf'^(?:de\s+|del\s+)?({qty_alt})\b\s*(.*)$', part)
+        if not m:
+            continue
+        qty = _v6_qty_token(m.group(1))
+        if qty is None:
+            continue
+        desc = (m.group(2) or '').strip()
+        desc = re.sub(r'^(?:de\s+|del\s+|codigo\s+|código\s+)', '', desc).strip()
+        # Si el fragmento es solamente una cantidad grande, probablemente es CP/teléfono/importe, no pedido.
+        if qty >= 100 and not desc:
+            continue
+        if desc:
+            out.append((qty, desc))
+    # Fallback para secuencias compactas de códigos: "55 56 429" después de un verbo de pedido.
+    if not out and any(x in t for x in ['dame', 'deme', 'quiero', 'ocupo', 'agrega', 'agregame', 'agrégame']):
+        nums = re.findall(r'(?<!\d)\d{1,4}(?!\d)', t)
+        if len(nums) >= 2:
+            out = [(1, n) for n in nums]
+    return out
+
+# V6.2 - si el cliente escribe solo una lista de códigos, no tomar el primer código como cantidad.
+def _v6_split_qty_items(texto):
+    t_original = _v6_norm(texto)
+    t = _v6_normalize_order_text(texto)
+    qty_words = sorted(V6_QTY_WORDS.keys(), key=len, reverse=True)
+    qty_alt = r'\d+|' + '|'.join(re.escape(w) for w in qty_words)
+    t = re.sub(rf'\s+(?:y|e|tambien|también|ademas|además)\s+(?=({qty_alt})\b)', ', ', t)
+    raw_parts = [p.strip() for p in re.split(r'[,;\n]+', t) if p.strip()]
+    out = []
+    for part in raw_parts:
+        m = re.match(rf'^(?:de\s+|del\s+)?({qty_alt})\b\s*(.*)$', part)
+        if not m:
+            continue
+        qty = _v6_qty_token(m.group(1))
+        if qty is None:
+            continue
+        desc = (m.group(2) or '').strip()
+        desc = re.sub(r'^(?:de\s+|del\s+|codigo\s+|código\s+)', '', desc).strip()
+        if qty >= 100 and not desc:
+            continue
+        if desc:
+            out.append((qty, desc))
+    # Lista compacta: "dame 55 56 429" = 1 de cada código.
+    if len(out) == 1:
+        qty, desc = out[0]
+        nums_all = re.findall(r'(?<!\d)\d{1,4}(?!\d)', t)
+        desc_nums = re.findall(r'(?<!\d)\d{1,4}(?!\d)', desc)
+        # Si hay 3+ números y la primera "cantidad" es grande, casi seguro son códigos.
+        if qty >= 20 and len(nums_all) >= 3 and len(desc_nums) >= 2:
+            return [(1, n) for n in nums_all]
+    if not out and any(x in t_original for x in ['dame', 'deme', 'quiero', 'ocupo', 'agrega', 'agregame', 'agrégame']):
+        nums = re.findall(r'(?<!\d)\d{1,4}(?!\d)', t_original)
+        if len(nums) >= 2:
+            out = [(1, n) for n in nums]
+    return out
+
+# V6.3 - capa de ambigüedad antes de aceptar pares de números pequeños como pedido.
+_wa_parsear_con_contexto_almacen_v6_core = _wa_parsear_con_contexto_almacen
+
+def _wa_parsear_con_contexto_almacen(texto_total, productos_all, marca='', hilo='', extraer_pedidos_func=None):
+    t = _v6_norm(texto_total or '')
+    # Ejemplo clásico: "dame 2 4". Sin "del/código" puede significar 2 piezas del 4 o códigos 2 y 4.
+    if re.search(r'\b(dame|deme|quiero|ocupo|agrega|agregame|agrégame)\s+([1-9])\s+([1-9])\b', t) and not re.search(r'\b(del|de|codigo|código)\b', t):
+        nums = re.search(r'\b(?:dame|deme|quiero|ocupo|agrega|agregame|agrégame)\s+([1-9])\s+([1-9])\b', t)
+        n1, n2 = nums.group(1), nums.group(2)
+        return {
+            'pedidos_full': [], 'errores': [], 'advertencias': [],
+            'preguntas': [f"¿Se refiere a {n1} pieza(s) del código {n2}, o a los códigos {n1} y {n2}?"],
+            'sugerencias_almacen': [], 'hilos_detectados': _v6_detect_hilos(t, productos_all),
+            'contexto_inferido': {'marca': marca or '', 'hilo': hilo or '', 'hilos_mencionados': _v6_detect_hilos(t, productos_all)},
+            'respuesta_preferida': '', 'ventas_info': {'tipo': 'ambiguedad_numerica_v6'}
+        }
+    return _wa_parsear_con_contexto_almacen_v6_core(texto_total, productos_all, marca, hilo, extraer_pedidos_func)
