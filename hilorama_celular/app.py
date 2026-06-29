@@ -371,6 +371,29 @@ def ensure_schema():
                 usuario TEXT
             )
         """)
+        # Si la tabla ya existía de una versión anterior, CREATE TABLE IF NOT EXISTS
+        # no agrega columnas nuevas. Las agregamos aquí para evitar que al pagar una
+        # nota falle el historial de almacén y deje la transacción de PostgreSQL abortada.
+        for col_sql in [
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS tipo TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS nota_id TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS producto_id INTEGER",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS marca TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS hilo TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS color TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS codigo TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS codigo_barras TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS stock_anterior INTEGER",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS stock_nuevo INTEGER",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS cantidad INTEGER",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS campo TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS valor_anterior TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS valor_nuevo TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS motivo TEXT",
+            "ALTER TABLE movimientos_almacen ADD COLUMN IF NOT EXISTS usuario TEXT",
+        ]:
+            db.execute(col_sql)
 
         # Historial de comprobantes/pagos como en el programa de PC.
         # En móvil guardamos el comprobante optimizado como data:image/jpeg;base64
@@ -386,6 +409,43 @@ def ensure_schema():
                 fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        for col_sql in [
+            "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS nota_id TEXT",
+            "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS comprobante TEXT",
+            "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo_pago TEXT",
+            "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS monto_pagado REAL DEFAULT 0",
+            "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS referencia_pago TEXT",
+            "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        ]:
+            db.execute(col_sql)
+
+        # Base para el agente de WhatsApp IA. Primero se usa como simulador dentro
+        # de la app móvil; después estos mismos registros sirven para conectar
+        # WhatsApp Cloud API sin rehacer el cerebro del agente.
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_conversaciones (
+                id SERIAL PRIMARY KEY,
+                telefono TEXT,
+                cliente_nombre TEXT,
+                origen TEXT DEFAULT 'SIMULADOR',
+                estado TEXT DEFAULT 'BORRADOR',
+                nota_id TEXT,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ultima_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_mensajes (
+                id SERIAL PRIMARY KEY,
+                conversacion_id INTEGER REFERENCES whatsapp_conversaciones(id) ON DELETE SET NULL,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                direccion TEXT,
+                tipo TEXT DEFAULT 'texto',
+                texto TEXT,
+                respuesta_sugerida TEXT,
+                metadata TEXT
+            )
+        """)
 
         db.execute("CREATE INDEX IF NOT EXISTS idx_notas_estado_fecha ON notas(estado, fecha DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_items_nota_mobile ON items(nota_id)")
@@ -394,6 +454,8 @@ def ensure_schema():
         db.execute("CREATE INDEX IF NOT EXISTS idx_mov_almacen_fecha_mobile ON movimientos_almacen(fecha DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_mov_almacen_codigo_mobile ON movimientos_almacen(codigo)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_pagos_nota_mobile ON pagos(nota_id, fecha DESC)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_wa_conv_telefono_mobile ON whatsapp_conversaciones(telefono)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_wa_msg_conv_fecha_mobile ON whatsapp_mensajes(conversacion_id, fecha DESC)")
 
     _schema_ready = True
 
@@ -507,9 +569,17 @@ def _stock_estado(stock):
 def _registrar_movimiento_almacen(db, tipo, producto=None, cantidad=0, stock_anterior=None, stock_nuevo=None,
                                   campo="stock", valor_anterior=None, valor_nuevo=None, motivo="", nota_id=None,
                                   usuario="movil"):
-    """Historial compatible con el almacén de PC. Nunca debe romper una venta si el historial falla."""
+    """Historial compatible con el almacén de PC.
+
+    Importante en PostgreSQL: si un INSERT opcional falla y solo se atrapa con
+    try/except, la transacción queda "aborted" y todo lo siguiente falla con
+    "current transaction is aborted". Por eso usamos SAVEPOINT: si el historial
+    falla, se revierte solo ese insert y la venta/pago continúa normal.
+    """
+    producto = dict(producto or {})
+    sp_name = "sp_movimiento_almacen_safe"
     try:
-        producto = dict(producto or {})
+        db.execute(f"SAVEPOINT {sp_name}")
         db.execute("""
             INSERT INTO movimientos_almacen
             (fecha, tipo, nota_id, producto_id, marca, hilo, color, codigo, codigo_barras,
@@ -523,7 +593,13 @@ def _registrar_movimiento_almacen(db, tipo, producto=None, cantidad=0, stock_ant
             None if valor_nuevo is None else str(valor_nuevo),
             motivo, usuario,
         ))
+        db.execute(f"RELEASE SAVEPOINT {sp_name}")
     except Exception as exc:
+        try:
+            db.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
+            db.execute(f"RELEASE SAVEPOINT {sp_name}")
+        except Exception:
+            pass
         print("WARN movimiento_almacen no registrado:", exc, flush=True)
 
 
@@ -1553,6 +1629,7 @@ def parser_whatsapp_mobile():
     if referencia_visual:
         advertencias.append("Se detectó referencia visual; revisa posiciones, círculos, flechas o tachones antes de confirmar.")
 
+
     return jsonify(json_safe({
         "ok": True,
         "modo": resultado.get("modo"),
@@ -1565,6 +1642,270 @@ def parser_whatsapp_mobile():
         "sugerencias": resultado.get("sugerencias") or {},
         "referencia_visual": referencia_visual,
     }))
+
+
+# =========================
+# Motor WhatsApp IA / Simulador
+# =========================
+def _call_parser_whatsapp_local(payload):
+    """Reutiliza el parser real de la app para que el simulador y WhatsApp usen el mismo cerebro."""
+    with app.test_request_context('/api/parser-whatsapp', method='POST', json=payload):
+        out = parser_whatsapp_mobile()
+    status = 200
+    response = out
+    if isinstance(out, tuple):
+        response = out[0]
+        if len(out) > 1:
+            status = out[1]
+    try:
+        data = response.get_json() if hasattr(response, 'get_json') else None
+    except Exception:
+        data = None
+    return data or {"ok": False, "error": "No pude leer respuesta del parser"}, int(status or 200)
+
+
+def _norm_sales_txt(v):
+    return _norm_txt(v or '')
+
+
+def _clasificar_intencion_wa(texto, parsed):
+    t = _norm_sales_txt(texto)
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    advertencias = parsed.get('advertencias') or []
+
+    if any(x in t for x in ['comprobante', 'pague', 'pagado', 'deposit', 'transfer', 'ticket', 'recibo']):
+        intent = 'comprobante_pago'
+    elif any(x in t for x in ['parecid', 'similar', 'tono para', 'tonos para', 'color para', 'muñeco', 'amigurumi', 'trabajo', 'referencia']):
+        intent = 'sugerir_tonos'
+    elif pedidos:
+        intent = 'pedido'
+    elif any(x in t for x in ['precio', 'cuanto', 'cuesta', 'costo', 'vale']):
+        intent = 'pregunta_precio'
+    elif any(x in t for x in ['envio', 'envias', 'paqueteria', 'llega', 'neza', 'cp ', 'codigo postal']):
+        intent = 'pregunta_envio'
+    elif any(x in t for x in ['stock', 'tienes', 'hay', 'disponible', 'manejas']):
+        intent = 'pregunta_stock'
+    else:
+        intent = 'conversacion'
+
+    if preguntas or errores:
+        confianza = 'baja'
+        accion = 'preguntar'
+        puede_auto = False
+    elif pedidos and any(int(p.get('stock') or 0) < int(p.get('cantidad') or 1) and p.get('es_inventariable', True) for p in pedidos):
+        confianza = 'media'
+        accion = 'revisar_stock'
+        puede_auto = False
+    elif pedidos:
+        confianza = 'alta' if not advertencias else 'media'
+        accion = 'crear_cotizacion'
+        puede_auto = not advertencias
+    elif intent in ['pregunta_precio', 'pregunta_envio', 'pregunta_stock']:
+        confianza = 'media'
+        accion = 'responder'
+        puede_auto = False  # al inicio conviene aprobar todo hasta entrenarlo con mensajes reales
+    elif intent == 'sugerir_tonos':
+        confianza = 'media'
+        accion = 'sugerir_sin_agregar'
+        puede_auto = False
+    else:
+        confianza = 'baja'
+        accion = 'revisar'
+        puede_auto = False
+
+    return {
+        'intencion': intent,
+        'confianza': confianza,
+        'accion_recomendada': accion,
+        'puede_auto_enviar': bool(puede_auto),
+    }
+
+
+def _fallback_respuesta_wa(texto, parsed, meta):
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    advertencias = parsed.get('advertencias') or []
+    intent = meta.get('intencion')
+
+    if preguntas:
+        return 'Solo para confirmar 😊 ' + str(preguntas[0])
+    if errores:
+        return 'Revisé tu mensaje, pero estos códigos no me aparecen en catálogo: ' + ', '.join(map(str, errores[:8])) + '. ¿Me confirmas el código o color?'
+    if pedidos:
+        lineas = []
+        for p in pedidos[:18]:
+            lineas.append(f"- {p.get('hilo') or p.get('marca') or 'Producto'} {p.get('codigo')} {p.get('color') or ''} x{int(p.get('cantidad') or 1)}".strip())
+        txt = 'Claro 😊 te agrego:\n' + '\n'.join(lineas)
+        if len(pedidos) > 18:
+            txt += f"\nY {len(pedidos)-18} producto(s) más."
+        txt += '\n\nTe preparo tu cotización.'
+        if advertencias:
+            txt += '\n\nAntes de enviarla, solo reviso unos detalles para evitar errores.'
+        return txt
+    if intent == 'pregunta_precio':
+        return 'Claro 😊 ¿me confirmas qué hilo o código quieres revisar? Así te doy el precio exacto y disponibilidad.'
+    if intent == 'pregunta_envio':
+        return 'Sí manejamos envíos 😊 Para cotizarlo necesito tu código postal o municipio.'
+    if intent == 'pregunta_stock':
+        return 'Con gusto 😊 dime el código, color o hilo que buscas y reviso disponibilidad.'
+    if intent == 'sugerir_tonos':
+        return 'Sí 😊 mándame la foto o referencia y te sugiero los tonos más parecidos según el catálogo disponible. No los agrego directo hasta que tú confirmes.'
+    if intent == 'comprobante_pago':
+        return 'Perfecto 😊 mándame la imagen del comprobante y reviso monto, referencia y datos para continuar con tu pedido.'
+    return 'Claro 😊 dime qué hilo, código o color necesitas y te ayudo a armar tu cotización.'
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    api_key = os.environ.get('OPENAI_API_KEY')
+    if not api_key:
+        return _fallback_respuesta_wa(texto, parsed, meta), 'fallback_sin_openai'
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, timeout=float(os.environ.get('OPENAI_TIMEOUT_SECONDS', '90')))
+        productos = []
+        for p in (parsed.get('pedidos') or [])[:30]:
+            productos.append({
+                'codigo': p.get('codigo'), 'marca': p.get('marca'), 'hilo': p.get('hilo'),
+                'color': p.get('color'), 'cantidad': p.get('cantidad'), 'stock': p.get('stock'),
+                'precio': p.get('precio_venta')
+            })
+        system = (
+            'Eres el asistente de ventas de Hilorama, una mercería mexicana. '
+            'Responde amable, breve y natural por WhatsApp. No inventes stock, precios, códigos ni productos. '
+            'Usa solo los productos detectados y el contexto enviado. Si hay dudas, pregunta antes de vender. '
+            'Si el pedido está claro, confirma los productos y di que prepararás la cotización. '
+            'No marques pagos, no prometas envío y no cierres venta si faltan datos. '
+            'Devuelve SOLO JSON válido con claves: respuesta, razon, requiere_humano.'
+        )
+        payload = {
+            'mensaje_cliente': texto,
+            'contexto': contexto,
+            'clasificacion': meta,
+            'productos_detectados': productos,
+            'preguntas': parsed.get('preguntas') or [],
+            'advertencias': parsed.get('advertencias') or [],
+            'errores': parsed.get('errores') or [],
+        }
+        resp = client.chat.completions.create(
+            model=os.environ.get('OPENAI_SALES_MODEL', os.environ.get('OPENAI_TEXT_MODEL', 'gpt-4o-mini')),
+            temperature=0.2,
+            max_tokens=650,
+            response_format={'type': 'json_object'},
+            messages=[
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}
+            ]
+        )
+        raw = resp.choices[0].message.content or '{}'
+        obj = json.loads(raw)
+        respuesta = str(obj.get('respuesta') or '').strip()
+        if not respuesta:
+            respuesta = _fallback_respuesta_wa(texto, parsed, meta)
+        return respuesta, 'openai'
+    except Exception as exc:
+        print('WARN WhatsApp IA OpenAI fallback:', exc, flush=True)
+        return _fallback_respuesta_wa(texto, parsed, meta), 'fallback_error_openai'
+
+
+@app.route('/api/whatsapp-ia/simular', methods=['POST'])
+def whatsapp_ia_simular():
+    """Primer paso del agente real: usa la IA real, pero con entrada manual antes de conectar Cloud API."""
+    data = request.get_json(force=True) or {}
+    texto = (data.get('texto') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    hilo = (data.get('hilo') or '').strip()
+    cliente_nombre = (data.get('cliente_nombre') or '').strip()
+    telefono = (data.get('telefono') or '').strip()
+    texto_imagen = (data.get('texto_imagen') or '').strip()
+    imagen_referencia = bool(data.get('imagen_referencia'))
+
+    texto_total = ' '.join(x for x in [texto, texto_imagen] if x).strip()
+    if not texto_total:
+        return jsonify({'ok': False, 'error': 'Escribe o pega un mensaje de clienta primero.'}), 400
+
+    parser_payload = {
+        'texto': texto,
+        'marca': marca,
+        'hilo': hilo,
+        'cliente_nombre': cliente_nombre,
+        'telefono': telefono,
+        'texto_imagen': texto_imagen,
+        'imagen_referencia': imagen_referencia,
+    }
+    parsed, status = _call_parser_whatsapp_local(parser_payload)
+    if status >= 400 or not parsed.get('ok', False):
+        return jsonify(parsed), status
+
+    meta = _clasificar_intencion_wa(texto_total, parsed)
+    contexto = {
+        'marca': marca or 'Todas',
+        'hilo': hilo or 'Todos',
+        'cliente_nombre': cliente_nombre,
+        'telefono': telefono,
+        'fase': 'simulador_manual_pre_whatsapp_cloud_api',
+    }
+    respuesta, motor = _generar_respuesta_wa_con_openai(texto_total, parsed, meta, contexto)
+
+    conversacion_id = data.get('conversacion_id')
+    try:
+        with DB() as db:
+            if conversacion_id:
+                conv = db.execute("""
+                    UPDATE whatsapp_conversaciones
+                    SET cliente_nombre=%s, telefono=%s, ultima_actualizacion=%s, estado=%s
+                    WHERE id=%s
+                    RETURNING id
+                """, (cliente_nombre, telefono, now_mexico(), 'SIMULADOR', conversacion_id)).fetchone()
+                if not conv:
+                    conversacion_id = None
+            if not conversacion_id:
+                conv = db.execute("""
+                    INSERT INTO whatsapp_conversaciones (telefono, cliente_nombre, origen, estado, fecha, ultima_actualizacion)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    RETURNING id
+                """, (telefono, cliente_nombre, 'SIMULADOR', 'SIMULADOR', now_mexico(), now_mexico())).fetchone()
+                conversacion_id = conv['id']
+            db.execute("""
+                INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (conversacion_id, 'IN', 'texto', texto_total, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': motor}, ensure_ascii=False)))
+    except Exception as exc:
+        print('WARN no se pudo guardar simulacion WA:', exc, flush=True)
+
+    return jsonify(json_safe({
+        'ok': True,
+        'conversacion_id': conversacion_id,
+        'motor': motor,
+        'mensaje_cliente': texto_total,
+        'respuesta_sugerida': respuesta,
+        'intencion': meta.get('intencion'),
+        'confianza': meta.get('confianza'),
+        'accion_recomendada': meta.get('accion_recomendada'),
+        'puede_auto_enviar': meta.get('puede_auto_enviar'),
+        'pedidos': parsed.get('pedidos') or [],
+        'preguntas': parsed.get('preguntas') or [],
+        'errores': parsed.get('errores') or [],
+        'advertencias': parsed.get('advertencias') or [],
+        'parser': parsed,
+    }))
+
+
+@app.route('/api/whatsapp-ia/conversaciones')
+def whatsapp_ia_conversaciones():
+    limit = min(int(request.args.get('limit') or 30), 100)
+    with DB() as db:
+        rows = db.execute("""
+            SELECT c.*, (
+                SELECT texto FROM whatsapp_mensajes m WHERE m.conversacion_id=c.id ORDER BY m.fecha DESC LIMIT 1
+            ) AS ultimo_mensaje
+            FROM whatsapp_conversaciones c
+            ORDER BY c.ultima_actualizacion DESC NULLS LAST, c.fecha DESC
+            LIMIT %s
+        """, (limit,)).fetchall()
+    return jsonify(json_safe([dict(r) for r in rows]))
 
 
 # =========================
