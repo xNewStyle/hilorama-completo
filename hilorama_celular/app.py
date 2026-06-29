@@ -6102,3 +6102,474 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
     except Exception as exc:
         print('WARN WhatsApp IA OpenAI fallback V4:', exc, flush=True)
         return _fallback_respuesta_wa(texto, parsed, meta), 'fallback_error_openai'
+
+
+# ==========================================================
+# WhatsApp IA V5 - resolver comercial por familia/hilo real
+# ==========================================================
+# Corrige casos detectados en pruebas reales:
+# - Komfy Mini no debe mezclarse con Velluto/Kairo.
+# - Consultas de Komfy Mini/Kurumi deben detectarse aunque el selector esté en Todas/Todos.
+# - Combos/paquetes con envío no deben caer en pregunta genérica de CP antes de responder el paquete.
+# - Pedidos por color usan primero el hilo mencionado y después el color más parecido dentro de ese hilo.
+
+WA_HILO_ALIAS_CANON = {
+    'velluto': ['velluto','vellutos','veluto','velutos','alize velluto','alize veluto','alize','chenille velluto','vello','vellos'],
+    'komfy_mini': ['komfy mini','komfymini','komfi mini','konfy mini','konfi mini','comfy mini','karina komfy mini','karina komfi mini','komfy','komfi','konfy','konfi','comfy'],
+    'kurumi': ['kurumi','kurumis','karina kurumi'],
+    'trapillo': ['trapillo','trapillo kraft','kraft','trapiyo','trapiyos'],
+}
+
+
+def _wa_hilo_family(hilo):
+    h = _norm_txt(hilo or '')
+    compacto = h.replace(' ', '')
+    if 'velluto' in h or 'veluto' in h or ('alize' in h and 'velluto' in h):
+        return 'velluto'
+    if 'komfy' in h or 'komfi' in h or 'konfy' in h or 'comfy' in h or 'komfymini' in compacto or 'komfimini' in compacto:
+        return 'komfy_mini'
+    if 'kurumi' in h or 'kurumi' in compacto:
+        return 'kurumi'
+    if 'trapillo' in h or 'kraft' in h:
+        return 'trapillo'
+    return h
+
+
+def _wa_hilo_es_mejor_para_familia(hilo, fam, texto=''):
+    h = _norm_txt(hilo or '')
+    t = _norm_txt(texto or '')
+    score = 0
+    if _wa_hilo_family(hilo) == fam:
+        score += 100
+    if fam == 'komfy_mini':
+        if 'mini' in h:
+            score += 30
+        if 'komfy mini' in t or 'komfi mini' in t or 'konfy mini' in t or 'comfy mini' in t:
+            if 'mini' in h:
+                score += 50
+        # Si existe HILO exacto KOMFY MINI, debe vencer a KOMFY o otros hilos parecidos.
+        if h in {'komfy mini','karina komfy mini'}:
+            score += 100
+        if h == 'komfy':
+            score -= 25
+    if fam == 'velluto':
+        if h == 'velluto':
+            score += 100
+        if 'alize velluto' in h:
+            score += 60
+    if fam == 'kurumi':
+        if h == 'kurumi':
+            score += 100
+        if 'kurumi' in h:
+            score += 50
+    return score
+
+
+def _wa_dedup_hilos_por_familia(hilos, texto=''):
+    grupos = {}
+    for h in hilos or []:
+        fam = _wa_hilo_family(h)
+        if not fam:
+            continue
+        score = _wa_hilo_es_mejor_para_familia(h, fam, texto)
+        current = grupos.get(fam)
+        if current is None or score > current[1]:
+            grupos[fam] = (h, score)
+    out = []
+    for h, _score in grupos.values():
+        if h not in out:
+            out.append(h)
+    return out
+
+
+def _wa_detectar_hilos(texto, productos):
+    t = _norm_txt(texto or '')
+    compacto = t.replace(' ', '')
+    if not t:
+        return []
+
+    familias = []
+    for fam, aliases in WA_HILO_ALIAS_CANON.items():
+        for a in aliases:
+            aa = _norm_txt(a)
+            aac = aa.replace(' ', '')
+            if re.search(rf'(?<!\w){re.escape(aa)}(?!\w)', t) or (len(aac) >= 5 and aac in compacto):
+                if fam not in familias:
+                    familias.append(fam)
+                break
+
+    hilos = _wa_catalogo_hilos(productos)
+    hallados = []
+    for fam in familias:
+        candidatos = [h for h in hilos if _wa_hilo_family(h) == fam]
+        candidatos = sorted(candidatos, key=lambda h: _wa_hilo_es_mejor_para_familia(h, fam, t), reverse=True)
+        if candidatos and candidatos[0] not in hallados:
+            hallados.append(candidatos[0])
+
+    # Match exacto adicional por nombre real del hilo.
+    for h in hilos:
+        hn = _norm_txt(h)
+        hnc = hn.replace(' ', '')
+        if h in hallados:
+            continue
+        if (hn and re.search(rf'(?<!\w){re.escape(hn)}(?!\w)', t)) or (len(hnc) >= 5 and hnc in compacto):
+            hallados.append(h)
+
+    return _wa_dedup_hilos_por_familia(hallados, t)
+
+
+def _wa_filtrar_por_hilo(productos, hilo):
+    if not hilo:
+        return list(productos or [])
+    hn = _norm_txt(hilo)
+    fam = _wa_hilo_family(hilo)
+    exactos = [p for p in (productos or []) if _norm_txt(p.get('hilo') or '') == hn]
+    if exactos:
+        return exactos
+    if fam:
+        fams = [p for p in (productos or []) if _wa_hilo_family(p.get('hilo') or '') == fam]
+        if fams:
+            return fams
+    return []
+
+
+def _wa_token_qty_v5(token):
+    if token is None:
+        return None
+    s = _norm_txt(str(token))
+    if s.isdigit():
+        try:
+            return int(s)
+        except Exception:
+            return None
+    return WA_QTY_WORDS.get(s)
+
+
+def _wa_quitar_hilo_del_texto(texto, hilos):
+    t = _norm_txt(texto or '')
+    for h in hilos or []:
+        for a in sorted(_wa_aliases_hilo(h), key=len, reverse=True):
+            aa = _norm_txt(a)
+            if len(aa) >= 3:
+                t = re.sub(rf'(?<!\w){re.escape(aa)}(?!\w)', ' ', t)
+                t = t.replace(aa.replace(' ', ''), ' ')
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def _wa_color_score_producto(producto, texto_color, grupo=None):
+    color = _norm_txt(producto.get('color') or '')
+    codigo = str(producto.get('codigo') or '').strip()
+    t = _norm_txt(texto_color or '')
+    if not color:
+        return -999
+    score = 0
+    if codigo and re.search(rf'(?<!\d){re.escape(codigo)}(?!\d)', t):
+        score += 200
+    # Limpia palabras que no son color.
+    t_clean = re.sub(r'\b(de|del|la|el|los|las|pieza|piezas|pz|pzas|madeja|madejas|uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|quiero|dame|ocupo|agrega|agregame)\b', ' ', t)
+    t_clean = re.sub(r'\s+', ' ', t_clean).strip()
+    if t_clean:
+        if color == t_clean:
+            score += 150
+        if t_clean in color:
+            score += 110
+        words = [w for w in t_clean.split() if len(w) > 1]
+        if words and all(w in color for w in words):
+            score += 90
+        if words and any(w in color for w in words):
+            score += 45
+    # Alias por grupo de color, pero con menor peso que el nombre exacto.
+    if grupo:
+        aliases = [_norm_txt(a) for a in COLOR_GRUPOS.get(grupo, [])]
+        # Si la clienta dijo rosa, preferir color que tenga ROSA sobre FUCsia.
+        if grupo == 'rosa' and 'rosa' in t:
+            if 'rosa' in color:
+                score += 80
+            elif 'fucsia' in color or 'fiusha' in color or 'fuc' in color:
+                score += 15
+        elif grupo == 'rojo' and 'rojo escolar' in t:
+            if 'rojo escolar' in color:
+                score += 120
+            elif 'rojo' in color:
+                score += 45
+        elif grupo == 'negro' and 'negro' in t:
+            if color == 'negro' or 'negro' in color:
+                score += 100
+        else:
+            if any(a and a in color for a in aliases):
+                score += 40
+    try:
+        if int(producto.get('stock') or 0) > 0:
+            score += 8
+    except Exception:
+        pass
+    return score
+
+
+def _wa_resolver_producto_por_color(productos_ctx, texto_color):
+    grupos = _wa_color_descripcion_keywords(texto_color) or _color_canon(texto_color)
+    t = _norm_txt(texto_color or '')
+    # Código exacto dentro del contexto.
+    codigos = re.findall(r'(?<!\d)\d{1,4}(?!\d)', t)
+    for cod in codigos:
+        matches = [p for p in productos_ctx if str(p.get('codigo') or '').strip().lstrip('0') == str(cod).lstrip('0')]
+        if matches:
+            return sorted(matches, key=lambda p: int(p.get('stock') or 0), reverse=True)[0], []
+    candidatos = []
+    for p in productos_ctx or []:
+        # Evita combos/paquetes/surtidos como tono normal.
+        cn = _norm_txt(p.get('color') or '')
+        if any(x in cn for x in ['surtido','combo','paquete']):
+            continue
+        best = max([_wa_color_score_producto(p, t, g) for g in (grupos or [None])])
+        if best > 0:
+            candidatos.append((best, p))
+    candidatos.sort(key=lambda x: x[0], reverse=True)
+    if not candidatos:
+        return None, []
+    # Si hay un ganador claro, usarlo. Si no, preguntar con opciones.
+    top_score, top = candidatos[0]
+    opciones = [p for _s, p in candidatos[:5]]
+    if len(candidatos) == 1 or top_score >= 100 or (len(candidatos) > 1 and top_score - candidatos[1][0] >= 35):
+        return top, opciones
+    return None, opciones
+
+
+def _wa_extraer_pedidos_simples_v5(texto, productos_base, hilos_globales, hilo_actual=''):
+    pedidos = []
+    preguntas = []
+    advertencias = []
+    ultimo_hilo = hilo_actual or (hilos_globales[0] if len(hilos_globales) == 1 else '')
+    clauses = _wa_split_clausulas(texto)
+    qty_pat = r'(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|veinte|treinta|cuarenta)'
+    for parte in clauses:
+        if not parte or _wa_es_quitar(parte) or _wa_es_consulta_catalogo(parte):
+            continue
+        hilos_parte = _wa_detectar_hilos(parte, productos_base)
+        if hilos_parte:
+            ultimo_hilo = hilos_parte[0]
+        hilo_ctx = ultimo_hilo
+        productos_ctx = _wa_filtrar_por_hilo(productos_base, hilo_ctx) if hilo_ctx else productos_base
+        # Detecta pares cantidad + descripción/código. Ej: 3 Komfy Mini negro / 2 rosa / 1 rojo escolar.
+        matches = list(re.finditer(rf'(?<!\w){qty_pat}(?!\w)\s+(?:de\s+|del\s+)?([^,;]+?)(?=(?:\s+y\s+{qty_pat}\b)|$)', parte))
+        if not matches:
+            continue
+        for m in matches:
+            qty = _wa_token_qty_v5(m.group(1)) or 1
+            desc = (m.group(2) or '').strip()
+            desc_sin_hilo = _wa_quitar_hilo_del_texto(desc, hilos_parte or ([hilo_ctx] if hilo_ctx else []))
+            # Si la descripción quedó casi vacía, falta tono/código.
+            if not desc_sin_hilo or _norm_txt(desc_sin_hilo) in {'pieza','piezas','pz','pzas','madeja','madejas'}:
+                if hilo_ctx:
+                    preguntas.append(f"Sí contamos con {hilo_ctx}. Falta confirmar qué tono o código quiere para {qty} pieza(s).")
+                continue
+            prod, opciones = _wa_resolver_producto_por_color(productos_ctx, desc_sin_hilo)
+            if prod:
+                pedidos.append({
+                    'producto_id': prod.get('id'),
+                    'codigo': prod.get('codigo'),
+                    'marca': prod.get('marca') or '',
+                    'hilo': prod.get('hilo') or '',
+                    'color': prod.get('color') or '',
+                    'stock': int(prod.get('stock') or 0),
+                    'precio_venta': float(prod.get('precio_venta') or 0),
+                    'cantidad': int(qty),
+                    'es_inventariable': prod.get('es_inventariable', True),
+                })
+            elif opciones:
+                opts = ', '.join([f"{p.get('codigo')} {p.get('color')}".strip() for p in opciones[:4]])
+                preguntas.append(f"Para {hilo_ctx or 'ese hilo'}, '{desc_sin_hilo}' tiene varias opciones: {opts}. ¿Cuál le agrego?")
+            elif hilo_ctx:
+                preguntas.append(f"Sí contamos con {hilo_ctx}. No ubiqué exacto '{desc_sin_hilo}', ¿me confirma código o tono?")
+    return pedidos, preguntas, advertencias
+
+
+def _wa_respuesta_combo(t, hilos):
+    n = _wa_combo_detectado(t)
+    hilo_txt = hilos[0] if hilos else ('Velluto' if 'velluto' in _norm_txt(t) or 'veluto' in _norm_txt(t) else 'el hilo')
+    if n:
+        if 'envio' in t or 'envío' in t or 'gratis' in t:
+            return f"Sí 😊 el paquete de {n} piezas de {hilo_txt} se puede manejar con colores a elegir, sujeto a disponibilidad. Para confirmar envío gratis/paquetería, mándeme su lista de tonos o códigos y su código postal."
+        if 'escoger' in t or 'elegir' in t or 'colores' in t or 'tonos' in t:
+            return f"Sí 😊 el paquete de {n} piezas de {hilo_txt} puede ir con colores a elegir, sujeto a disponibilidad. Mándeme la lista de tonos/códigos y le preparo su nota."
+        return f"Sí 😊 manejamos paquete de {n} piezas de {hilo_txt}. Puede elegir sus colores sujeto a disponibilidad."
+    return ''
+
+
+def _wa_respuesta_consulta_almacen(texto, productos, hilos=None, marcas=None):
+    t = _norm_txt(texto or '')
+    hilos = _wa_dedup_hilos_por_familia(hilos or [], t)
+    marcas = marcas or []
+    externo = _wa_mensaje_externo(t)
+    if externo:
+        return externo
+    # Primero combos/paquetes; si se revisa envío después, la respuesta debe seguir siendo del paquete.
+    combo_resp = _wa_respuesta_combo(t, hilos)
+    if combo_resp:
+        return combo_resp
+    if _wa_es_pregunta_envio(texto):
+        cp = re.search(r'\b\d{5}\b', t)
+        if cp:
+            return f"Sí hacemos envíos 😊 Con el CP {cp.group(0)} puedo cotizarle las opciones de paquetería."
+        return "Sí, hacemos envíos a todo México 😊 Para cotizarle el envío me comparte su código postal, por favor."
+    if _wa_es_pregunta_pago(texto):
+        return "Perfecto 😊 puede mandarme la imagen del comprobante y reviso que coincida el monto para continuar con su pedido."
+    if hilos:
+        bloques=[]
+        for h in hilos[:2]:
+            r = _wa_resumen_hilo(h, productos)
+            if not r['total']:
+                continue
+            precio = _wa_precio_texto(r.get('precio_min'), r.get('precio_max'))
+            nombre = h
+            if 'precio' in t or 'cuanto' in t or 'cuesta' in t or 'costo' in t or 'vale' in t:
+                if precio:
+                    bloques.append(f"El {nombre} está {precio} por madeja 😊 ¿Qué color o código busca?")
+                else:
+                    bloques.append(f"Sí manejamos {nombre} 😊 Para darle precio exacto reviso el tono o código que necesita.")
+            elif 'color' in t or 'tono' in t or 'disponib' in t or 'catalogo' in t or 'catálogo' in t or 'carta' in t:
+                muestra = ', '.join([f"{c['codigo']} {c['color']}".strip() for c in r['colores'][:8] if c.get('codigo') or c.get('color')])
+                extra = f" Algunos tonos disponibles son: {muestra}." if muestra else ''
+                bloques.append(f"Sí 😊 tenemos {nombre} disponible.{extra}\nLe puedo compartir la carta de colores completa.")
+            else:
+                bloques.append(f"Sí 😊 manejamos {nombre}{(' ' + precio) if precio else ''}. ¿Busca algún color o código en especial?")
+        if bloques:
+            return '\n\n'.join(bloques).strip()
+    if marcas:
+        bloques=[]
+        for m in marcas[:2]:
+            r=_wa_resumen_marca(m, productos)
+            if r.get('hilos'):
+                bloques.append(f"Sí 😊 manejamos {m}. Tenemos por ejemplo: " + ', '.join(r['hilos'][:6]) + ". ¿Cuál buscaba?")
+        if bloques:
+            return '\n\n'.join(bloques)
+    return ''
+
+
+def _wa_parsear_con_contexto_almacen(texto_total, productos_all, marca='', hilo='', extraer_pedidos_func=None):
+    extraer = extraer_pedidos_func
+    productos_base = _wa_filtrar_por_marca_hilo(productos_all, marca, hilo)
+    texto_norm = _norm_txt(texto_total or '')
+    hilos_globales = _wa_detectar_hilos(texto_norm, productos_base)
+    marcas_globales = _wa_detectar_marcas(texto_norm, productos_base)
+    contexto_global = hilo or (hilos_globales[0] if len(hilos_globales) == 1 else '')
+    pedidos_dict = {}
+    preguntas=[]; errores=[]; advertencias=[]; sugerencias=[]; hilos_detectados=[]
+    respuesta_preferida = ''
+    for h in hilos_globales:
+        if h not in hilos_detectados:
+            hilos_detectados.append(h)
+
+    # Consulta comercial: jamás convertir paquetes/consultas en producto de carrito.
+    if _wa_es_consulta_catalogo(texto_norm):
+        resp = _wa_respuesta_consulta_almacen(texto_norm, productos_base, hilos_globales, marcas_globales)
+        if resp:
+            return {
+                'pedidos_full': [], 'errores': [], 'advertencias': [], 'preguntas': [],
+                'sugerencias_almacen': [], 'hilos_detectados': hilos_detectados,
+                'contexto_inferido': {'marca': marca or '', 'hilo': hilo or contexto_global or '', 'hilos_mencionados': hilos_globales, 'marcas_mencionadas': marcas_globales},
+                'respuesta_preferida': resp,
+                'ventas_info': {'tipo': 'consulta_catalogo_v5'}
+            }
+
+    # Resolución propia por familia/hilo para evitar mezclar Velluto/Kairo/Komfy.
+    pedidos_v5, preguntas_v5, advertencias_v5 = _wa_extraer_pedidos_simples_v5(texto_norm, productos_base, hilos_globales, contexto_global)
+    for fp in pedidos_v5:
+        _wa_agregar_o_sumar(pedidos_dict, fp)
+    preguntas.extend(preguntas_v5)
+    advertencias.extend(advertencias_v5)
+
+    # Si V5 ya resolvió productos, no dejar que el parser viejo agregue de otros hilos.
+    if pedidos_dict:
+        return {
+            'pedidos_full': list(pedidos_dict.values()),
+            'errores': [],
+            'advertencias': sorted(set(str(a) for a in advertencias if a)),
+            'preguntas': sorted(set(str(p) for p in preguntas if p)),
+            'sugerencias_almacen': sugerencias,
+            'hilos_detectados': hilos_detectados,
+            'contexto_inferido': {'marca': marca or '', 'hilo': hilo or contexto_global or '', 'hilos_mencionados': hilos_globales, 'marcas_mencionadas': marcas_globales},
+            'respuesta_preferida': '',
+            'ventas_info': {'tipo': 'pedido_v5_familia_hilo'}
+        }
+
+    # Si no resolvió nada, usa el flujo anterior pero con hilos deduplicados.
+    clauses = _wa_split_clausulas(texto_norm)
+    ultimo_hilo = contexto_global
+    for idx, parte in enumerate(clauses):
+        if not parte:
+            continue
+        hilos_parte = _wa_detectar_hilos(parte, productos_base)
+        marcas_parte = _wa_detectar_marcas(parte, productos_base)
+        for h in hilos_parte:
+            if h not in hilos_detectados:
+                hilos_detectados.append(h)
+        if _wa_es_quitar(parte):
+            borrados = _wa_remover_por_texto(pedidos_dict, parte, productos_base)
+            advertencias.append(f"Se quitaron {borrados} producto(s) por indicación de la clienta." if borrados else "La clienta pidió quitar algo, pero no encontré una coincidencia clara.")
+            continue
+        if _wa_es_consulta_catalogo(parte):
+            resp = _wa_respuesta_consulta_almacen(parte, productos_base, hilos_parte or hilos_globales, marcas_parte or marcas_globales)
+            if resp and not pedidos_dict:
+                respuesta_preferida = resp
+            elif resp:
+                advertencias.append(resp)
+            continue
+        hilo_ctx = hilos_parte[0] if len(hilos_parte) == 1 else (ultimo_hilo or contexto_global)
+        if hilo_ctx:
+            ultimo_hilo = hilo_ctx
+        productos_ctx = _wa_filtrar_por_hilo(productos_base, hilo_ctx) if hilo_ctx else productos_base
+        if hilo_ctx and _wa_parece_linea_contexto_hilo(parte) and idx < len(clauses)-1:
+            continue
+        parse = extraer(parte, productos_ctx) if extraer else {'pedidos': [], 'preguntas': [], 'errores': []}
+        full, err = _wa_pedidos_full_desde_parse(parse, productos_ctx)
+        for fp in full:
+            _wa_agregar_o_sumar(pedidos_dict, fp)
+        errores.extend(err)
+        errores.extend(parse.get('errores') or [])
+        if not full:
+            preguntas.extend(parse.get('preguntas') or [])
+        advertencias.extend(parse.get('advertencias') or [])
+        if hilo_ctx and _wa_color_descripcion_keywords(parte):
+            descripcion_larga = any(x in parte for x in ['hueso','marfil','amarillent','medio','parecid','calido','piel','crema','nude'])
+            if descripcion_larga and not full:
+                sug = _wa_sugerir_tonos_por_descripcion(parte, productos_ctx, limit=5)
+                if sug:
+                    sugerencias.append({'tipo': 'tonos_por_descripcion', 'hilo': hilo_ctx, 'texto': parte, 'opciones': sug})
+                    preguntas.append(f"Para {hilo_ctx}, la clienta describió un tono. Sugiere opciones del almacén y pregunta cuál quiere agregar.")
+        if hilo_ctx and not full and _wa_hay_cantidad(parte):
+            sug = _wa_sugerir_tonos_por_descripcion(parte, productos_ctx, limit=5)
+            if sug:
+                sugerencias.append({'tipo': 'tonos_por_descripcion', 'hilo': hilo_ctx, 'texto': parte, 'opciones': sug})
+                preguntas.append(f"Para {hilo_ctx}, falta confirmar cuál tono desea agregar.")
+            else:
+                m_qty = re.search(r'\b(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|veinte|cuarenta)\b', parte)
+                preguntas.append(f"Sí contamos con {hilo_ctx}. Falta confirmar qué tono o código quiere para {m_qty.group(1) if m_qty else ''} pieza(s).")
+
+    if not pedidos_dict and not respuesta_preferida and not preguntas:
+        resp = _wa_respuesta_consulta_almacen(texto_norm, productos_base, hilos_globales, marcas_globales)
+        if resp:
+            respuesta_preferida = resp
+        else:
+            similares = _wa_sugerir_hilos_similares(texto_norm, productos_base, limit=5)
+            if similares:
+                sugerencias.append({'tipo': 'hilo_similar', 'texto': texto_total, 'opciones': similares})
+                preguntas.append('El producto exacto no se identificó en almacén; ofrece alternativas similares por textura.')
+    return {
+        'pedidos_full': list(pedidos_dict.values()),
+        'errores': sorted(set(str(e) for e in errores if e)),
+        'advertencias': sorted(set(str(a) for a in advertencias if a)),
+        'preguntas': sorted(set(str(p) for p in preguntas if p)),
+        'sugerencias_almacen': sugerencias,
+        'hilos_detectados': hilos_detectados,
+        'contexto_inferido': {'marca': marca or '', 'hilo': hilo or contexto_global or '', 'hilos_mencionados': hilos_globales, 'marcas_mencionadas': marcas_globales},
+        'respuesta_preferida': respuesta_preferida,
+        'ventas_info': {'tipo': 'pedido_o_conversacion_v5'}
+    }
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    # V5: primero reglas y almacén. OpenAI solo para conversación libre sin datos resueltos.
+    if (parsed.get('pedidos') or parsed.get('preguntas') or parsed.get('errores') or parsed.get('respuesta_preferida') or parsed.get('sugerencias_almacen')):
+        return _fallback_respuesta_wa(texto, parsed, meta), 'reglas_hilorama_v5'
+    return _fallback_respuesta_wa(texto, parsed, meta), 'reglas_hilorama_v5_base'
