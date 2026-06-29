@@ -118,13 +118,17 @@
           </details>
         </details>
         <details class="ai-block"><summary>📚 Biblioteca IA / Recursos para clientes</summary>
-          <div class="small" style="margin-top:6px">Aquí guardas cartas de colores, catálogos, respuestas de envío, datos de pago, productos similares y aprendizajes humanos.</div>
-          <div class="grid2" style="margin-top:8px"><input id="iaRecursoNombre" placeholder="Nombre: Carta Velluto / Envíos / Datos pago"><select id="iaRecursoCategoria"><option value="respuesta">Respuesta</option><option value="carta_colores">Carta de colores</option><option value="catalogo">Catálogo</option><option value="envio">Envío</option><option value="pago">Pago</option><option value="producto_similar">Producto similar</option><option value="aprendizaje_humano">Aprendizaje humano</option></select></div>
-          <div class="grid2"><input id="iaRecursoMarca" placeholder="Marca opcional"><input id="iaRecursoHilo" placeholder="Hilo opcional"></div>
+          <div class="small" style="margin-top:6px">Aquí guardas cartas de colores, catálogos, respuestas de envío, datos de pago, productos similares y aprendizajes humanos. Para gamas con varias imágenes usa el mismo <b>grupo</b> y activa <b>enviar junto</b>.</div>
+          <div class="grid2" style="margin-top:8px"><input id="iaRecursoNombre" placeholder="Nombre: Carta Velluto / Envíos / Datos pago"><select id="iaRecursoCategoria"><option value="respuesta">Respuesta</option><option value="carta_colores">Carta de colores</option><option value="foto_tono">Foto tono individual</option><option value="catalogo">Catálogo</option><option value="envio">Envío</option><option value="pago">Pago</option><option value="producto_similar">Producto similar</option><option value="aprendizaje_humano">Aprendizaje humano</option></select></div>
+          <div class="grid2"><input id="iaRecursoMarca" placeholder="Marca opcional, ej. ALIZE"><input id="iaRecursoHilo" placeholder="Hilo opcional, ej. VELLUTO"></div>
+          <div class="grid2"><input id="iaRecursoGrupo" placeholder="Grupo opcional, ej. gama_velluto"><input id="iaRecursoOrden" type="number" placeholder="Orden dentro del grupo, ej. 1"></div>
+          <label class="checkline" style="display:flex;align-items:center;gap:8px;margin-top:8px"><input id="iaRecursoEnviarJunto" type="checkbox"> Enviar junto con todos los recursos del mismo grupo</label>
           <label>Palabras clave / triggers</label><textarea id="iaRecursoTriggers" placeholder="velluto, colores velluto, carta velluto, alize velluto"></textarea>
           <label>Respuesta que debe usar la IA</label><textarea id="iaRecursoRespuesta" placeholder="Sí 😊 tenemos Alize Velluto disponible. Le comparto la carta de colores..."></textarea>
-          <label>Link de imagen, catálogo o Canva/Drive opcional</label><input id="iaRecursoUrl" placeholder="https://...">
+          <label>Link de imagen, catálogo o Canva/Drive opcional</label><input id="iaRecursoUrl" placeholder="/static/recursos_ia/Velluto Carta de Colores/004.png o https://...">
           <div class="grid2" style="margin-top:8px"><button class="green" type="button" onclick="crearRecursoIA()">Guardar recurso</button><button class="light" type="button" onclick="cargarRecursosIA()">Ver biblioteca</button></div>
+          <button class="secondary" style="margin-top:8px;width:100%" type="button" onclick="importarRecursosStaticIA()">Importar recursos físicos de static/recursos_ia</button>
+          <div class="small" style="margin-top:6px">Ejemplo: las 4 imágenes de Velluto quedan en grupo <b>gama_velluto</b>, orden 1-4 y enviar junto activado.</div>
           <div id="iaRecursosList" class="small" style="margin-top:8px"></div>
         </details>
         <details class="ai-block"><summary>🎤 Voz y audios</summary>
@@ -518,20 +522,33 @@ async function crearRecursoIA(){
   const triggers=($('iaRecursoTriggers')&&$('iaRecursoTriggers').value||'').trim();
   const respuesta=($('iaRecursoRespuesta')&&$('iaRecursoRespuesta').value||'').trim();
   const archivo_url=($('iaRecursoUrl')&&$('iaRecursoUrl').value||'').trim();
+  const grupo=($('iaRecursoGrupo')&&$('iaRecursoGrupo').value||'').trim();
+  const orden=Number(($('iaRecursoOrden')&&$('iaRecursoOrden').value)||0);
+  const enviar_junto=!!($('iaRecursoEnviarJunto')&&$('iaRecursoEnviarJunto').checked);
   if(!respuesta&&!archivo_url)return alert('Agrega una respuesta o un link de recurso.');
   try{
-    await apiFetch('/api/ia/recursos',{method:'POST',body:JSON.stringify({nombre,categoria,marca,hilo,triggers,respuesta,archivo_url,prioridad:80})});
-    ['iaRecursoNombre','iaRecursoMarca','iaRecursoHilo','iaRecursoTriggers','iaRecursoRespuesta','iaRecursoUrl'].forEach(id=>{if($(id))$(id).value=''});
+    await apiFetch('/api/ia/recursos',{method:'POST',body:JSON.stringify({nombre,categoria,marca,hilo,triggers,respuesta,archivo_url,grupo,orden,enviar_junto,prioridad:80})});
+    ['iaRecursoNombre','iaRecursoMarca','iaRecursoHilo','iaRecursoGrupo','iaRecursoOrden','iaRecursoTriggers','iaRecursoRespuesta','iaRecursoUrl'].forEach(id=>{if($(id))$(id).value=''});
+    if($('iaRecursoEnviarJunto'))$('iaRecursoEnviarJunto').checked=false;
     await cargarRecursosIA();
     alert('Recurso guardado en Biblioteca IA.');
   }catch(e){alert(e.message)}
+}
+async function importarRecursosStaticIA(){
+  const box=$('iaRecursosList');
+  try{
+    if(box)box.innerHTML='Importando recursos físicos...';
+    const r=await apiFetch('/api/ia/recursos/importar-static',{method:'POST',body:JSON.stringify({})});
+    alert(`Importación lista. Gama Velluto: ${r.gama_velluto||0} imágenes. Tonos Velluto: ${r.tonos_velluto||0}.`);
+    await cargarRecursosIA(false);
+  }catch(e){alert('No pude importar recursos físicos: '+e.message)}
 }
 async function cargarRecursosIA(showAlert=true){
   const box=$('iaRecursosList'); if(!box)return;
   try{
     box.innerHTML='Cargando biblioteca...';
     const r=await apiFetch('/api/ia/recursos?limit=80');
-    box.innerHTML=(r||[]).map(x=>`<div class="line"><b>${escapeHtml(x.nombre||'Recurso')}</b> <span class="badge gray">${escapeHtml(x.categoria||'')}</span> ${x.activo?'<span class="badge green">activo</span>':'<span class="badge orange">inactivo</span>'}<div>${escapeHtml((x.respuesta||'').slice(0,180))}${(x.respuesta||'').length>180?'...':''}</div>${x.archivo_url?`<div class="small">📎 ${escapeHtml(x.archivo_url)}</div>`:''}<div class="small">Tags: ${escapeHtml(x.triggers||'')}</div></div>`).join('')||'<div class="empty">No hay recursos todavía.</div>';
+    box.innerHTML=(r||[]).map(x=>`<div class="line"><b>${escapeHtml(x.nombre||'Recurso')}</b> <span class="badge gray">${escapeHtml(x.categoria||'')}</span> ${x.activo?'<span class="badge green">activo</span>':'<span class="badge orange">inactivo</span>'} ${x.enviar_junto?'<span class="badge teal">grupo</span>':''}<div>${escapeHtml((x.respuesta||'').slice(0,180))}${(x.respuesta||'').length>180?'...':''}</div>${x.archivo_url?`<div class="small">📎 ${escapeHtml(x.archivo_url)}</div>`:''}<div class="small">Grupo: ${escapeHtml(x.grupo||'—')} · Orden: ${escapeHtml(String(x.orden??0))} · Enviar junto: ${x.enviar_junto?'sí':'no'}</div><div class="small">Tags: ${escapeHtml(x.triggers||'')}</div></div>`).join('')||'<div class="empty">No hay recursos todavía.</div>';
   }catch(e){box.innerHTML='<span class="danger-text">'+escapeHtml(e.message)+'</span>'}
 }
 function addParsed(idx){addToCart(state.parserPedidos[idx],Number(state.parserPedidos[idx].cantidad||1),true)}function addAllParsed(silent=false){(state.parserPedidos||[]).forEach(p=>addToCart(p,Number(p.cantidad||1),false));renderCart();if(!silent)alert('Agregado al carrito. Revisa cantidades.')}

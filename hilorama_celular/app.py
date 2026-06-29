@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 import re
 import io
 import base64
@@ -7403,6 +7404,9 @@ def _wa_v7_schema():
                     pregunta_ejemplo TEXT,
                     respuesta TEXT,
                     archivo_url TEXT,
+                    grupo TEXT,
+                    orden INTEGER DEFAULT 0,
+                    enviar_junto BOOLEAN DEFAULT FALSE,
                     notas TEXT,
                     prioridad INTEGER DEFAULT 50,
                     activo BOOLEAN DEFAULT TRUE,
@@ -7434,6 +7438,9 @@ def _wa_v7_schema():
                 "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS pregunta_ejemplo TEXT",
                 "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS respuesta TEXT",
                 "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS archivo_url TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS grupo TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS orden INTEGER DEFAULT 0",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS enviar_junto BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS notas TEXT",
                 "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS prioridad INTEGER DEFAULT 50",
                 "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT TRUE",
@@ -7452,6 +7459,7 @@ def _wa_v7_schema():
             ]:
                 db.execute(col)
             db.execute("CREATE INDEX IF NOT EXISTS idx_ia_recursos_activo_categoria ON ia_recursos(activo, categoria)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_ia_recursos_grupo ON ia_recursos(grupo, activo, orden)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_ia_pendientes_estado ON ia_pendientes_humano(estado, updated_at DESC)")
             base_count = db.execute("SELECT COUNT(*) AS c FROM ia_recursos").fetchone()['c']
             if int(base_count or 0) == 0:
@@ -7468,9 +7476,126 @@ def _wa_v7_schema():
                         INSERT INTO ia_recursos (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,FALSE,%s,%s)
                     """, (*row, now_mexico(), now_mexico()))
+            _wa_v8_auto_seed_static_recursos(db)
     except Exception as exc:
         print('WARN schema IA recursos:', exc, flush=True)
 
+
+
+def _wa_v8_static_url(rel_path):
+    rel_path = str(rel_path).replace('\\', '/')
+    parts = []
+    for part in rel_path.split('/'):
+        if part and part not in ('.', '..'):
+            parts.append(part)
+    return '/static/' + '/'.join(parts)
+
+
+def _wa_v8_auto_seed_static_recursos(db):
+    """Registra automáticamente cartas/gamas y fotos físicas de static/recursos_ia."""
+    try:
+        base = Path(__file__).resolve().parent / 'static' / 'recursos_ia'
+        if not base.exists():
+            return
+        now = now_mexico()
+        gama_dir = base / 'Velluto Carta de Colores'
+        if gama_dir.exists():
+            order_names = ['004.png', '4.png', '5.png', '6.png']
+            files = []
+            for name in order_names:
+                f = gama_dir / name
+                if f.exists():
+                    files.append(f)
+            seen = {f.name for f in files}
+            for f in sorted(gama_dir.iterdir(), key=lambda x: x.name.lower()):
+                if f.is_file() and f.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp', '.jfif') and f.name not in seen:
+                    files.append(f)
+            for idx, f in enumerate(files, start=1):
+                rel = f.relative_to(Path(__file__).resolve().parent / 'static')
+                url = _wa_v8_static_url(rel)
+                exists = db.execute('SELECT id FROM ia_recursos WHERE archivo_url=%s LIMIT 1', (url,)).fetchone()
+                if exists:
+                    db.execute("""
+                        UPDATE ia_recursos
+                        SET grupo=%s, orden=%s, enviar_junto=TRUE, categoria=%s, marca=%s, hilo=%s,
+                            triggers=COALESCE(NULLIF(triggers,''), %s), updated_at=%s
+                        WHERE id=%s
+                    """, ('gama_velluto', idx, 'carta_colores', 'ALIZE', 'VELLUTO',
+                          'velluto, alize velluto, colores velluto, carta velluto, gama velluto, tonos velluto',
+                          now, exists['id']))
+                else:
+                    db.execute("""
+                        INSERT INTO ia_recursos
+                        (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,grupo,orden,enviar_junto,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,%s,%s,TRUE,FALSE,%s,%s)
+                    """, (
+                        f'Carta de colores Alize Velluto {idx}', 'carta_colores', 'ALIZE', 'VELLUTO',
+                        'velluto, alize velluto, colores velluto, carta velluto, gama velluto, tonos velluto, que colores tienen velluto',
+                        'Hola, me interesa Alize Velluto. ¿Qué colores tienen disponibles?',
+                        'Claro 😊 le comparto la gama de colores de Alize Velluto. Si le gusta algún código o tono, me lo indica y le reviso disponibilidad.',
+                        url, 'gama_velluto', idx,
+                        'Parte de la gama Velluto. Enviar junto con todos los recursos del grupo gama_velluto.',
+                        92, now, now
+                    ))
+        tonos_dir = base / 'Velluto Colores'
+        if tonos_dir.exists():
+            for f in sorted(tonos_dir.iterdir(), key=lambda x: x.name.lower()):
+                if not f.is_file() or f.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp', '.jfif'):
+                    continue
+                codigo = f.stem.strip()
+                if not codigo:
+                    continue
+                rel = f.relative_to(Path(__file__).resolve().parent / 'static')
+                url = _wa_v8_static_url(rel)
+                exists = db.execute('SELECT id FROM ia_recursos WHERE archivo_url=%s LIMIT 1', (url,)).fetchone()
+                tags = f'velluto {codigo}, tono {codigo}, código {codigo}, codigo {codigo}, foto {codigo}, color {codigo}, alize velluto {codigo}'
+                if exists:
+                    db.execute("""
+                        UPDATE ia_recursos
+                        SET categoria=%s, marca=%s, hilo=%s, grupo=%s, orden=1, enviar_junto=FALSE,
+                            triggers=COALESCE(NULLIF(triggers,''), %s), updated_at=%s
+                        WHERE id=%s
+                    """, ('foto_tono', 'ALIZE', 'VELLUTO', f'tono_velluto_{codigo}', tags, now, exists['id']))
+                else:
+                    db.execute("""
+                        INSERT INTO ia_recursos
+                        (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,grupo,orden,enviar_junto,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,FALSE,%s,%s,TRUE,FALSE,%s,%s)
+                    """, (
+                        f'Foto tono Velluto {codigo}', 'foto_tono', 'ALIZE', 'VELLUTO', tags,
+                        f'¿Me mandas foto del {codigo}?',
+                        f'Claro 😊 le comparto la foto del tono Velluto {codigo}.',
+                        url, f'tono_velluto_{codigo}',
+                        'Foto individual de tono Velluto. Enviar solo cuando pidan ese código/tono.',
+                        78, now, now
+                    ))
+    except Exception as exc:
+        print('WARN auto seed static recursos IA:', exc, flush=True)
+
+
+def _wa_v8_recurso_to_url(recurso):
+    return str((recurso or {}).get('archivo_url') or '').strip()
+
+
+def _wa_v8_obtener_recursos_grupo(recurso):
+    if not recurso:
+        return []
+    grupo = str(recurso.get('grupo') or '').strip()
+    enviar_junto = bool(recurso.get('enviar_junto'))
+    if not grupo or not enviar_junto:
+        return [recurso]
+    try:
+        with DB() as db:
+            rows = db.execute("""
+                SELECT * FROM ia_recursos
+                WHERE activo=TRUE AND grupo=%s
+                ORDER BY COALESCE(orden,0), id
+                LIMIT 20
+            """, (grupo,)).fetchall()
+        return [dict(r) for r in rows] or [recurso]
+    except Exception as exc:
+        print('WARN obtener grupo recursos IA:', exc, flush=True)
+        return [recurso]
 
 def _wa_v7_tokens(txt):
     txt = _v6_norm(txt or '') if '_v6_norm' in globals() else str(txt or '').lower()
@@ -7540,11 +7665,24 @@ def _wa_v7_buscar_recurso(texto, categoria=None):
 def _wa_v7_respuesta_de_recurso(recurso):
     if not recurso:
         return ''
-    resp = str(recurso.get('respuesta') or '').strip()
-    url = str(recurso.get('archivo_url') or '').strip()
-    nombre = str(recurso.get('nombre') or '').strip()
-    if url:
-        extra = f"\n\n📎 Recurso para enviar: {nombre}\n{url}"
+    recursos = _wa_v8_obtener_recursos_grupo(recurso)
+    principal = recursos[0] if recursos else recurso
+    resp = str(principal.get('respuesta') or '').strip()
+    nombre = str(principal.get('nombre') or '').strip()
+    grupo = str(principal.get('grupo') or '').strip()
+    urls = []
+    for r in recursos:
+        url = _wa_v8_recurso_to_url(r)
+        if url and url not in urls:
+            urls.append(url)
+    if urls:
+        if len(urls) == 1:
+            extra = f"\n\n📎 Recurso para enviar: {nombre}\n{urls[0]}"
+        else:
+            titulo = 'Recursos para enviar juntos'
+            if grupo:
+                titulo += f' · grupo {grupo}'
+            extra = "\n\n📎 " + titulo + "\n" + "\n".join([f"{i+1}. {u}" for i,u in enumerate(urls)])
         if extra not in resp:
             resp += extra
     return resp.strip()
@@ -7604,6 +7742,12 @@ def ia_recursos_crear():
     pregunta = (data.get('pregunta_ejemplo') or data.get('pregunta') or '').strip()
     respuesta = (data.get('respuesta') or '').strip()
     archivo_url = (data.get('archivo_url') or data.get('url') or '').strip()
+    grupo = (data.get('grupo') or data.get('bundle') or '').strip()
+    try:
+        orden = int(data.get('orden') or 0)
+    except Exception:
+        orden = 0
+    enviar_junto = bool(data.get('enviar_junto') or data.get('enviarJunto') or False)
     notas = (data.get('notas') or '').strip()
     prioridad = int(data.get('prioridad') or 50)
     activo = bool(data.get('activo', True))
@@ -7612,10 +7756,10 @@ def ia_recursos_crear():
         return jsonify({'ok': False, 'error': 'Agrega una respuesta o un link/archivo del recurso.'}), 400
     with DB() as db:
         r = db.execute("""
-            INSERT INTO ia_recursos (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO ia_recursos (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,grupo,orden,enviar_junto,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING *
-        """, (nombre,categoria,marca,hilo,triggers,pregunta,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,now_mexico(),now_mexico())).fetchone()
+        """, (nombre,categoria,marca,hilo,triggers,pregunta,respuesta,archivo_url,grupo,orden,enviar_junto,notas,prioridad,activo,auto_aprendido,now_mexico(),now_mexico())).fetchone()
     return jsonify(json_safe({'ok': True, 'recurso': dict(r)}))
 
 
@@ -7624,7 +7768,7 @@ def ia_recursos_actualizar(rid):
     _wa_v7_schema()
     data = request.get_json(force=True) or {}
     campos=[]; vals=[]
-    allowed = ['nombre','categoria','marca','hilo','triggers','pregunta_ejemplo','respuesta','archivo_url','notas','prioridad','activo']
+    allowed = ['nombre','categoria','marca','hilo','triggers','pregunta_ejemplo','respuesta','archivo_url','grupo','orden','enviar_junto','notas','prioridad','activo']
     for k in allowed:
         if k in data:
             campos.append(f"{k}=%s")
@@ -7637,7 +7781,22 @@ def ia_recursos_actualizar(rid):
     return jsonify(json_safe({'ok': True, 'recurso': dict(r) if r else None}))
 
 
-@app.route('/api/whatsapp-ia/pendiente-humano', methods=['POST'])
+@app.route('/api/ia/recursos/importar-static', methods=['POST'])
+def ia_recursos_importar_static():
+    """Escanea static/recursos_ia y registra gamas/fotos físicas en Biblioteca IA."""
+    _wa_v7_schema()
+    try:
+        with DB() as db:
+            _wa_v8_auto_seed_static_recursos(db)
+            total = db.execute("SELECT COUNT(*) AS c FROM ia_recursos WHERE archivo_url LIKE '/static/recursos_ia/%'").fetchone()['c']
+            gama = db.execute("SELECT COUNT(*) AS c FROM ia_recursos WHERE grupo='gama_velluto' AND activo=TRUE").fetchone()['c']
+            tonos = db.execute("SELECT COUNT(*) AS c FROM ia_recursos WHERE categoria='foto_tono' AND hilo='VELLUTO' AND activo=TRUE").fetchone()['c']
+        return jsonify(json_safe({'ok': True, 'total_static': total, 'gama_velluto': gama, 'tonos_velluto': tonos}))
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/whatsapp-ia/pendiente-humano' , methods=['POST'])
 def whatsapp_ia_pendiente_humano():
     _wa_v7_schema()
     data = request.get_json(force=True) or {}
