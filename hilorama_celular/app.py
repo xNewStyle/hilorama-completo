@@ -7688,20 +7688,100 @@ def _wa_v7_respuesta_de_recurso(recurso):
     return resp.strip()
 
 
+
+# ==========================================================
+# WhatsApp IA V10 - prioridad a foto de tono por código exacto
+# ==========================================================
+def _wa_v10_tone_resource_from_code(texto):
+    """Si el cliente pide ver/foto/tono/color de un código existente en recursos físicos,
+    prioriza la foto individual antes que la gama completa.
+    Ej: "muéstrame el tono del velluto 56" -> /Velluto Colores/56.webp
+    """
+    try:
+        t = _v6_norm(texto or '') if '_v6_norm' in globals() else str(texto or '').lower()
+    except Exception:
+        t = str(texto or '').lower()
+    # Solo aplica cuando realmente pide mostrar foto/tono/color, no para cantidades de pedido.
+    wants_image = bool(re.search(r'\b(foto|imagen|mostrar|muestra|ver|enseña|ensena|mandar|manda|tono|color|como se ve|se ve)\b', t, re.I))
+    mentions_velluto = bool(re.search(r'\b(velluto|veluto|vellutos|alize)\b', t, re.I))
+    if not wants_image:
+        return None
+    nums = re.findall(r'(?<!\d)(\d{1,4})(?!\d)', t)
+    if not nums:
+        return None
+    # Si menciona velluto, buscamos en fotos individuales Velluto. Si no menciona producto,
+    # también intentamos Velluto porque por ahora es la biblioteca física cargada.
+    for code in nums:
+        grupo = f'tono_velluto_{code}'
+        try:
+            with DB() as db:
+                row = db.execute("""
+                    SELECT * FROM ia_recursos
+                    WHERE activo=TRUE
+                      AND (grupo=%s OR archivo_url ILIKE %s OR triggers ILIKE %s)
+                    ORDER BY CASE WHEN grupo=%s THEN 0 ELSE 1 END, prioridad DESC NULLS LAST, id DESC
+                    LIMIT 1
+                """, (grupo, f'%/Velluto Colores/{code}.%', f'%{code}%', grupo)).fetchone()
+            if row:
+                d = dict(row)
+                # Evita que una carta/gama gane por contener el número en otro texto.
+                if str(d.get('categoria') or '').lower() == 'foto_tono' or str(d.get('grupo') or '') == grupo:
+                    d['_score'] = 999
+                    d['_v10_exact_code'] = code
+                    return d
+        except Exception as exc:
+            print('WARN buscar tono exacto recurso IA:', exc, flush=True)
+        # Respaldo físico: si el recurso no quedó registrado en DB, pero el archivo existe, úsalo.
+        try:
+            base = Path(__file__).resolve().parent / 'static' / 'recursos_ia' / 'Velluto Colores'
+            for ext in ('.webp', '.png', '.jpg', '.jpeg', '.jfif'):
+                f = base / f'{code}{ext}'
+                if f.exists():
+                    url = _wa_v8_static_url(f.relative_to(Path(__file__).resolve().parent / 'static'))
+                    return {
+                        'id': None,
+                        'nombre': f'Foto tono Velluto {code}',
+                        'categoria': 'foto_tono',
+                        'marca': 'ALIZE',
+                        'hilo': 'VELLUTO',
+                        'triggers': f'velluto {code}, tono {code}, codigo {code}, código {code}, foto {code}',
+                        'respuesta': f'Claro 😊 le comparto la foto del tono Velluto {code}.',
+                        'archivo_url': url,
+                        'grupo': f'tono_velluto_{code}',
+                        'orden': 1,
+                        'enviar_junto': False,
+                        'prioridad': 100,
+                        '_score': 999,
+                        '_v10_exact_code': code,
+                    }
+        except Exception as exc:
+            print('WARN respaldo físico tono exacto IA:', exc, flush=True)
+    return None
+
 _wa_generar_respuesta_v6_core = _generar_respuesta_wa_con_openai
 
 def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
-    """V7: primero revisa biblioteca/aprendizajes humanos; si no aplica, usa V6."""
+    """V10: biblioteca/aprendizaje, con prioridad absoluta a foto individual por código exacto."""
     pedidos = parsed.get('pedidos') or []
     preguntas = parsed.get('preguntas') or []
     errores = parsed.get('errores') or []
     respuesta_base, motor_base = _wa_generar_respuesta_v6_core(texto, parsed, meta, contexto)
-    recurso = _wa_v7_buscar_recurso(texto)
     es_consulta = False
     try:
         es_consulta = _v6_is_consultation(texto)
     except Exception:
         pass
+
+    # Regla crítica: si piden "foto/tono/color" + código, mandar foto individual si existe.
+    # Esto evita que "tono Velluto 56" dispare la gama completa solo por contener la palabra tono/color.
+    recurso_exact_code = _wa_v10_tone_resource_from_code(texto)
+    if recurso_exact_code and (not pedidos or preguntas or errores or es_consulta):
+        resp = _wa_v7_respuesta_de_recurso(recurso_exact_code)
+        if resp:
+            rid = recurso_exact_code.get('id') or recurso_exact_code.get('_v10_exact_code') or 'fisico'
+            return resp, f"biblioteca_ia_v10_tono_exacto:{rid}"
+
+    recurso = _wa_v7_buscar_recurso(texto)
     if recurso and (not pedidos or preguntas or errores or es_consulta):
         resp = _wa_v7_respuesta_de_recurso(recurso)
         if resp:
