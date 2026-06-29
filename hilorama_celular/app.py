@@ -1478,6 +1478,340 @@ def _respuesta_pedidos_especial(pedidos, marca, hilo, productos, modo_especial, 
     }))
 
 
+
+
+# =========================
+# WhatsApp IA: contexto automático por almacén
+# =========================
+def _wa_aliases_hilo(hilo):
+    h = _norm_txt(hilo or '')
+    aliases = set()
+    if h:
+        aliases.add(h)
+        aliases.add(h.replace(' ', ''))
+        aliases.add(h.replace('-', ' '))
+    # Alias humanos comunes. Se generan aunque el nombre venga ligeramente distinto en BD.
+    if 'velluto' in h or 'veluto' in h:
+        aliases.update(['velluto','vellutos','veluto','velutos','vello','vellos','terciopelo','aterciopelado','chenille','chenil'])
+    if 'komfy' in h or 'comfy' in h or 'komfi' in h:
+        aliases.update(['komfy','komfy mini','komfymini','komfi','komfi mini','comfy','comfy mini','komfis'])
+    if 'trapillo' in h or 'kraft' in h:
+        aliases.update(['trapillo','trapillo kraft','kraft','trapiyo','trapiyos'])
+    if 'alize' in h:
+        aliases.update(['alize','alise'])
+    return {a for a in aliases if a and len(a) >= 3}
+
+
+def _wa_catalogo_hilos(productos):
+    hilos = []
+    seen = set()
+    for p in productos or []:
+        h = (p.get('hilo') or '').strip()
+        if h and _norm_txt(h) not in seen:
+            hilos.append(h)
+            seen.add(_norm_txt(h))
+    return hilos
+
+
+def _wa_detectar_hilos(texto, productos):
+    t = _norm_txt(texto or '')
+    if not t:
+        return []
+    hallados = []
+    for h in _wa_catalogo_hilos(productos):
+        for a in _wa_aliases_hilo(h):
+            aa = _norm_txt(a)
+            if not aa:
+                continue
+            # permite alias con espacios o pegados: komfy mini / komfymini
+            if re.search(rf'(?<!\w){re.escape(aa)}(?!\w)', t) or aa.replace(' ', '') in t.replace(' ', ''):
+                if h not in hallados:
+                    hallados.append(h)
+                break
+    return hallados
+
+
+def _wa_filtrar_por_hilo(productos, hilo):
+    if not hilo:
+        return list(productos or [])
+    hn = _norm_txt(hilo)
+    return [p for p in (productos or []) if _norm_txt(p.get('hilo') or '') == hn]
+
+
+def _wa_filtrar_por_marca_hilo(productos, marca='', hilo=''):
+    out = list(productos or [])
+    if marca:
+        mn = _norm_txt(marca)
+        out = [p for p in out if _norm_txt(p.get('marca') or '') == mn]
+    if hilo:
+        hn = _norm_txt(hilo)
+        out = [p for p in out if _norm_txt(p.get('hilo') or '') == hn]
+    return out
+
+
+def _wa_split_clausulas(texto):
+    t = _norm_txt(texto or '')
+    t = re.sub(r'\b(tambien|ademas|aparte|luego|y tambien|y aparte)\b', ',', t)
+    # mantiene "pero de komfy mini" dentro de la misma cláusula; separa "pensándolo mejor" porque suele cancelar.
+    t = re.sub(r'\b(pensandolo mejor|mejor|olvida|cancelame|quitame|quitalo|quita|no pongas|ya no quiero)\b', r', \1 ', t)
+    partes = [x.strip(' ,.;') for x in re.split(r'[,;\n]+', t) if x.strip(' ,.;')]
+    return partes or [t]
+
+
+def _wa_es_quitar(texto):
+    t = _norm_txt(texto or '')
+    return bool(re.search(r'\b(quitame|quita|quitalo|elimina|saca|borra|cancelame|cancela|olvida|ya no quiero|mejor no|pensandolo mejor)\b', t))
+
+
+def _wa_codigo_map(productos):
+    d = {}
+    for p in productos or []:
+        for k in [p.get('codigo'), p.get('codigo_barras')]:
+            c = str(k or '').strip().lstrip('0') or '0'
+            if c != '0':
+                d.setdefault(c, []).append(p)
+    return d
+
+
+def _wa_pedidos_full_desde_parse(parse, productos_ctx):
+    por_codigo = _wa_codigo_map(productos_ctx)
+    pedidos = []
+    errores = []
+    for ped in parse.get('pedidos', []) or []:
+        codigo_norm = str(ped.get('codigo') or '').strip().lstrip('0') or '0'
+        opciones = por_codigo.get(codigo_norm) or []
+        if not opciones:
+            errores.append(codigo_norm)
+            continue
+        prod = opciones[0]
+        pedidos.append({
+            'producto_id': prod.get('id'),
+            'codigo': prod.get('codigo'),
+            'marca': prod.get('marca') or '',
+            'hilo': prod.get('hilo') or '',
+            'color': prod.get('color') or '',
+            'stock': int(prod.get('stock') or 0),
+            'precio_venta': float(prod.get('precio_venta') or 0),
+            'cantidad': int(ped.get('cantidad') or 1),
+            'es_inventariable': prod.get('es_inventariable', True),
+        })
+    return pedidos, errores
+
+
+def _wa_agregar_o_sumar(dest, prod):
+    key = str(prod.get('producto_id') or '') or f"{prod.get('marca')}|{prod.get('hilo')}|{prod.get('codigo')}"
+    if key in dest:
+        dest[key]['cantidad'] = int(dest[key].get('cantidad') or 0) + int(prod.get('cantidad') or 1)
+    else:
+        dest[key] = dict(prod)
+
+
+def _wa_remover_por_texto(pedidos_dict, texto, productos):
+    hilos = _wa_detectar_hilos(texto, productos)
+    tn = _norm_txt(texto or '')
+    colores = []
+    for grupo, aliases in COLOR_GRUPOS.items():
+        if any(re.search(rf'(?<!\w){re.escape(_norm_txt(a))}(?!\w)', tn) for a in aliases):
+            colores.append(grupo)
+    borrar = []
+    for k, p in pedidos_dict.items():
+        ph = p.get('hilo') or ''
+        pc = _norm_txt(p.get('color') or '')
+        hit_hilo = bool(hilos and any(_norm_txt(h) == _norm_txt(ph) for h in hilos))
+        hit_color = bool(colores and any(any(_norm_txt(a) in pc for a in COLOR_GRUPOS.get(c, [])) for c in colores))
+        if hit_hilo or hit_color or (not hilos and not colores):
+            borrar.append(k)
+    for k in borrar:
+        pedidos_dict.pop(k, None)
+    return len(borrar)
+
+
+def _wa_color_descripcion_keywords(texto):
+    t = _norm_txt(texto or '')
+    grupos = []
+    for grupo, aliases in COLOR_GRUPOS.items():
+        if any(re.search(rf'(?<!\w){re.escape(_norm_txt(a))}(?!\w)', t) for a in aliases):
+            grupos.append(grupo)
+    # descripciones humanas que no son color exacto
+    if any(x in t for x in ['hueso','marfil','crudo','ivory','perla','crema']):
+        grupos.extend(['blanco','beige'])
+    if any(x in t for x in ['amarillento','amarillo suave','medio amarillo','calido','calida','mostaza','oro']):
+        grupos.extend(['amarillo','beige','dorado'])
+    if any(x in t for x in ['piel','carne','nude','arena']):
+        grupos.extend(['beige','rosa','cafe'])
+    # orden sin duplicados
+    out=[]
+    for g in grupos:
+        if g not in out:
+            out.append(g)
+    return out
+
+
+def _wa_sugerir_tonos_por_descripcion(texto, productos_ctx, limit=5):
+    grupos = _wa_color_descripcion_keywords(texto)
+    if not grupos:
+        return []
+    t = _norm_txt(texto or '')
+    scored = []
+    for p in productos_ctx or []:
+        color = _norm_txt(p.get('color') or '')
+        if not color:
+            continue
+        score = 0
+        razones = []
+        for g in grupos:
+            aliases = [_norm_txt(a) for a in COLOR_GRUPOS.get(g, [])]
+            if any(a and a in color for a in aliases):
+                score += 6; razones.append(g)
+        # palabras especiales que suelen existir como nombres de tono.
+        especiales = ['hueso','crudo','marfil','crema','perla','beige','arena','camello','mango','oro','mostaza','carne','piel','nude','blanco']
+        for e in especiales:
+            if e in t and e in color:
+                score += 8; razones.append(e)
+        if int(p.get('stock') or 0) > 0:
+            score += 1
+        if score > 0:
+            scored.append((score, p, ', '.join(sorted(set(razones))) or 'tono parecido'))
+    scored.sort(key=lambda x: (-x[0], -int(x[1].get('stock') or 0), str(x[1].get('codigo') or '')))
+    out=[]
+    seen=set()
+    for score,p,razon in scored:
+        key=(p.get('hilo'),p.get('codigo'))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            'producto_id': p.get('id'), 'codigo': p.get('codigo'), 'marca': p.get('marca') or '',
+            'hilo': p.get('hilo') or '', 'color': p.get('color') or '', 'stock': int(p.get('stock') or 0),
+            'precio_venta': float(p.get('precio_venta') or 0), 'razon': razon, 'confianza': 'media-alta' if score >= 8 else 'media'
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _wa_sugerir_hilos_similares(texto, productos, limit=5):
+    t = _norm_txt(texto or '')
+    # Diccionario interno para poder decir "sé cuál es / es parecido a..." sin depender aún de una API de búsqueda web.
+    textura_map = {
+        'terciopelo': ['velluto','chenille','chenil','velvet','velour','felpa','suave','peluche'],
+        'suave': ['velluto','komfy','chenille','peluche','felpa','aterciopelado'],
+        'trapillo': ['trapillo','kraft','algodon','algodón','tshirt','playera'],
+        'algodon': ['algodon','algodón','cotton','trapillo'],
+        'delgado': ['mini','fino','bebé','bebe'],
+        'grueso': ['chunky','grueso','mega','jumbo','bulky'],
+    }
+    wanted=[]
+    for textura, aliases in textura_map.items():
+        if any(a in t for a in aliases):
+            wanted.append(textura)
+    if not wanted:
+        return []
+    hilos = {}
+    for p in productos or []:
+        hn = _norm_txt(p.get('hilo') or '')
+        if not hn:
+            continue
+        score=0
+        for textura in wanted:
+            for a in textura_map.get(textura, []):
+                if _norm_txt(a) in hn:
+                    score += 5
+        if int(p.get('stock') or 0) > 0:
+            score += 1
+        if score > 0:
+            cur = hilos.get(hn)
+            if not cur or score > cur[0]:
+                hilos[hn]=(score,p)
+    arr=sorted(hilos.values(), key=lambda x: (-x[0], str(x[1].get('hilo') or '')))[:limit]
+    return [{'marca':p.get('marca') or '', 'hilo':p.get('hilo') or '', 'ejemplo_codigo':p.get('codigo'), 'ejemplo_color':p.get('color') or '', 'stock': int(p.get('stock') or 0)} for score,p in arr]
+
+
+def _wa_parsear_con_contexto_almacen(texto_total, productos_all, marca='', hilo='', extraer_pedidos_func=None):
+    """Parser de capa superior para el agente.
+    Usa el almacén para inferir hilos aunque la interfaz esté en Todas/Todos.
+    Divide mensajes largos, respeta cambios tipo "pensándolo mejor quítame komfy"
+    y devuelve sugerencias si la clienta describe textura/tono en lugar de código.
+    """
+    extraer = extraer_pedidos_func
+    productos_base = _wa_filtrar_por_marca_hilo(productos_all, marca, hilo)
+    texto_norm = _norm_txt(texto_total or '')
+    hilos_globales = _wa_detectar_hilos(texto_norm, productos_base)
+    contexto_global = hilo or (hilos_globales[0] if len(hilos_globales) == 1 else '')
+    pedidos_dict = {}
+    preguntas=[]; errores=[]; advertencias=[]; sugerencias=[]; hilos_detectados=[]
+    ultimo_hilo = contexto_global
+
+    for h in hilos_globales:
+        if h not in hilos_detectados:
+            hilos_detectados.append(h)
+
+    for parte in _wa_split_clausulas(texto_norm):
+        if not parte:
+            continue
+        hilos_parte = _wa_detectar_hilos(parte, productos_base)
+        for h in hilos_parte:
+            if h not in hilos_detectados:
+                hilos_detectados.append(h)
+        if _wa_es_quitar(parte):
+            borrados = _wa_remover_por_texto(pedidos_dict, parte, productos_base)
+            if borrados:
+                advertencias.append(f"Se quitaron {borrados} producto(s) por indicación de la clienta: '{parte}'.")
+            else:
+                advertencias.append(f"La clienta pidió quitar algo, pero no encontré coincidencia clara: '{parte}'.")
+            continue
+        hilo_ctx = hilos_parte[0] if len(hilos_parte) == 1 else (ultimo_hilo or contexto_global)
+        if hilo_ctx:
+            ultimo_hilo = hilo_ctx
+        productos_ctx = _wa_filtrar_por_hilo(productos_base, hilo_ctx) if hilo_ctx else productos_base
+        parse = extraer(parte, productos_ctx) if extraer else {'pedidos': [], 'preguntas': [], 'errores': []}
+        full, err = _wa_pedidos_full_desde_parse(parse, productos_ctx)
+        for fp in full:
+            _wa_agregar_o_sumar(pedidos_dict, fp)
+        errores.extend(err)
+        errores.extend(parse.get('errores') or [])
+        preguntas.extend(parse.get('preguntas') or [])
+        advertencias.extend(parse.get('advertencias') or [])
+
+        # Si hubo duda por color/descripción, ofrece alternativas del almacén para que la respuesta sea útil.
+        if hilo_ctx and (parse.get('preguntas') or []) and _wa_color_descripcion_keywords(parte):
+            sug = _wa_sugerir_tonos_por_descripcion(parte, productos_ctx, limit=5)
+            if sug:
+                sugerencias.append({'tipo': 'tonos_por_descripcion', 'hilo': hilo_ctx, 'texto': parte, 'opciones': sug})
+
+        # Si mencionó un hilo pero no se pudo convertir a producto, pregunta o sugiere tonos.
+        if hilo_ctx and not full:
+            # ¿Describe un tono en palabras?
+            sug = _wa_sugerir_tonos_por_descripcion(parte, productos_ctx, limit=5)
+            if sug:
+                sugerencias.append({'tipo': 'tonos_por_descripcion', 'hilo': hilo_ctx, 'texto': parte, 'opciones': sug})
+                preguntas.append(f"Para {hilo_ctx}, la clienta describió un tono. Sugiere opciones del almacén antes de agregar.")
+            elif re.search(r'\b(codigo|cod|tono|color|lista|cuales|cuantos|tienes|manejas|hay|quiero|dame|ocupo|necesito)\b', parte):
+                # Si pidió cantidad + hilo sin tono/código: "quiero 3 vellutos".
+                m_qty = re.search(r'\b(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b', parte)
+                if m_qty:
+                    preguntas.append(f"Sí contamos con {hilo_ctx}. Falta confirmar qué tono o código quiere para {m_qty.group(1)} pieza(s).")
+                else:
+                    preguntas.append(f"Sí contamos con {hilo_ctx}. Pregunta si ya tiene lista de tonos/códigos o si busca un tono específico.")
+
+    # Si no hay hilo exacto pero el texto parece pedir una textura/producto externo, sugiere similares.
+    if not pedidos_dict and not sugerencias:
+        similares = _wa_sugerir_hilos_similares(texto_norm, productos_base, limit=5)
+        if similares:
+            sugerencias.append({'tipo': 'hilo_similar', 'texto': texto_total, 'opciones': similares})
+            preguntas.append('El producto exacto no se identificó en almacén; ofrece alternativas similares por textura.')
+
+    return {
+        'pedidos_full': list(pedidos_dict.values()),
+        'errores': sorted(set(str(e) for e in errores if e)),
+        'advertencias': sorted(set(str(a) for a in advertencias if a)),
+        'preguntas': sorted(set(str(p) for p in preguntas if p)),
+        'sugerencias_almacen': sugerencias,
+        'hilos_detectados': hilos_detectados,
+        'contexto_inferido': {'marca': marca or '', 'hilo': hilo or contexto_global or '', 'hilos_mencionados': hilos_globales},
+    }
+
+
 @app.route("/api/parser-whatsapp", methods=["POST"])
 def parser_whatsapp_mobile():
     """
@@ -1596,59 +1930,38 @@ def parser_whatsapp_mobile():
             } for p in elegidos]
             return _respuesta_pedidos_especial(pedidos, marca, hilo, productos, 'combinar', ['Se propuso una combinación de tonos compatibles.'], referencia_visual)
 
-    resultado = extraer_pedidos(texto_total, productos)
+    # Nuevo motor contextual: ya no requiere que el vendedor seleccione marca/hilo.
+    # Primero interpreta el mensaje con base en el almacén real: hilos disponibles,
+    # códigos reales, colores, descripciones y cambios de opinión.
+    ctx_result = _wa_parsear_con_contexto_almacen(
+        texto_total, productos, marca=marca, hilo=hilo, extraer_pedidos_func=extraer_pedidos
+    )
 
-    por_codigo = {}
-    for p in productos:
-        codigo_norm = str(p.get("codigo") or "").strip().lstrip("0") or "0"
-        por_codigo.setdefault(codigo_norm, []).append(p)
-        cb = str(p.get("codigo_barras") or "").strip().lstrip("0") or "0"
-        if cb != "0":
-            por_codigo.setdefault(cb, []).append(p)
+    pedidos = ctx_result.get('pedidos_full') or []
+    errores = ctx_result.get('errores') or []
+    advertencias = ctx_result.get('advertencias') or []
+    preguntas = ctx_result.get('preguntas') or []
 
-    pedidos = []
-    errores = []
-    advertencias = []
-    for ped in resultado.get("pedidos", []):
-        codigo_norm = str(ped.get("codigo") or "").strip().lstrip("0") or "0"
-        opciones = por_codigo.get(codigo_norm) or []
-        if not opciones:
-            errores.append(codigo_norm)
-            continue
-        if len(opciones) > 1 and not (marca or hilo):
-            advertencias.append(f"El código {codigo_norm} existe en varias marcas/hilos. Usa contexto para evitar errores.")
-        prod = opciones[0]
-        pedidos.append({
-            "producto_id": prod.get("id"),
-            "codigo": prod.get("codigo"),
-            "marca": prod.get("marca") or "",
-            "hilo": prod.get("hilo") or "",
-            "color": prod.get("color") or "",
-            "stock": int(prod.get("stock") or 0),
-            "precio_venta": float(prod.get("precio_venta") or 0),
-            "cantidad": int(ped.get("cantidad") or 1),
-            "es_inventariable": prod.get("es_inventariable"),
-        })
-
-    errores.extend(resultado.get("errores") or [])
-    advertencias.extend(resultado.get("advertencias") or [])
-    preguntas = resultado.get("preguntas") or []
-    if preguntas:
-        advertencias.extend(["Confirma: " + str(p) for p in preguntas])
     if referencia_visual:
         advertencias.append("Se detectó referencia visual; revisa posiciones, círculos, flechas o tachones antes de confirmar.")
 
-
     return jsonify(json_safe({
         "ok": True,
-        "modo": resultado.get("modo"),
+        "modo": "contextual_almacen",
         "modo_especial": None,
-        "contexto": {"marca": marca, "hilo": hilo, "productos_contexto": len(productos)},
+        "contexto": {
+            "marca": marca,
+            "hilo": hilo,
+            "productos_contexto": len(productos),
+            "contexto_inferido": ctx_result.get('contexto_inferido') or {},
+            "hilos_detectados": ctx_result.get('hilos_detectados') or [],
+        },
         "pedidos": pedidos,
         "errores": sorted(set(str(e) for e in errores if e)),
         "advertencias": sorted(set(str(a) for a in advertencias if a)),
         "preguntas": sorted(set(str(p) for p in preguntas if p)),
-        "sugerencias": resultado.get("sugerencias") or {},
+        "sugerencias": {},
+        "sugerencias_almacen": ctx_result.get('sugerencias_almacen') or [],
         "referencia_visual": referencia_visual,
     }))
 
@@ -1769,11 +2082,41 @@ def _limpiar_pregunta_wa(q):
     return q
 
 
+
+
+def _formatear_sugerencias_almacen_wa(parsed):
+    sugerencias = parsed.get('sugerencias_almacen') or []
+    if not sugerencias:
+        return ''
+    bloques = []
+    for s in sugerencias[:3]:
+        tipo = s.get('tipo')
+        opciones = s.get('opciones') or []
+        if tipo == 'tonos_por_descripcion':
+            hilo = s.get('hilo') or 'ese hilo'
+            lineas = []
+            for op in opciones[:5]:
+                lineas.append(f"- {op.get('hilo') or hilo} {op.get('codigo')} {op.get('color')} ({op.get('confianza','parecido')})")
+            if lineas:
+                bloques.append('Para el tono que describes en ' + hilo + ', lo más parecido que tengo es:\n' + '\n'.join(lineas))
+        elif tipo == 'hilo_similar':
+            lineas = []
+            for op in opciones[:5]:
+                txt = f"- {op.get('hilo')}"
+                if op.get('ejemplo_codigo'):
+                    txt += f". Ejemplo: {op.get('ejemplo_codigo')} {op.get('ejemplo_color','')}"
+                lineas.append(txt.strip())
+            if lineas:
+                bloques.append('Ese producto exacto no lo veo con ese nombre en mi almacén, pero sí tengo opciones similares en textura:\n' + '\n'.join(lineas))
+    return '\n\n'.join(bloques).strip()
+
+
 def _fallback_respuesta_wa(texto, parsed, meta):
     pedidos = parsed.get('pedidos') or []
     preguntas = parsed.get('preguntas') or []
     errores = parsed.get('errores') or []
     advertencias = parsed.get('advertencias') or []
+    sug_txt = _formatear_sugerencias_almacen_wa(parsed)
     intent = meta.get('intencion')
 
     # Regla de oro: código existente/producto detectado = confirmado.
@@ -1798,11 +2141,17 @@ def _fallback_respuesta_wa(texto, parsed, meta):
             if len(pedidos_confirmados) > 18:
                 txt += f"\nY {len(pedidos_confirmados)-18} producto(s) más."
             txt += '\n\n'
+        if sug_txt:
+            txt += sug_txt + '\n\n'
         if q_limpias:
-            txt += 'Solo para confirmar 😊 ' + q_limpias[0]
+            q0 = q_limpias[0].replace('Sí contamos con', 'Sí cuento con')
+            txt += 'Solo para confirmar 😊 ' + q0
         else:
             txt += 'Solo necesito confirmar un detalle para no agregarte un tono equivocado 😊'
         return txt
+
+    if sug_txt and not pedidos:
+        return sug_txt + '\n\n¿Quieres que te arme una opción con alguno de esos tonos?'
 
     if pedidos:
         lineas = []
