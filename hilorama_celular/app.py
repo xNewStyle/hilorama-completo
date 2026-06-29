@@ -1732,6 +1732,43 @@ def _clasificar_intencion_wa(texto, parsed):
     }
 
 
+def _codigos_provisionales_desde_preguntas(preguntas):
+    """Detecta códigos que el parser agregó solo como provisional por una duda real.
+    Ejemplo de pregunta: "Confirma el color 'blanco': coincide con varios códigos (55, 62). Se usó 55 provisionalmente."
+    Esos productos NO se deben confirmar al cliente como definitivos todavía.
+    """
+    cods = set()
+    for q in preguntas or []:
+        qtxt = str(q or '')
+        m = re.search(r"se\s+uso\s+(\d+)\s+provisionalmente", _norm_txt(qtxt), re.I)
+        if m:
+            cods.add(str(m.group(1)).lstrip('0') or '0')
+    return cods
+
+
+def _formatear_producto_wa(p):
+    hilo = (p.get('hilo') or p.get('marca') or 'Producto').strip()
+    codigo = str(p.get('codigo') or '').strip()
+    color = (p.get('color') or '').strip()
+    cantidad = int(p.get('cantidad') or 1)
+    # Si el código ya identifica perfecto, lo mostramos junto al color solo si existe.
+    base = f"{hilo} {codigo}".strip()
+    if color:
+        base += f" {color}"
+    return f"- {base} x{cantidad}"
+
+
+def _limpiar_pregunta_wa(q):
+    q = str(q or '').strip()
+    if not q:
+        return ''
+    # Evita frases internas del parser como "Se usó 55 provisionalmente" en el WhatsApp al cliente.
+    q = re.sub(r"\.?\s*Se\s+us[óo]\s+\d+\s+provisionalmente\.?", "", q, flags=re.I)
+    q = re.sub(r"^Confirma:\s*", "", q, flags=re.I).strip()
+    q = re.sub(r"^Confirma\s+", "Confírmame ", q, flags=re.I).strip()
+    return q
+
+
 def _fallback_respuesta_wa(texto, parsed, meta):
     pedidos = parsed.get('pedidos') or []
     preguntas = parsed.get('preguntas') or []
@@ -1739,20 +1776,43 @@ def _fallback_respuesta_wa(texto, parsed, meta):
     advertencias = parsed.get('advertencias') or []
     intent = meta.get('intencion')
 
-    if preguntas:
-        return 'Solo para confirmar 😊 ' + str(preguntas[0])
+    # Regla de oro: código existente/producto detectado = confirmado.
+    # Solo se pregunta lo que venga en preguntas/errores; no se vuelve a pedir confirmación de códigos detectados.
+    provisionales = _codigos_provisionales_desde_preguntas(preguntas)
+    pedidos_confirmados = [p for p in pedidos if (str(p.get('codigo') or '').strip().lstrip('0') or '0') not in provisionales]
+
     if errores:
-        return 'Revisé tu mensaje, pero estos códigos no me aparecen en catálogo: ' + ', '.join(map(str, errores[:8])) + '. ¿Me confirmas el código o color?'
+        txt = ''
+        if pedidos_confirmados:
+            lineas = [_formatear_producto_wa(p) for p in pedidos_confirmados[:18]]
+            txt += 'Claro 😊 ya tengo claro esto:\n' + '\n'.join(lineas) + '\n\n'
+        txt += 'Estos códigos no me aparecen en catálogo: ' + ', '.join(map(str, errores[:8])) + '. ¿Me los confirmas?'
+        return txt
+
+    if preguntas:
+        q_limpias = [_limpiar_pregunta_wa(q) for q in preguntas if _limpiar_pregunta_wa(q)]
+        txt = ''
+        if pedidos_confirmados:
+            lineas = [_formatear_producto_wa(p) for p in pedidos_confirmados[:18]]
+            txt += 'Claro 😊 ya tengo claro:\n' + '\n'.join(lineas)
+            if len(pedidos_confirmados) > 18:
+                txt += f"\nY {len(pedidos_confirmados)-18} producto(s) más."
+            txt += '\n\n'
+        if q_limpias:
+            txt += 'Solo para confirmar 😊 ' + q_limpias[0]
+        else:
+            txt += 'Solo necesito confirmar un detalle para no agregarte un tono equivocado 😊'
+        return txt
+
     if pedidos:
         lineas = []
         for p in pedidos[:18]:
-            lineas.append(f"- {p.get('hilo') or p.get('marca') or 'Producto'} {p.get('codigo')} {p.get('color') or ''} x{int(p.get('cantidad') or 1)}".strip())
+            lineas.append(_formatear_producto_wa(p))
         txt = 'Claro 😊 te agrego:\n' + '\n'.join(lineas)
         if len(pedidos) > 18:
             txt += f"\nY {len(pedidos)-18} producto(s) más."
         txt += '\n\nTe preparo tu cotización.'
-        if advertencias:
-            txt += '\n\nAntes de enviarla, solo reviso unos detalles para evitar errores.'
+        # No mencionar advertencias técnicas si no son preguntas reales.
         return txt
     if intent == 'pregunta_precio':
         return 'Claro 😊 ¿me confirmas qué hilo o código quieres revisar? Así te doy el precio exacto y disponibilidad.'
@@ -1768,6 +1828,13 @@ def _fallback_respuesta_wa(texto, parsed, meta):
 
 
 def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    # Para pedidos ya parseados usamos respuesta determinística.
+    # Motivo: evita que la IA vuelva a preguntar por códigos que YA existen en el almacén
+    # (ej. "un 429") o que pida confirmar un negro único como el 60.
+    # OpenAI queda para conversaciones generales, precio/envío/stock y tono comercial.
+    if (parsed.get('pedidos') or parsed.get('preguntas') or parsed.get('errores')):
+        return _fallback_respuesta_wa(texto, parsed, meta), 'reglas_hilorama'
+
     api_key = os.environ.get('OPENAI_API_KEY')
     if not api_key:
         return _fallback_respuesta_wa(texto, parsed, meta), 'fallback_sin_openai'
