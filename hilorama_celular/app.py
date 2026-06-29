@@ -8024,3 +8024,293 @@ def whatsapp_ia_guardar_aprendizaje():
                 WHERE id=%s
             """, ('APRENDIDO', respuesta_humana, recurso['id'], now_mexico(), pendiente_id))
     return jsonify(json_safe({'ok': True, 'recurso': dict(recurso)}))
+
+
+# ==========================================================
+# WhatsApp IA V13 - búsqueda en internet con copia en Biblioteca IA
+# ==========================================================
+# Cuando el agente no encuentra una respuesta segura en almacén/Biblioteca,
+# puede consultar internet usando OpenAI Web Search y guardar una copia como
+# recurso de Biblioteca IA para reutilizarla después.
+# Seguridad: NO usa internet para precios, stock, pagos, comprobantes, datos
+# personales ni envíos internos. Esas respuestas deben salir de almacén/reglas.
+
+def _wa_v13_schema():
+    _wa_v7_schema()
+    try:
+        with DB() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS ia_busquedas_web (
+                    id SERIAL PRIMARY KEY,
+                    consulta TEXT,
+                    respuesta TEXT,
+                    fuente TEXT,
+                    motor TEXT,
+                    recurso_id INTEGER,
+                    estado TEXT DEFAULT 'GUARDADO',
+                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            for col in [
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS consulta TEXT",
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS respuesta TEXT",
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS fuente TEXT",
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS motor TEXT",
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS recurso_id INTEGER",
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'GUARDADO'",
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE ia_busquedas_web ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            ]:
+                db.execute(col)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_ia_busquedas_web_fecha ON ia_busquedas_web(updated_at DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_ia_recursos_internet_cache ON ia_recursos(categoria, activo, updated_at DESC)")
+    except Exception as exc:
+        print('WARN schema IA web cache:', exc, flush=True)
+
+
+def _wa_v13_env_bool(name, default='0'):
+    val = str(os.environ.get(name, default)).strip().lower()
+    return val in ('1','true','si','sí','yes','on','enabled')
+
+
+def _wa_v13_limpia_respuesta_base(txt):
+    t = str(txt or '').strip()
+    # Evita guardar mensajes técnicos o rutas en cache de internet.
+    t = re.sub(r'\n\s*📎[\s\S]*$', '', t).strip()
+    return t
+
+
+def _wa_v13_es_dato_interno(texto):
+    """Cosas que NUNCA se deben buscar en internet porque deben salir de Hilorama."""
+    try:
+        t = _v6_norm(texto or '')
+    except Exception:
+        t = str(texto or '').lower()
+    patrones_bloqueo = [
+        r'\b(cuanto|cuánto|precio|cuesta|costo|vale|sale)\b',
+        r'\b(stock|existencia|disponible|disponibilidad|tienen|hay)\b',
+        r'\b(envio|envío|envios|envíos|paqueteria|paquetería|cp|codigo postal|código postal|fedex|estafeta|correos)\b',
+        r'\b(pago|pagar|transferencia|mercado pago|mercadopago|clabe|cuenta|comprobante|deposito|depósito)\b',
+        r'\b(direccion|dirección|calle|colonia|telefono|teléfono|nombre completo|datos)\b',
+        r'\b(gama|carta|catalogo|catálogo|foto|imagen|mostrar|muestrame|muéstrame)\b.*\b(velluto|komfy|kurumi|tono|codigo|código)\b',
+    ]
+    return any(re.search(p, t, re.I) for p in patrones_bloqueo)
+
+
+def _wa_v13_es_pregunta_de_conocimiento(texto):
+    """Casos donde sí puede ayudar buscar contexto externo: qué es un material, marca externa, usos, sustitutos."""
+    try:
+        t = _v6_norm(texto or '')
+    except Exception:
+        t = str(texto or '').lower()
+    patrones = [
+        r'\b(que es|qué es|cual es|cuál es|como es|cómo es|para que sirve|para qué sirve|se usa|usar)\b',
+        r'\b(parecido|similar|sustituto|alternativa|equivalente|recomiendas|recomendar)\b',
+        r'\b(material|textura|grosor|composicion|composición|rendimiento|aguja|gancho)\b',
+        r'\b(manejas|manejan|tienes|tienen)\b.*\b(abuelita|sinfonia|sinfonía|crochet|macrame|macramé|algodon|algodón|chenille|velvet|baby)\b',
+    ]
+    return any(re.search(p, t, re.I) for p in patrones)
+
+
+def _wa_v13_respuesta_parece_insuficiente(respuesta):
+    r = _v6_norm(respuesta or '') if '_v6_norm' in globals() else str(respuesta or '').lower()
+    pistas = [
+        'no tengo informacion', 'no tengo información', 'no manejo informacion', 'no manejo información',
+        'no lo manejo', 'no la manejamos', 'no me aparece', 'no encontre', 'no encontré',
+        'podrias especificar', 'podrías especificar', 'que tipo', 'qué tipo',
+        'dime que hilo', 'dime qué hilo', 'no pude', 'revisar antes', 'requiere revision', 'requiere revisión'
+    ]
+    return any(p in r for p in pistas)
+
+
+def _wa_v13_buscar_cache_internet(texto):
+    """Busca primero una respuesta aprendida/copiada de internet."""
+    _wa_v13_schema()
+    try:
+        recurso = _wa_v7_buscar_recurso(texto, categoria='internet_cache')
+        if recurso:
+            resp = _wa_v7_respuesta_de_recurso(recurso)
+            if resp:
+                return recurso, resp
+    except Exception as exc:
+        print('WARN cache internet IA:', exc, flush=True)
+    return None, ''
+
+
+def _wa_v13_guardar_cache_internet(texto, respuesta, fuente='', motor='openai_web_search'):
+    _wa_v13_schema()
+    texto = (texto or '').strip()
+    respuesta = _wa_v13_limpia_respuesta_base(respuesta)
+    if not texto or not respuesta:
+        return None
+    toks = _wa_v7_tokens(texto)
+    triggers = ', '.join(list(dict.fromkeys(toks))[:16])
+    nombre = 'Internet: ' + (texto[:58] + ('...' if len(texto) > 58 else ''))
+    notas_obj = {
+        'origen': 'busqueda_internet_automatica',
+        'advertencia': 'Copia guardada automáticamente. Revisar/editar si se usará en automático.',
+        'fuente': fuente or '',
+        'fecha': str(now_mexico()),
+    }
+    try:
+        with DB() as db:
+            # Evita duplicados exactos por pregunta muy parecida.
+            existente = db.execute("""
+                SELECT id FROM ia_recursos
+                WHERE activo=TRUE AND categoria='internet_cache' AND pregunta_ejemplo ILIKE %s
+                ORDER BY id DESC LIMIT 1
+            """, (texto[:200] + '%',)).fetchone()
+            if existente:
+                db.execute("""
+                    UPDATE ia_recursos SET respuesta=%s, triggers=%s, notas=%s, updated_at=%s
+                    WHERE id=%s
+                """, (respuesta, triggers, json.dumps(notas_obj, ensure_ascii=False), now_mexico(), existente['id']))
+                rid = existente['id']
+            else:
+                recurso = db.execute("""
+                    INSERT INTO ia_recursos
+                    (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,grupo,orden,enviar_junto,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,TRUE,%s,%s)
+                    RETURNING id
+                """, (nombre, 'internet_cache', '', '', triggers, texto, respuesta, '', '', 0, False, json.dumps(notas_obj, ensure_ascii=False), 60, now_mexico(), now_mexico())).fetchone()
+                rid = recurso['id']
+            db.execute("""
+                INSERT INTO ia_busquedas_web (consulta,respuesta,fuente,motor,recurso_id,estado,fecha,updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (texto, respuesta, fuente or '', motor, rid, 'GUARDADO', now_mexico(), now_mexico()))
+            return rid
+    except Exception as exc:
+        print('WARN guardar cache internet IA:', exc, flush=True)
+    return None
+
+
+def _wa_v13_respuesta_web_openai(texto, contexto=None):
+    """Consulta internet con OpenAI Web Search. Devuelve texto corto para WhatsApp."""
+    api_key = os.environ.get('OPENAI_API_KEY')
+    if not api_key:
+        return '', 'sin_openai_key'
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, timeout=float(os.environ.get('OPENAI_TIMEOUT_SECONDS', '90')))
+        model = os.environ.get('OPENAI_WEB_MODEL') or os.environ.get('OPENAI_SALES_MODEL') or 'gpt-4o-mini'
+        prompt = (
+            'Eres asistente de ventas de Hilorama, una mercería mexicana.\n'
+            'Busca en internet SOLO para entender productos/materiales externos o dudas generales que no estén en el almacén.\n'
+            'No des precios externos, no prometas stock, no inventes que Hilorama maneja un producto.\n'
+            'Si el producto no aparece en el almacén de Hilorama, di: "por el momento no me aparece en almacén con ese nombre".\n'
+            'Da una explicación breve y una alternativa de venta prudente: pedir foto, proyecto o sugerir revisar opciones similares de Hilorama.\n'
+            'Respuesta máxima 3 frases, tono humano de WhatsApp, sin formato técnico.\n\n'
+            f'Mensaje de clienta: {texto}\n'
+            f'Contexto de Hilorama: {json.dumps(contexto or {}, ensure_ascii=False)[:1200]}'
+        )
+        # Responses API con herramienta de búsqueda web. Si la cuenta/modelo no lo soporta, cae al except.
+        resp = client.responses.create(
+            model=model,
+            tools=[{"type": "web_search_preview"}],
+            input=prompt,
+        )
+        out = (getattr(resp, 'output_text', None) or '').strip()
+        if not out:
+            # Compatibilidad si el SDK regresa estructura output[].
+            try:
+                chunks = []
+                for item in getattr(resp, 'output', []) or []:
+                    for c in getattr(item, 'content', []) or []:
+                        txt = getattr(c, 'text', None)
+                        if txt:
+                            chunks.append(txt)
+                out = '\n'.join(chunks).strip()
+            except Exception:
+                out = ''
+        out = _wa_v13_limpia_respuesta_base(out)
+        if not out:
+            return '', 'openai_web_sin_texto'
+        return out, 'openai_web_search'
+    except Exception as exc:
+        print('WARN busqueda web OpenAI IA:', exc, flush=True)
+        return '', 'openai_web_error:' + str(exc)[:140]
+
+
+def _wa_v13_debe_buscar_internet(texto, parsed, respuesta_base, motor_base):
+    if not _wa_v13_env_bool('OPENAI_WEB_SEARCH_ENABLED', '1'):
+        return False
+    if not texto or not str(texto).strip():
+        return False
+    # No buscar si hay pedido concreto detectado, porque ahí manda almacén/parser.
+    if parsed.get('pedidos'):
+        return False
+    # Datos internos se responden con almacén/biblioteca/reglas.
+    if _wa_v13_es_dato_interno(texto):
+        return False
+    # Si hay recurso de biblioteca específico, no buscar.
+    try:
+        recurso = _wa_v7_buscar_recurso(texto)
+        if recurso and str(recurso.get('categoria') or '') not in ('internet_cache', ''):
+            return False
+    except Exception:
+        pass
+    # Buscar si la pregunta claramente es de conocimiento externo o si la respuesta base es pobre.
+    if _wa_v13_es_pregunta_de_conocimiento(texto):
+        return True
+    if _wa_v13_respuesta_parece_insuficiente(respuesta_base):
+        return True
+    return False
+
+
+_wa_generar_respuesta_v12_core = _generar_respuesta_wa_con_openai
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    """V13: si no hay respuesta en almacén/biblioteca, busca internet y guarda copia."""
+    respuesta_base, motor_base = _wa_generar_respuesta_v12_core(texto, parsed, meta, contexto)
+
+    if not _wa_v13_debe_buscar_internet(texto, parsed, respuesta_base, motor_base):
+        return respuesta_base, motor_base + ':v13_sin_web'
+
+    # 1) Cache local antes de pagar otra búsqueda.
+    recurso_cache, resp_cache = _wa_v13_buscar_cache_internet(texto)
+    if resp_cache:
+        return resp_cache, f"internet_cache_v13:{recurso_cache.get('id') if recurso_cache else 'local'}"
+
+    # 2) Búsqueda web real.
+    respuesta_web, motor_web = _wa_v13_respuesta_web_openai(texto, contexto)
+    if respuesta_web:
+        rid = _wa_v13_guardar_cache_internet(texto, respuesta_web, fuente='OpenAI Web Search', motor=motor_web)
+        suf = f':guardado_{rid}' if rid else ':no_guardado'
+        return respuesta_web, motor_web + suf
+
+    # 3) Si falla internet, no romper el flujo.
+    if _wa_v13_respuesta_parece_insuficiente(respuesta_base):
+        return (respuesta_base + '\n\nLo dejo en revisión para responderle con seguridad 😊'), motor_base + ':v13_web_fallo_revision'
+    return respuesta_base, motor_base + ':v13_web_fallo'
+
+
+@app.route('/api/ia/web-cache', methods=['GET'])
+def ia_web_cache_listar():
+    """Lista búsquedas guardadas automáticamente desde internet."""
+    _wa_v13_schema()
+    limit = min(int(request.args.get('limit') or 100), 300)
+    with DB() as db:
+        rows = db.execute("""
+            SELECT * FROM ia_recursos
+            WHERE categoria='internet_cache'
+            ORDER BY updated_at DESC NULLS LAST, id DESC
+            LIMIT %s
+        """, (limit,)).fetchall()
+    return jsonify(json_safe([dict(r) for r in rows]))
+
+
+@app.route('/api/whatsapp-ia/buscar-internet', methods=['POST'])
+def whatsapp_ia_buscar_internet_manual():
+    """Búsqueda manual desde la app para guardar una respuesta en Biblioteca IA."""
+    data = request.get_json(force=True) or {}
+    texto = (data.get('texto') or data.get('consulta') or '').strip()
+    if not texto:
+        return jsonify({'ok': False, 'error': 'Falta la consulta.'}), 400
+    if _wa_v13_es_dato_interno(texto) and not bool(data.get('forzar')):
+        return jsonify({'ok': False, 'error': 'Esta consulta parece de precio/stock/envío/pago. Debe responderse desde almacén o reglas internas, no internet.'}), 400
+    respuesta, motor = _wa_v13_respuesta_web_openai(texto, data.get('contexto') or {})
+    if not respuesta:
+        return jsonify({'ok': False, 'error': 'No se pudo obtener respuesta de internet.', 'motor': motor}), 500
+    rid = _wa_v13_guardar_cache_internet(texto, respuesta, fuente='OpenAI Web Search manual', motor=motor)
+    return jsonify(json_safe({'ok': True, 'respuesta': respuesta, 'recurso_id': rid, 'motor': motor}))
