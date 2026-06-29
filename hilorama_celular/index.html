@@ -105,7 +105,7 @@
         </div>
         <details class="ai-block" open><summary>🤖 Simulador WhatsApp IA real</summary>
           <div class="small" style="margin-top:6px">Aquí probamos el mismo cerebro que después recibirá mensajes desde WhatsApp Cloud API. Por ahora no envía nada: solo sugiere respuesta y productos.</div>
-          <div class="grid2" style="margin-top:8px"><button class="secondary" type="button" onclick="simularWhatsAppIA()">Probar agente Hilorama</button><button class="light" type="button" onclick="copiarRespuestaWA()">Copiar respuesta</button></div>
+          <div class="grid2" style="margin-top:8px"><button class="secondary" type="button" onclick="simularWhatsAppIA()">Probar agente Hilorama</button><button class="light" type="button" onclick="copiarRespuestaWA()">Copiar respuesta</button></div><div class="grid2" style="margin-top:8px"><button class="light" type="button" onclick="nuevaConversacionWA()">Nueva conversación / limpiar memoria</button><button class="light" type="button" onclick="verMemoriaWA()">Ver memoria</button></div><div id="waMemoriaBox" class="small hidden" style="margin-top:8px"></div>
           <div id="whatsappIAResult" class="wa-agent-box hidden"></div>
           <details class="ai-block" style="margin-top:8px"><summary>🧠 Aprendizaje humano</summary>
             <div class="small" style="margin-top:6px">Cuando la IA no resuelva bien, contesta tú manualmente y guarda esa respuesta. La próxima vez el agente la tomará como referencia.</div>
@@ -491,6 +491,49 @@ function renderSmallImagePreview(url){
   return `<div class="ia-lib-thumb"><img src="${escapeAttr(src)}" alt="Recurso IA" loading="lazy" onerror="this.style.display='none'"></div>`;
 }
 
+
+function renderMemoriaWA(mem){
+  const box=$('waMemoriaBox');
+  if(!box)return;
+  if(!mem||(!mem.hilo_actual&&!mem.hilo&&!mem.marca_actual&&!mem.marca)){
+    box.classList.add('hidden');
+    box.innerHTML='';
+    return;
+  }
+  const marca=mem.marca_actual||mem.marca||'';
+  const hilo=mem.hilo_actual||mem.hilo||'';
+  const origen=mem.origen?` · origen: ${escapeHtml(mem.origen)}`:'';
+  const intencion=mem.ultima_intencion?` · intención: ${escapeHtml(mem.ultima_intencion)}`:'';
+  const codigo=mem.ultimo_codigo?` · último código: ${escapeHtml(mem.ultimo_codigo)}`:'';
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="result-ok"><b>Memoria de conversación:</b> ${escapeHtml([marca,hilo].filter(Boolean).join(' / ')||'activa')}${origen}${intencion}${codigo}<br><span class="small">Si la clienta escribe algo corto como “rojo 56”, se usará este contexto.</span></div>`;
+}
+async function verMemoriaWA(){
+  const box=$('waMemoriaBox');
+  if(!state.whatsappConversacionId){
+    if(box){box.classList.remove('hidden');box.innerHTML='<div class="result-warn">Aún no hay conversación activa. Primero prueba un mensaje.</div>';}
+    return;
+  }
+  try{
+    const r=await apiFetch('/api/whatsapp-ia/memoria?'+new URLSearchParams({conversacion_id:state.whatsappConversacionId,telefono:($('parserTelefono')?.value||'')}));
+    renderMemoriaWA(r.memoria||null);
+  }catch(e){if(box){box.classList.remove('hidden');box.innerHTML=`<div class="result-warn">${escapeHtml(e.message)}</div>`;}}
+}
+async function nuevaConversacionWA(){
+  const old=state.whatsappConversacionId;
+  if(old){
+    try{await apiFetch('/api/whatsapp-ia/memoria/reset',{method:'POST',body:JSON.stringify({conversacion_id:old,telefono:($('parserTelefono')?.value||'')})});}catch(e){}
+  }
+  state.whatsappConversacionId=null;
+  state.whatsappNuevaConversacion=true;
+  state.whatsappIARecursos=[];
+  state.whatsappIARespuesta='';
+  state.whatsappIARespuestaRaw='';
+  renderMemoriaWA(null);
+  const box=$('whatsappIAResult');
+  if(box){box.classList.remove('hidden');box.innerHTML='<div class="empty">Nueva conversación lista. La próxima prueba empezará sin memoria anterior.</div>';}
+}
+
 async function simularWhatsAppIA(){
   const texto=$('pedidoTexto').value.trim();
   const textoAudio=state.audioTranscript||'';
@@ -510,9 +553,12 @@ async function simularWhatsAppIA(){
       telefono:$('parserTelefono').value||($('nuevoClienteTel')&&$('nuevoClienteTel').value)||'',
       texto_imagen:[textoImg,textoVision].filter(Boolean).join(' '),
       imagen_referencia:!!state.pedidoImagenActiva,
-      conversacion_id:state.whatsappConversacionId
+      conversacion_id:state.whatsappConversacionId,
+      nueva_conversacion:!!state.whatsappNuevaConversacion
     })});
+    state.whatsappNuevaConversacion=false;
     state.whatsappConversacionId=r.conversacion_id||state.whatsappConversacionId;
+    renderMemoriaWA(r.memoria_actual||r.memoria_usada||null);
     state.whatsappIARespuestaRaw=r.respuesta_sugerida||'';
     state.whatsappIARecursos=extractWAResourceUrls(state.whatsappIARespuestaRaw);
     state.whatsappIARespuesta=cleanWAResponseText(state.whatsappIARespuestaRaw);

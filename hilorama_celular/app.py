@@ -2240,7 +2240,13 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
 
 @app.route('/api/whatsapp-ia/simular', methods=['POST'])
 def whatsapp_ia_simular():
-    """Primer paso del agente real: usa la IA real, pero con entrada manual antes de conectar Cloud API."""
+    """
+    Simulador del agente real con memoria de conversación.
+
+    La memoria permite que, si primero la clienta pregunta por Velluto y luego escribe
+    "rojo 56" o "y el 429", el sistema siga usando el hilo anterior sin obligar al
+    vendedor a repetir el contexto.
+    """
     data = request.get_json(force=True) or {}
     texto = (data.get('texto') or '').strip()
     marca = (data.get('marca') or '').strip()
@@ -2249,15 +2255,27 @@ def whatsapp_ia_simular():
     telefono = (data.get('telefono') or '').strip()
     texto_imagen = (data.get('texto_imagen') or '').strip()
     imagen_referencia = bool(data.get('imagen_referencia'))
+    conversacion_id = data.get('conversacion_id')
+    nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
 
     texto_total = ' '.join(x for x in [texto, texto_imagen] if x).strip()
     if not texto_total:
         return jsonify({'ok': False, 'error': 'Escribe o pega un mensaje de clienta primero.'}), 400
 
+    memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+    productos_mem = _wa_memoria_productos_min()
+
+    # Si la vendedora no seleccionó marca/hilo y el mensaje no trae hilo nuevo,
+    # aplica el último hilo de la conversación. Si el mensaje sí trae hilo nuevo,
+    # ese nuevo hilo gana y actualiza la memoria.
+    marca_parser, hilo_parser, memoria_aplicada = _wa_memoria_resolver_contexto_para_parser(
+        texto_total, marca, hilo, memoria_previa, productos_mem
+    )
+
     parser_payload = {
         'texto': texto,
-        'marca': marca,
-        'hilo': hilo,
+        'marca': marca_parser,
+        'hilo': hilo_parser,
         'cliente_nombre': cliente_nombre,
         'telefono': telefono,
         'texto_imagen': texto_imagen,
@@ -2269,18 +2287,19 @@ def whatsapp_ia_simular():
 
     meta = _clasificar_intencion_wa(texto_total, parsed)
     contexto = {
-        'marca': marca or 'Todas',
-        'hilo': hilo or 'Todos',
+        'marca': marca_parser or marca or 'Todas',
+        'hilo': hilo_parser or hilo or 'Todos',
         'cliente_nombre': cliente_nombre,
         'telefono': telefono,
         'fase': 'simulador_manual_pre_whatsapp_cloud_api',
+        'memoria_conversacion': memoria_aplicada,
+        'historial_reciente': _wa_memoria_historial_reciente(conversacion_id) if conversacion_id and not nueva_conversacion else [],
     }
     respuesta, motor = _generar_respuesta_wa_con_openai(texto_total, parsed, meta, contexto)
 
-    conversacion_id = data.get('conversacion_id')
     try:
         with DB() as db:
-            if conversacion_id:
+            if conversacion_id and not nueva_conversacion:
                 conv = db.execute("""
                     UPDATE whatsapp_conversaciones
                     SET cliente_nombre=%s, telefono=%s, ultima_actualizacion=%s, estado=%s
@@ -2289,7 +2308,7 @@ def whatsapp_ia_simular():
                 """, (cliente_nombre, telefono, now_mexico(), 'SIMULADOR', conversacion_id)).fetchone()
                 if not conv:
                     conversacion_id = None
-            if not conversacion_id:
+            if not conversacion_id or nueva_conversacion:
                 conv = db.execute("""
                     INSERT INTO whatsapp_conversaciones (telefono, cliente_nombre, origen, estado, fecha, ultima_actualizacion)
                     VALUES (%s,%s,%s,%s,%s,%s)
@@ -2299,14 +2318,28 @@ def whatsapp_ia_simular():
             db.execute("""
                 INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
                 VALUES (%s,%s,%s,%s,%s,%s)
-            """, (conversacion_id, 'IN', 'texto', texto_total, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': motor}, ensure_ascii=False)))
+            """, (conversacion_id, 'IN', 'texto', texto_total, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': motor, 'memoria_usada': memoria_aplicada}, ensure_ascii=False)))
     except Exception as exc:
         print('WARN no se pudo guardar simulacion WA:', exc, flush=True)
+
+    memoria_actualizada = _wa_memoria_actualizar(
+        conversacion_id=conversacion_id,
+        telefono=telefono,
+        cliente_nombre=cliente_nombre,
+        texto=texto_total,
+        respuesta=respuesta,
+        parsed=parsed,
+        meta=meta,
+        marca_parser=marca_parser,
+        hilo_parser=hilo_parser,
+        memoria_previa=memoria_previa,
+        productos=productos_mem,
+    )
 
     return jsonify(json_safe({
         'ok': True,
         'conversacion_id': conversacion_id,
-        'motor': motor,
+        'motor': motor + ':memoria_v14',
         'mensaje_cliente': texto_total,
         'respuesta_sugerida': respuesta,
         'intencion': meta.get('intencion'),
@@ -2318,8 +2351,9 @@ def whatsapp_ia_simular():
         'errores': parsed.get('errores') or [],
         'advertencias': parsed.get('advertencias') or [],
         'parser': parsed,
+        'memoria_usada': memoria_aplicada,
+        'memoria_actual': memoria_actualizada,
     }))
-
 
 @app.route('/api/whatsapp-ia/conversaciones')
 def whatsapp_ia_conversaciones():
@@ -8314,3 +8348,358 @@ def whatsapp_ia_buscar_internet_manual():
         return jsonify({'ok': False, 'error': 'No se pudo obtener respuesta de internet.', 'motor': motor}), 500
     rid = _wa_v13_guardar_cache_internet(texto, respuesta, fuente='OpenAI Web Search manual', motor=motor)
     return jsonify(json_safe({'ok': True, 'respuesta': respuesta, 'recurso_id': rid, 'motor': motor}))
+
+# -----------------------------------------------------------------------------
+# V14 - Memoria de conversación para WhatsApp IA
+# -----------------------------------------------------------------------------
+# Esta memoria permite que mensajes cortos como "rojo 56", "y el 429?" o
+# "mándame ese" usen el contexto anterior de la misma conversación.
+
+
+def _wa_memoria_schema():
+    try:
+        with DB() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS whatsapp_contexto_cliente (
+                    id SERIAL PRIMARY KEY,
+                    clave TEXT UNIQUE,
+                    conversacion_id INTEGER,
+                    telefono TEXT,
+                    cliente_nombre TEXT,
+                    marca_actual TEXT,
+                    hilo_actual TEXT,
+                    ultima_intencion TEXT,
+                    ultimo_codigo TEXT,
+                    ultimo_color TEXT,
+                    pedido_en_proceso TEXT,
+                    dudas_pendientes TEXT,
+                    historial_resumen TEXT,
+                    ultimo_mensaje TEXT,
+                    ultima_respuesta TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            for col_sql in [
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS clave TEXT UNIQUE",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS conversacion_id INTEGER",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS telefono TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS cliente_nombre TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS marca_actual TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS hilo_actual TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultima_intencion TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultimo_codigo TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultimo_color TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS pedido_en_proceso TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS dudas_pendientes TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS historial_resumen TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultimo_mensaje TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultima_respuesta TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            ]:
+                db.execute(col_sql)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_wa_contexto_clave ON whatsapp_contexto_cliente(clave)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_wa_contexto_tel ON whatsapp_contexto_cliente(telefono)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_wa_contexto_conv ON whatsapp_contexto_cliente(conversacion_id)")
+    except Exception as exc:
+        print('WARN schema memoria WA:', exc, flush=True)
+
+
+def _wa_memoria_clave(conversacion_id=None, telefono=''):
+    tel = re.sub(r'\D+', '', str(telefono or ''))
+    if tel:
+        return 'tel:' + tel[-12:]
+    if conversacion_id:
+        return 'conv:' + str(conversacion_id)
+    return ''
+
+
+def _wa_memoria_cargar(conversacion_id=None, telefono=''):
+    _wa_memoria_schema()
+    clave = _wa_memoria_clave(conversacion_id, telefono)
+    if not clave:
+        return {}
+    try:
+        with DB() as db:
+            row = db.execute("SELECT * FROM whatsapp_contexto_cliente WHERE clave=%s LIMIT 1", (clave,)).fetchone()
+            return dict(row) if row else {}
+    except Exception as exc:
+        print('WARN cargar memoria WA:', exc, flush=True)
+        return {}
+
+
+def _wa_memoria_historial_reciente(conversacion_id, limit=8):
+    if not conversacion_id:
+        return []
+    try:
+        with DB() as db:
+            rows = db.execute("""
+                SELECT direccion, texto, respuesta_sugerida, fecha
+                FROM whatsapp_mensajes
+                WHERE conversacion_id=%s
+                ORDER BY fecha DESC, id DESC
+                LIMIT %s
+            """, (conversacion_id, limit)).fetchall()
+        out = []
+        for r in reversed([dict(x) for x in rows]):
+            if r.get('texto'):
+                out.append({'de': 'cliente', 'texto': r.get('texto')})
+            if r.get('respuesta_sugerida'):
+                out.append({'de': 'hilorama', 'texto': r.get('respuesta_sugerida')})
+        return out[-limit:]
+    except Exception as exc:
+        print('WARN historial reciente WA:', exc, flush=True)
+        return []
+
+
+def _wa_memoria_productos_min():
+    try:
+        with DB() as db:
+            rows = db.execute("""
+                SELECT
+                    p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
+                    COALESCE(p.stock,0) AS stock,
+                    COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta
+                FROM productos p
+                LEFT JOIN precios pr ON pr.marca = p.marca
+                ORDER BY p.marca, p.hilo, p.codigo
+                LIMIT 15000
+            """).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as exc:
+        print('WARN productos memoria WA:', exc, flush=True)
+        return []
+
+
+def _wa_memoria_norm(x):
+    try:
+        return _v6_norm(x)
+    except Exception:
+        return re.sub(r'\s+', ' ', str(x or '').lower()).strip()
+
+
+def _wa_memoria_marca_para_hilo(productos, hilo):
+    hn = _wa_memoria_norm(hilo)
+    for p in productos or []:
+        if _wa_memoria_norm(p.get('hilo')) == hn:
+            return str(p.get('marca') or '').strip()
+    fam = ''
+    try:
+        fam = _v6_hilo_family(hilo)
+    except Exception:
+        fam = hn
+    for p in productos or []:
+        try:
+            if _v6_hilo_family(p.get('hilo')) == fam:
+                return str(p.get('marca') or '').strip()
+        except Exception:
+            pass
+    return ''
+
+
+def _wa_memoria_detectar_hilos_explicitos(texto, productos):
+    try:
+        return _v6_detect_hilos(texto, productos) or []
+    except Exception:
+        t = _wa_memoria_norm(texto)
+        rules = [
+            ('VELLUTO', ['velluto', 'veluto', 'alize']),
+            ('KOMFY MINI', ['komfy mini', 'komfi mini', 'konfy mini', 'comfy mini', 'komfy', 'komfi', 'konfy']),
+            ('KURUMI', ['kurumi']),
+            ('TRAPILLO', ['trapillo', 'kraft']),
+            ('KAIRO', ['kairo']),
+        ]
+        out = []
+        hilos_db = []
+        for p in productos or []:
+            h = str(p.get('hilo') or '').strip()
+            if h and h not in hilos_db:
+                hilos_db.append(h)
+        for canonical, aliases in rules:
+            if any(a in t for a in aliases):
+                for h in hilos_db:
+                    if _wa_memoria_norm(h) == _wa_memoria_norm(canonical) or _wa_memoria_norm(canonical) in _wa_memoria_norm(h):
+                        out.append(h)
+                        break
+        return out
+
+
+def _wa_memoria_resolver_contexto_para_parser(texto, marca_ui, hilo_ui, memoria, productos):
+    hilos_exp = _wa_memoria_detectar_hilos_explicitos(texto, productos)
+    memoria = memoria or {}
+
+    # Si el usuario seleccionó manualmente marca/hilo, eso manda.
+    if marca_ui or hilo_ui:
+        return marca_ui, hilo_ui, {
+            'activa': bool(marca_ui or hilo_ui),
+            'origen': 'seleccion_manual',
+            'marca': marca_ui,
+            'hilo': hilo_ui,
+            'hilos_mencionados': hilos_exp,
+        }
+
+    # Si el mensaje trae un hilo nuevo explícito, cambia el contexto.
+    if hilos_exp:
+        hilo = hilos_exp[0]
+        marca = _wa_memoria_marca_para_hilo(productos, hilo)
+        return marca, hilo, {
+            'activa': True,
+            'origen': 'mensaje_actual',
+            'marca': marca,
+            'hilo': hilo,
+            'hilos_mencionados': hilos_exp,
+        }
+
+    # Si no hay hilo explícito, usa la memoria anterior.
+    hilo_mem = str(memoria.get('hilo_actual') or '').strip()
+    marca_mem = str(memoria.get('marca_actual') or '').strip()
+    if hilo_mem or marca_mem:
+        return marca_mem, hilo_mem, {
+            'activa': True,
+            'origen': 'memoria_conversacion',
+            'marca': marca_mem,
+            'hilo': hilo_mem,
+            'ultima_intencion': memoria.get('ultima_intencion'),
+            'ultimo_codigo': memoria.get('ultimo_codigo'),
+            'ultimo_color': memoria.get('ultimo_color'),
+        }
+
+    return '', '', {'activa': False, 'origen': 'sin_contexto', 'hilos_mencionados': hilos_exp}
+
+
+def _wa_memoria_primer_pedido(parsed):
+    pedidos = parsed.get('pedidos') or []
+    if pedidos:
+        return pedidos[0]
+    return {}
+
+
+def _wa_memoria_derivar_datos(texto, parsed, meta, marca_parser, hilo_parser, memoria_previa, productos):
+    pedido = _wa_memoria_primer_pedido(parsed)
+    hilos_exp = _wa_memoria_detectar_hilos_explicitos(texto, productos)
+
+    hilo = str(hilo_parser or '').strip()
+    marca = str(marca_parser or '').strip()
+
+    if hilos_exp:
+        hilo = hilos_exp[0]
+        marca = _wa_memoria_marca_para_hilo(productos, hilo) or marca
+
+    if pedido:
+        hilo = str(pedido.get('hilo') or hilo or '').strip()
+        marca = str(pedido.get('marca') or marca or '').strip()
+
+    # Algunos parsers devuelven contexto inferido aunque no haya pedido.
+    try:
+        ctx_inf = ((parsed.get('contexto') or {}).get('contexto_inferido') or {})
+        if not hilo and ctx_inf.get('hilo'):
+            hilo = str(ctx_inf.get('hilo') or '').strip()
+        if not marca and ctx_inf.get('marca'):
+            marca = str(ctx_inf.get('marca') or '').strip()
+    except Exception:
+        pass
+
+    # Si el mensaje fue consulta/pedido corto y no hay hilo nuevo, conservar memoria previa.
+    if not hilo:
+        hilo = str((memoria_previa or {}).get('hilo_actual') or '').strip()
+    if not marca:
+        marca = str((memoria_previa or {}).get('marca_actual') or '').strip()
+
+    ultimo_codigo = str(pedido.get('codigo') or '').strip()
+    ultimo_color = str(pedido.get('color') or '').strip()
+    if not ultimo_codigo:
+        m = re.search(r'\b(\d{1,4})\b', str(texto or ''))
+        ultimo_codigo = m.group(1) if m else str((memoria_previa or {}).get('ultimo_codigo') or '')
+    if not ultimo_color:
+        ultimo_color = str((memoria_previa or {}).get('ultimo_color') or '')
+
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    resumen = []
+    if hilo:
+        resumen.append('hilo=' + hilo)
+    if marca:
+        resumen.append('marca=' + marca)
+    if pedidos:
+        resumen.append('productos=' + ', '.join([f"{p.get('codigo','')} {p.get('color','')} x{p.get('cantidad',1)}" for p in pedidos[:8]]))
+    if preguntas:
+        resumen.append('dudas=' + '; '.join(map(str, preguntas[:3])))
+
+    return {
+        'marca_actual': marca,
+        'hilo_actual': hilo,
+        'ultima_intencion': (meta or {}).get('intencion') or '',
+        'ultimo_codigo': ultimo_codigo,
+        'ultimo_color': ultimo_color,
+        'pedido_en_proceso': json.dumps(pedidos[:30], ensure_ascii=False),
+        'dudas_pendientes': json.dumps(preguntas[:20], ensure_ascii=False),
+        'historial_resumen': ' | '.join(resumen)[:1500],
+    }
+
+
+def _wa_memoria_actualizar(conversacion_id, telefono, cliente_nombre, texto, respuesta, parsed, meta, marca_parser, hilo_parser, memoria_previa, productos):
+    _wa_memoria_schema()
+    clave = _wa_memoria_clave(conversacion_id, telefono)
+    if not clave:
+        return {}
+    datos = _wa_memoria_derivar_datos(texto, parsed, meta, marca_parser, hilo_parser, memoria_previa, productos)
+    try:
+        with DB() as db:
+            row = db.execute("""
+                INSERT INTO whatsapp_contexto_cliente
+                    (clave, conversacion_id, telefono, cliente_nombre, marca_actual, hilo_actual, ultima_intencion,
+                     ultimo_codigo, ultimo_color, pedido_en_proceso, dudas_pendientes, historial_resumen,
+                     ultimo_mensaje, ultima_respuesta, created_at, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (clave) DO UPDATE SET
+                    conversacion_id=EXCLUDED.conversacion_id,
+                    telefono=EXCLUDED.telefono,
+                    cliente_nombre=EXCLUDED.cliente_nombre,
+                    marca_actual=EXCLUDED.marca_actual,
+                    hilo_actual=EXCLUDED.hilo_actual,
+                    ultima_intencion=EXCLUDED.ultima_intencion,
+                    ultimo_codigo=EXCLUDED.ultimo_codigo,
+                    ultimo_color=EXCLUDED.ultimo_color,
+                    pedido_en_proceso=EXCLUDED.pedido_en_proceso,
+                    dudas_pendientes=EXCLUDED.dudas_pendientes,
+                    historial_resumen=EXCLUDED.historial_resumen,
+                    ultimo_mensaje=EXCLUDED.ultimo_mensaje,
+                    ultima_respuesta=EXCLUDED.ultima_respuesta,
+                    updated_at=EXCLUDED.updated_at
+                RETURNING *
+            """, (
+                clave, conversacion_id, re.sub(r'\D+', '', str(telefono or '')), cliente_nombre,
+                datos.get('marca_actual'), datos.get('hilo_actual'), datos.get('ultima_intencion'),
+                datos.get('ultimo_codigo'), datos.get('ultimo_color'), datos.get('pedido_en_proceso'),
+                datos.get('dudas_pendientes'), datos.get('historial_resumen'),
+                str(texto or '')[:2000], str(respuesta or '')[:4000], now_mexico(), now_mexico()
+            )).fetchone()
+            return dict(row) if row else datos
+    except Exception as exc:
+        print('WARN actualizar memoria WA:', exc, flush=True)
+        return datos
+
+
+@app.route('/api/whatsapp-ia/memoria', methods=['GET'])
+def whatsapp_ia_memoria_ver():
+    conversacion_id = request.args.get('conversacion_id') or None
+    telefono = request.args.get('telefono') or ''
+    return jsonify(json_safe({'ok': True, 'memoria': _wa_memoria_cargar(conversacion_id, telefono)}))
+
+
+@app.route('/api/whatsapp-ia/memoria/reset', methods=['POST'])
+def whatsapp_ia_memoria_reset():
+    data = request.get_json(force=True) or {}
+    conversacion_id = data.get('conversacion_id')
+    telefono = data.get('telefono') or ''
+    clave = _wa_memoria_clave(conversacion_id, telefono)
+    if not clave:
+        return jsonify({'ok': False, 'error': 'No hay conversación o teléfono para limpiar.'}), 400
+    _wa_memoria_schema()
+    try:
+        with DB() as db:
+            db.execute("DELETE FROM whatsapp_contexto_cliente WHERE clave=%s", (clave,))
+        return jsonify({'ok': True})
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
