@@ -729,7 +729,7 @@ def listar_notas():
         where.append("""
             (
                 LOWER(COALESCE(n.id,'')) LIKE %s OR
-                LOWER(COALESCE(n.cliente_nombre,'')) LIKE %s OR
+                LOWER(COALESCE(c.nombre,n.cliente_nombre,'')) LIKE %s OR
                 LOWER(COALESCE(n.pedido,'')) LIKE %s OR
                 LOWER(COALESCE(c.telefono,'')) LIKE %s
             )
@@ -740,7 +740,7 @@ def listar_notas():
     with DB() as db:
         rows = db.execute(f"""
             SELECT
-                n.id, n.cliente_id, n.cliente_nombre, n.fecha, n.estado,
+                n.id, n.cliente_id, COALESCE(c.nombre, n.cliente_nombre) AS cliente_nombre, n.fecha, n.estado,
                 n.total, n.envio, n.pedido, n.comprobante, n.fecha_pago,
                 n.metodo_pago, n.monto_pagado, n.referencia_pago,
                 n.paqueteria, n.empacador_id, n.empacador, n.fecha_asignacion,
@@ -752,7 +752,7 @@ def listar_notas():
             LEFT JOIN clientes c ON c.id=n.cliente_id
             LEFT JOIN items i ON i.nota_id=n.id
             WHERE {' AND '.join(where)}
-            GROUP BY n.id, c.telefono
+            GROUP BY n.id, c.nombre, c.telefono
             ORDER BY n.id DESC
             LIMIT {limit}
         """, params).fetchall()
@@ -936,6 +936,15 @@ def actualizar_cliente(cliente_ref):
         """, (nombre, telefono, json.dumps(direccion, ensure_ascii=False), cliente_id)).fetchone()
         if not row:
             return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+
+        # Mantener sincronizado el nombre visible en notas antiguas.
+        # Las notas guardan una copia de cliente_nombre para listados/PDFs; si no se actualiza,
+        # el cliente queda bien en la tabla clientes pero la app vuelve a mostrar el nombre viejo.
+        db.execute("""
+            UPDATE notas
+            SET cliente_nombre=%s
+            WHERE cliente_id=%s
+        """, (nombre, cliente_id))
     c = dict(row)
     c["direccion"] = normalizar_direccion(c.get("direccion"))
     c["completo"], c["faltantes"] = validar_cliente_completo(c)
