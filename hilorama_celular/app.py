@@ -1962,6 +1962,8 @@ def parser_whatsapp_mobile():
         "preguntas": sorted(set(str(p) for p in preguntas if p)),
         "sugerencias": {},
         "sugerencias_almacen": ctx_result.get('sugerencias_almacen') or [],
+        "respuesta_preferida": ctx_result.get('respuesta_preferida') or '',
+        "ventas_info": ctx_result.get('ventas_info') or {},
         "referencia_visual": referencia_visual,
     }))
 
@@ -5697,4 +5699,406 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
         return (respuesta or _fallback_respuesta_wa(texto, parsed, meta)), 'openai'
     except Exception as exc:
         print('WARN WhatsApp IA OpenAI fallback V3:', exc, flush=True)
+        return _fallback_respuesta_wa(texto, parsed, meta), 'fallback_error_openai'
+
+
+# ==========================================================
+# WhatsApp IA V4 - reglas comerciales reales por almacén
+# ==========================================================
+# Correcciones principales:
+# - El parser ahora devuelve respuesta_preferida al simulador.
+# - Consultas sin cantidad NO agregan productos accidentalmente.
+# - Combo/paquete se responde como pregunta comercial, no como producto.
+# - Hilos como Velluto, Komfy Mini y Kurumi se detectan aunque el vendedor deje Todas/Todos.
+# - Producto externo "La Abuelita" se responde con alternativa humana.
+
+WA_HILO_ALIAS_CANON = {
+    'velluto': ['velluto','vellutos','veluto','velutos','alize velluto','alize veluto','alize','chenille velluto','vello','vellos'],
+    'komfy': ['komfy','komfy mini','komfymini','komfi','komfi mini','konfy','konfy mini','konfi','comfy','comfy mini','karina komfy','karina komfy mini'],
+    'kurumi': ['kurumi','kurumis','karina kurumi'],
+    'trapillo': ['trapillo','trapillo kraft','kraft','trapiyo','trapiyos'],
+}
+
+
+def _wa_hilo_family(hilo):
+    h = _norm_txt(hilo or '')
+    if any(x in h for x in ['velluto','veluto']):
+        return 'velluto'
+    if any(x in h for x in ['komfy','komfi','konfy','comfy']):
+        return 'komfy'
+    if 'kurumi' in h:
+        return 'kurumi'
+    if 'trapillo' in h or 'kraft' in h:
+        return 'trapillo'
+    return h
+
+
+def _wa_aliases_hilo(hilo):
+    h = _norm_txt(hilo or '')
+    aliases = set()
+    if h:
+        aliases.add(h)
+        aliases.add(h.replace(' ', ''))
+        aliases.add(h.replace('-', ' '))
+    fam = _wa_hilo_family(hilo)
+    aliases.update(WA_HILO_ALIAS_CANON.get(fam, []))
+    if 'fiorentino' in h or 'fior' in h:
+        aliases.update(['fiorentino','florentino','fiorentino karina','fioren'])
+    if 'fosfo' in h:
+        aliases.update(['fosfo','fosforescente','fluor','neon'])
+    return {a for a in aliases if a and len(a) >= 3}
+
+
+def _wa_detectar_hilos(texto, productos):
+    t = _norm_txt(texto or '')
+    compacto = t.replace(' ', '')
+    if not t:
+        return []
+    # Primero detecta familias explícitas en el mensaje.
+    familias = []
+    for fam, aliases in WA_HILO_ALIAS_CANON.items():
+        for a in aliases:
+            aa = _norm_txt(a)
+            if re.search(rf'(?<!\w){re.escape(aa)}(?!\w)', t) or aa.replace(' ', '') in compacto:
+                familias.append(fam)
+                break
+    hallados = []
+    hilos = _wa_catalogo_hilos(productos)
+    for fam in familias:
+        for h in hilos:
+            if _wa_hilo_family(h) == fam and h not in hallados:
+                hallados.append(h)
+    # Luego coincide por nombre/alias exacto del catálogo.
+    for h in hilos:
+        if h in hallados:
+            continue
+        for a in _wa_aliases_hilo(h):
+            aa = _norm_txt(a)
+            if re.search(rf'(?<!\w){re.escape(aa)}(?!\w)', t) or aa.replace(' ', '') in compacto:
+                hallados.append(h)
+                break
+    return hallados
+
+
+def _wa_tiene_palabra_pregunta(t):
+    return bool(re.search(r'\b(que|qué|cuanto|cuánto|cuesta|precio|vale|tienen|tiene|manejan|maneja|hay|disponible|disponibilidad|colores|tonos|carta|catalogo|catálogo|envio|envío|envios|envíos|puedo|se puede|incluye|sale con|gratis)\b', t or ''))
+
+
+def _wa_es_consulta_catalogo(texto):
+    t = _norm_txt(texto or '')
+    # Si no hay cantidad, cualquier pregunta comercial es consulta.
+    if not _wa_hay_cantidad(t) and _wa_tiene_palabra_pregunta(t):
+        return True
+    # Paquetes/combos con pregunta NO son producto para carrito.
+    if re.search(r'\b(combo|paquete|kit|promocion|promoción)\b', t) and _wa_tiene_palabra_pregunta(t):
+        return True
+    return False
+
+
+def _wa_precio_texto(minp, maxp=None):
+    try:
+        minp = float(minp or 0)
+    except Exception:
+        minp = 0
+    try:
+        maxp = float(maxp or 0)
+    except Exception:
+        maxp = 0
+    if minp <= 0:
+        return ''
+    if maxp and abs(maxp - minp) > 0.01:
+        return f"entre ${minp:.2f} y ${maxp:.2f}"
+    return f"en ${minp:.2f}"
+
+
+def _wa_resumen_hilo(hilo, productos):
+    ctx = _wa_filtrar_por_hilo(productos, hilo)
+    disponibles = [p for p in ctx if int(p.get('stock') or 0) > 0]
+    precios = []
+    for p in ctx:
+        # Evita que productos tipo combo/surtido distorsionen el precio unitario.
+        color = _norm_txt(p.get('color') or '')
+        codigo = str(p.get('codigo') or '')
+        if any(x in color for x in ['surtido','combo','paquete']) or codigo in {'10','20','40'}:
+            continue
+        try:
+            pr = float(p.get('precio_venta') or 0)
+            if pr > 0:
+                precios.append(pr)
+        except Exception:
+            pass
+    colores=[]; seen=set()
+    for p in disponibles:
+        c=(p.get('color') or '').strip()
+        cod=str(p.get('codigo') or '').strip()
+        if not c and not cod:
+            continue
+        cn=_norm_txt(c)
+        if any(x in cn for x in ['surtido','combo','paquete']):
+            continue
+        key=(cod, cn)
+        if key in seen:
+            continue
+        seen.add(key)
+        colores.append({'codigo':cod,'color':c,'stock':int(p.get('stock') or 0)})
+    return {'hilo':hilo,'total':len(ctx),'disponibles':len(disponibles),'precio_min':min(precios) if precios else 0,'precio_max':max(precios) if precios else 0,'colores':colores[:18]}
+
+
+def _wa_mensaje_externo(t):
+    if re.search(r'\b(abuelita|abuelitas|la abuelita)\b', t):
+        if 'parecid' in t or 'similar' in t or 'recomiend' in t:
+            return 'La Abuelita por el momento no la manejamos 😊 pero puedo ofrecerle opciones parecidas según su proyecto: Kurumi si busca algo más firme/delgado, o Komfy Mini si quiere algo suave tipo chenille. ¿Para qué trabajo lo ocuparía?'
+        return 'La Abuelita por el momento no la manejamos 😊 pero sí tengo opciones similares. ¿La busca para amigurumi, tejido o algún proyecto en especial?'
+    if re.search(r'\b(karenita|karineta)\b', t):
+        return 'Karenita por el momento no la veo en el almacén 😊 pero sí manejamos varios hilos Karina. Si me dice textura o color, le sugiero el más parecido.'
+    return ''
+
+
+def _wa_combo_detectado(t):
+    m = re.search(r'\b(?:combo|paquete|kit)\s*(?:de\s*)?(10|20|40)\b', t)
+    if m:
+        return int(m.group(1))
+    m = re.search(r'\b(10|20|40)\s*(?:piezas|pz|pzas|madejas)\b', t)
+    if m and re.search(r'\b(combo|paquete|kit)\b', t):
+        return int(m.group(1))
+    return 0
+
+
+def _wa_respuesta_combo(t, hilos):
+    n = _wa_combo_detectado(t)
+    hilo_txt = hilos[0] if hilos else 'Velluto'
+    if n:
+        if 'escoger' in t or 'elegir' in t or 'colores' in t or 'tonos' in t:
+            return f"Sí 😊 el paquete de {n} piezas de {hilo_txt} puede ir con colores a elegir, sujeto a disponibilidad. Mándeme la lista de tonos/códigos y le preparo su nota."
+        if 'envio' in t or 'envío' in t or 'gratis' in t:
+            return f"Sí 😊 manejamos paquete de {n} piezas de {hilo_txt}. Para confirmarle si aplica envío gratis y dejarlo bien armado, mándeme los tonos o códigos que quiere."
+        return f"Sí 😊 manejamos paquete de {n} piezas de {hilo_txt}. Puede elegir sus colores sujeto a disponibilidad."
+    return ''
+
+
+def _wa_respuesta_consulta_almacen(texto, productos, hilos=None, marcas=None):
+    t = _norm_txt(texto or '')
+    hilos = hilos or []
+    marcas = marcas or []
+    externo = _wa_mensaje_externo(t)
+    if externo:
+        return externo
+    if _wa_es_pregunta_envio(texto):
+        cp = re.search(r'\b\d{5}\b', t)
+        if cp:
+            return f"Sí hacemos envíos 😊 Con el CP {cp.group(0)} puedo cotizarle las opciones de paquetería."
+        return "Sí, hacemos envíos a todo México 😊 Para cotizarle el envío me comparte su código postal, por favor."
+    if _wa_es_pregunta_pago(texto):
+        return "Perfecto 😊 puede mandarme la imagen del comprobante y reviso que coincida el monto para continuar con su pedido."
+    combo_resp = _wa_respuesta_combo(t, hilos)
+    if combo_resp:
+        return combo_resp
+    if hilos:
+        bloques=[]
+        for h in hilos[:3]:
+            r = _wa_resumen_hilo(h, productos)
+            if not r['total']:
+                continue
+            precio = _wa_precio_texto(r.get('precio_min'), r.get('precio_max'))
+            if 'precio' in t or 'cuanto' in t or 'cuesta' in t or 'costo' in t or 'vale' in t:
+                if precio:
+                    bloques.append(f"El {h} está {precio} por madeja 😊 ¿Qué color o código busca?")
+                else:
+                    bloques.append(f"Sí manejamos {h} 😊 Para darle precio exacto reviso el tono o código que necesita.")
+            elif 'color' in t or 'tono' in t or 'disponib' in t or 'catalogo' in t or 'catálogo' in t or 'carta' in t:
+                muestra=', '.join([f"{c['codigo']} {c['color']}".strip() for c in r['colores'][:8] if c.get('codigo') or c.get('color')])
+                extra=f" Algunos tonos disponibles son: {muestra}." if muestra else ''
+                bloques.append(f"Sí 😊 tenemos {h} disponible.{extra}\nLe puedo compartir la carta de colores completa.")
+            else:
+                bloques.append(f"Sí 😊 manejamos {h}{(' ' + precio) if precio else ''}. ¿Busca algún color o código en especial?")
+        if bloques:
+            return '\n\n'.join(bloques).strip()
+    if marcas:
+        bloques=[]
+        for m in marcas[:3]:
+            r=_wa_resumen_marca(m, productos)
+            if r.get('hilos'):
+                bloques.append(f"Sí 😊 manejamos {m}. Tenemos por ejemplo: " + ', '.join(r['hilos'][:6]) + ". ¿Cuál buscaba?")
+        if bloques:
+            return '\n\n'.join(bloques)
+    return ''
+
+
+def _wa_parsear_con_contexto_almacen(texto_total, productos_all, marca='', hilo='', extraer_pedidos_func=None):
+    extraer = extraer_pedidos_func
+    productos_base = _wa_filtrar_por_marca_hilo(productos_all, marca, hilo)
+    texto_norm = _norm_txt(texto_total or '')
+    hilos_globales = _wa_detectar_hilos(texto_norm, productos_base)
+    marcas_globales = _wa_detectar_marcas(texto_norm, productos_base)
+    contexto_global = hilo or (hilos_globales[0] if len(hilos_globales) == 1 else '')
+    pedidos_dict = {}
+    preguntas=[]; errores=[]; advertencias=[]; sugerencias=[]; hilos_detectados=[]
+    respuesta_preferida = ''
+    ultimo_hilo = contexto_global
+    for h in hilos_globales:
+        if h not in hilos_detectados:
+            hilos_detectados.append(h)
+
+    # Consulta comercial: no agregues productos aunque aparezcan números de paquetes.
+    if _wa_es_consulta_catalogo(texto_norm):
+        resp = _wa_respuesta_consulta_almacen(texto_norm, productos_base, hilos_globales, marcas_globales)
+        if resp:
+            return {
+                'pedidos_full': [], 'errores': [], 'advertencias': [], 'preguntas': [],
+                'sugerencias_almacen': [], 'hilos_detectados': hilos_detectados,
+                'contexto_inferido': {'marca': marca or '', 'hilo': hilo or contexto_global or '', 'hilos_mencionados': hilos_globales, 'marcas_mencionadas': marcas_globales},
+                'respuesta_preferida': resp,
+                'ventas_info': {'tipo': 'consulta_catalogo_v4'}
+            }
+
+    clauses = _wa_split_clausulas(texto_norm)
+    for idx, parte in enumerate(clauses):
+        if not parte:
+            continue
+        hilos_parte = _wa_detectar_hilos(parte, productos_base)
+        marcas_parte = _wa_detectar_marcas(parte, productos_base)
+        for h in hilos_parte:
+            if h not in hilos_detectados:
+                hilos_detectados.append(h)
+        if _wa_es_quitar(parte):
+            borrados = _wa_remover_por_texto(pedidos_dict, parte, productos_base)
+            advertencias.append(f"Se quitaron {borrados} producto(s) por indicación de la clienta." if borrados else "La clienta pidió quitar algo, pero no encontré una coincidencia clara.")
+            continue
+        if _wa_es_consulta_catalogo(parte):
+            resp = _wa_respuesta_consulta_almacen(parte, productos_base, hilos_parte or hilos_globales, marcas_parte or marcas_globales)
+            if resp and not pedidos_dict:
+                respuesta_preferida = resp
+            elif resp:
+                advertencias.append(resp)
+            continue
+        hilo_ctx = hilos_parte[0] if len(hilos_parte) == 1 else (ultimo_hilo or contexto_global)
+        if hilo_ctx:
+            ultimo_hilo = hilo_ctx
+        productos_ctx = _wa_filtrar_por_hilo(productos_base, hilo_ctx) if hilo_ctx else productos_base
+        if hilo_ctx and _wa_parece_linea_contexto_hilo(parte) and idx < len(clauses)-1:
+            continue
+        parse = extraer(parte, productos_ctx) if extraer else {'pedidos': [], 'preguntas': [], 'errores': []}
+        full, err = _wa_pedidos_full_desde_parse(parse, productos_ctx)
+        for fp in full:
+            _wa_agregar_o_sumar(pedidos_dict, fp)
+        errores.extend(err)
+        errores.extend(parse.get('errores') or [])
+        # No uses preguntas del parser cuando ya hubo coincidencia exacta; muchas veces son dudas redundantes.
+        if not full:
+            preguntas.extend(parse.get('preguntas') or [])
+        advertencias.extend(parse.get('advertencias') or [])
+        if hilo_ctx and _wa_color_descripcion_keywords(parte):
+            descripcion_larga = any(x in parte for x in ['hueso','marfil','amarillent','medio','parecid','calido','piel','crema','nude'])
+            if descripcion_larga and not full:
+                sug = _wa_sugerir_tonos_por_descripcion(parte, productos_ctx, limit=5)
+                if sug:
+                    sugerencias.append({'tipo': 'tonos_por_descripcion', 'hilo': hilo_ctx, 'texto': parte, 'opciones': sug})
+                    preguntas.append(f"Para {hilo_ctx}, la clienta describió un tono. Sugiere opciones del almacén y pregunta cuál quiere agregar.")
+        if hilo_ctx and not full and _wa_hay_cantidad(parte):
+            sug = _wa_sugerir_tonos_por_descripcion(parte, productos_ctx, limit=5)
+            if sug:
+                sugerencias.append({'tipo': 'tonos_por_descripcion', 'hilo': hilo_ctx, 'texto': parte, 'opciones': sug})
+                preguntas.append(f"Para {hilo_ctx}, falta confirmar cuál tono desea agregar.")
+            else:
+                m_qty = re.search(r'\b(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|veinte|cuarenta)\b', parte)
+                preguntas.append(f"Sí contamos con {hilo_ctx}. Falta confirmar qué tono o código quiere para {m_qty.group(1) if m_qty else ''} pieza(s).")
+
+    if not pedidos_dict and not respuesta_preferida and not preguntas:
+        resp = _wa_respuesta_consulta_almacen(texto_norm, productos_base, hilos_globales, marcas_globales)
+        if resp:
+            respuesta_preferida = resp
+        else:
+            similares = _wa_sugerir_hilos_similares(texto_norm, productos_base, limit=5)
+            if similares:
+                sugerencias.append({'tipo': 'hilo_similar', 'texto': texto_total, 'opciones': similares})
+                preguntas.append('El producto exacto no se identificó en almacén; ofrece alternativas similares por textura.')
+    return {
+        'pedidos_full': list(pedidos_dict.values()),
+        'errores': sorted(set(str(e) for e in errores if e)),
+        'advertencias': sorted(set(str(a) for a in advertencias if a)),
+        'preguntas': sorted(set(str(p) for p in preguntas if p)),
+        'sugerencias_almacen': sugerencias,
+        'hilos_detectados': hilos_detectados,
+        'contexto_inferido': {'marca': marca or '', 'hilo': hilo or contexto_global or '', 'hilos_mencionados': hilos_globales, 'marcas_mencionadas': marcas_globales},
+        'respuesta_preferida': respuesta_preferida,
+        'ventas_info': {'tipo': 'pedido_o_conversacion_v4'}
+    }
+
+
+def _fallback_respuesta_wa(texto, parsed, meta):
+    if parsed.get('respuesta_preferida'):
+        return str(parsed.get('respuesta_preferida')).strip()
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    sug_txt = _formatear_sugerencias_almacen_wa(parsed)
+    intent = meta.get('intencion')
+    provisionales = _codigos_provisionales_desde_preguntas(preguntas)
+    pedidos_confirmados = [p for p in pedidos if (str(p.get('codigo') or '').strip().lstrip('0') or '0') not in provisionales]
+    if errores:
+        txt=''
+        if pedidos_confirmados:
+            txt += 'Claro 😊 ya tengo claro esto:\n' + '\n'.join(_formatear_producto_wa(p) for p in pedidos_confirmados[:25]) + '\n\n'
+        txt += 'Estos códigos no me aparecen en catálogo: ' + ', '.join(map(str, errores[:8])) + '. ¿Me los confirma por favor?'
+        return txt
+    if preguntas:
+        q_limpias=[_limpiar_pregunta_wa(q) for q in preguntas if _limpiar_pregunta_wa(q)]
+        txt=''
+        if pedidos_confirmados:
+            txt += 'Claro 😊 ya tengo claro:\n' + '\n'.join(_formatear_producto_wa(p) for p in pedidos_confirmados[:25]) + '\n\n'
+        if sug_txt:
+            txt += sug_txt + '\n\n¿Cuál de esos tonos le agrego?'
+        elif q_limpias:
+            txt += 'Solo para confirmar 😊 ' + q_limpias[0]
+        else:
+            txt += 'Solo necesito confirmar un detalle para no agregarle algo equivocado 😊'
+        return txt.strip()
+    if sug_txt and not pedidos:
+        return sug_txt + '\n\n¿Quiere que le arme una opción con alguno de esos tonos?'
+    if pedidos:
+        lineas=[_formatear_producto_wa(p) for p in pedidos[:40]]
+        txt='Claro 😊 le agrego:\n' + '\n'.join(lineas)
+        if len(pedidos)>40:
+            txt += f"\nY {len(pedidos)-40} producto(s) más."
+        txt += '\n\nLe preparo su cotización.'
+        return txt
+    if intent == 'pregunta_precio':
+        return 'Claro 😊 ¿me confirma qué hilo o código quiere revisar? Así le doy precio y disponibilidad exacta.'
+    if intent == 'pregunta_envio':
+        return 'Sí, hacemos envíos a todo México 😊 Para cotizarlo necesito su código postal.'
+    if intent == 'pregunta_stock':
+        return 'Con gusto 😊 dígame el hilo, código o color que busca y reviso disponibilidad.'
+    if intent == 'sugerir_tonos':
+        return 'Sí 😊 mándeme la foto o referencia y le sugiero los tonos más parecidos según lo que tenga disponible. No agrego nada hasta que usted confirme.'
+    if intent == 'comprobante_pago':
+        return 'Perfecto 😊 mándeme la imagen del comprobante y reviso monto, referencia y datos para continuar con su pedido.'
+    return 'Claro 😊 dígame qué hilo, código o color necesita y le ayudo a armar su cotización.'
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    # V4: las respuestas comerciales se hacen con reglas y almacén para no inventar.
+    if (parsed.get('pedidos') or parsed.get('preguntas') or parsed.get('errores') or parsed.get('respuesta_preferida') or parsed.get('sugerencias_almacen')):
+        return _fallback_respuesta_wa(texto, parsed, meta), 'reglas_hilorama_v4'
+    api_key = os.environ.get('OPENAI_API_KEY')
+    if not api_key:
+        return _fallback_respuesta_wa(texto, parsed, meta), 'fallback_sin_openai'
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, timeout=float(os.environ.get('OPENAI_TIMEOUT_SECONDS', '90')))
+        system = (
+            'Eres asistente de ventas de Hilorama, mercería mexicana. Responde natural, breve y útil por WhatsApp. '
+            'No inventes productos, códigos, stock ni precios. Si no sabes, pregunta un dato concreto. '
+            'No digas que no sabes si el almacén ya confirmó información. Devuelve SOLO JSON válido con claves: respuesta, razon, requiere_humano.'
+        )
+        payload={'mensaje_cliente': texto, 'contexto': contexto, 'clasificacion': meta}
+        resp = client.chat.completions.create(
+            model=os.environ.get('OPENAI_SALES_MODEL', os.environ.get('OPENAI_TEXT_MODEL', 'gpt-4o-mini')),
+            temperature=0.1, max_tokens=350, response_format={'type':'json_object'},
+            messages=[{'role':'system','content':system},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
+        )
+        obj=json.loads(resp.choices[0].message.content or '{}')
+        respuesta=str(obj.get('respuesta') or '').strip()
+        return (respuesta or _fallback_respuesta_wa(texto, parsed, meta)), 'openai'
+    except Exception as exc:
+        print('WARN WhatsApp IA OpenAI fallback V4:', exc, flush=True)
         return _fallback_respuesta_wa(texto, parsed, meta), 'fallback_error_openai'
