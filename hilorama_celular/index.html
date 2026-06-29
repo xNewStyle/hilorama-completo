@@ -559,6 +559,15 @@ async function simularWhatsAppIA(){
     state.whatsappNuevaConversacion=false;
     state.whatsappConversacionId=r.conversacion_id||state.whatsappConversacionId;
     renderMemoriaWA(r.memoria_actual||r.memoria_usada||null);
+    if(r.cierre_programado){
+      state.whatsappIARespuestaRaw=r.respuesta_diferida||'';
+      state.whatsappIARecursos=[];
+      state.whatsappIARespuesta=r.respuesta_diferida||'';
+      state.parserPedidos=[];
+      const due=r.programado_para?`<div class="small">Programado para: ${escapeHtml(String(r.programado_para))}</div>`:'';
+      box.innerHTML=`<div class="wa-meta"><span class="badge green">cierre diferido</span><span class="badge gray">${escapeHtml(r.cierre_minutos||5)} min</span><span class="badge gray">${escapeHtml(r.motor||'')}</span></div><div class="result-ok"><b>No responder de inmediato.</b><br>Si la clienta no escribe nada más en ${escapeHtml(r.cierre_minutos||5)} minutos, enviar este cierre:</div><label>Mensaje de cierre programado</label><div id="waRespuestaTexto" class="wa-response">${escapeHtml(state.whatsappIARespuesta)}</div>${due}<div class="wa-actions"><button class="green" type="button" onclick="copiarRespuestaWA()">Copiar cierre</button></div>`;
+      return;
+    }
     state.whatsappIARespuestaRaw=r.respuesta_sugerida||'';
     state.whatsappIARecursos=extractWAResourceUrls(state.whatsappIARespuestaRaw);
     state.whatsappIARespuesta=cleanWAResponseText(state.whatsappIARespuestaRaw);

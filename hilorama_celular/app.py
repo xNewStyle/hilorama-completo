@@ -10,7 +10,7 @@ import traceback
 from PIL import Image, ImageDraw, ImageFont
 import html
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -8703,3 +8703,364 @@ def whatsapp_ia_memoria_reset():
         return jsonify({'ok': True})
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+# -----------------------------------------------------------------------------
+# V15 - Cierre amable diferido para mensajes de cortesía (gracias)
+# -----------------------------------------------------------------------------
+# Regla comercial:
+# - Si la clienta solo dice "gracias" o una cortesía de cierre, NO responder al instante.
+# - Se programa un mensaje amable para 5 minutos después.
+# - Si la clienta escribe algo más antes de esos 5 minutos, se cancela el cierre.
+# - Si el mensaje trae indicios de pedido/seguimiento ("me surte 3 blancos"), se procesa normal.
+
+WA_V15_CIERRE_MINUTOS = int(os.environ.get('WA_CIERRE_GRACIAS_MINUTOS', '5') or '5')
+WA_V15_CIERRE_TEXTO = os.environ.get(
+    'WA_CIERRE_GRACIAS_TEXTO',
+    'A sus órdenes 😊 cualquier cosa no dude en escribirme, con gusto le atiendo.'
+)
+
+
+def _wa_v15_norm_txt(texto):
+    return re.sub(r'\s+', ' ', _wa_memoria_norm(texto or '')).strip()
+
+
+def _wa_v15_tiene_indicio_seguir(texto):
+    t = _wa_v15_norm_txt(texto)
+    # Si aparte del gracias viene pedido, cantidad, producto o acción, NO es cierre.
+    patrones = [
+        r'\b(dame|deme|me\s+surte|surteme|s[uú]rteme|agrega|agregame|agr[eé]game|quiero|ocupo|necesito|apartame|ap[aá]rteme|cotiza|cotizame|muestra|mandame|m[aá]ndame|foto|tono|color|codigo|c[oó]digo|gama|carta|envio|env[ií]o|cp|pago|comprobante)\b',
+        r'\b(velluto|veluto|komfy|komfi|kurumi|trapillo|kairo|alize|karina)\b',
+        r'\b\d{1,4}\b',
+        r'\b(blanco|negro|rojo|rosa|azul|verde|amarillo|hueso|beige|cafe|caf[eé]|gris|morado|lila|naranja)\b',
+    ]
+    return any(re.search(p, t) for p in patrones)
+
+
+def _wa_v15_es_cortesia_cierre(texto):
+    t = _wa_v15_norm_txt(texto)
+    if not t:
+        return False
+    if _wa_v15_tiene_indicio_seguir(t):
+        return False
+    # Solo frases cortas tipo cierre. "ok" solo puede ser ambiguo, por eso se acepta
+    # principalmente si va acompañado de gracias o expresiones de cierre.
+    frases = {
+        'gracias', 'muchas gracias', 'mil gracias', 'ok gracias', 'okay gracias', 'oki gracias',
+        'vale gracias', 'va gracias', 'sale gracias', 'perfecto gracias', 'listo gracias',
+        'esta bien gracias', 'está bien gracias', 'muy amable', 'gracias muy amable',
+        'excelente gracias', 'super gracias', 'súper gracias', 'gracias bonita', 'gracias amigo',
+        'gracias amiga', 'gracias linda', 'gracias que amable', 'gracias por la informacion',
+        'gracias por la información', 'muchas gracias por la informacion', 'muchas gracias por la información',
+    }
+    if t in frases:
+        return True
+    return bool(re.fullmatch(r'(muchas\s+)?gracias(\s+(muy\s+)?amable)?', t))
+
+
+def _wa_v15_programados_schema():
+    try:
+        with DB() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS whatsapp_mensajes_programados (
+                    id SERIAL PRIMARY KEY,
+                    clave TEXT,
+                    conversacion_id INTEGER,
+                    telefono TEXT,
+                    tipo TEXT DEFAULT 'cierre_gracias',
+                    mensaje TEXT,
+                    programado_para TIMESTAMP,
+                    estado TEXT DEFAULT 'pendiente',
+                    motivo TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            for col in [
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS clave TEXT",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS conversacion_id INTEGER",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS telefono TEXT",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'cierre_gracias'",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS mensaje TEXT",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS programado_para TIMESTAMP",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'pendiente'",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS motivo TEXT",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE whatsapp_mensajes_programados ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            ]:
+                db.execute(col)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_wa_prog_clave_estado ON whatsapp_mensajes_programados(clave, estado)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_wa_prog_due ON whatsapp_mensajes_programados(estado, programado_para)")
+    except Exception as exc:
+        print('WARN schema mensajes programados WA:', exc, flush=True)
+
+
+def _wa_v15_ensure_conversacion(conversacion_id=None, telefono='', cliente_nombre=''):
+    try:
+        with DB() as db:
+            if conversacion_id:
+                conv = db.execute("""
+                    UPDATE whatsapp_conversaciones
+                    SET cliente_nombre=%s, telefono=%s, ultima_actualizacion=%s, estado=%s
+                    WHERE id=%s
+                    RETURNING id
+                """, (cliente_nombre, telefono, now_mexico(), 'SIMULADOR', conversacion_id)).fetchone()
+                if conv:
+                    return conv['id']
+            conv = db.execute("""
+                INSERT INTO whatsapp_conversaciones (telefono, cliente_nombre, origen, estado, fecha, ultima_actualizacion)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                RETURNING id
+            """, (telefono, cliente_nombre, 'SIMULADOR', 'SIMULADOR', now_mexico(), now_mexico())).fetchone()
+            return conv['id'] if conv else conversacion_id
+    except Exception as exc:
+        print('WARN ensure conv WA:', exc, flush=True)
+        return conversacion_id
+
+
+def _wa_v15_cancelar_cierres(conversacion_id=None, telefono='', motivo='cliente_continuo'):
+    _wa_v15_programados_schema()
+    clave = _wa_memoria_clave(conversacion_id, telefono)
+    if not clave:
+        return 0
+    try:
+        with DB() as db:
+            row = db.execute("""
+                UPDATE whatsapp_mensajes_programados
+                SET estado='cancelado', motivo=%s, updated_at=%s
+                WHERE clave=%s AND estado='pendiente' AND tipo='cierre_gracias'
+                RETURNING id
+            """, (motivo, now_mexico(), clave)).fetchall()
+            return len(row or [])
+    except Exception as exc:
+        print('WARN cancelar cierre WA:', exc, flush=True)
+        return 0
+
+
+def _wa_v15_programar_cierre(conversacion_id=None, telefono='', mensaje=None, minutos=None):
+    _wa_v15_programados_schema()
+    clave = _wa_memoria_clave(conversacion_id, telefono)
+    if not clave:
+        return None
+    minutos = int(minutos or WA_V15_CIERRE_MINUTOS)
+    msg = mensaje or WA_V15_CIERRE_TEXTO
+    due = now_mexico() + timedelta(minutes=minutos)
+    try:
+        with DB() as db:
+            # Solo debe existir un cierre pendiente por conversación.
+            db.execute("""
+                UPDATE whatsapp_mensajes_programados
+                SET estado='cancelado', motivo='reprogramado', updated_at=%s
+                WHERE clave=%s AND estado='pendiente' AND tipo='cierre_gracias'
+            """, (now_mexico(), clave))
+            row = db.execute("""
+                INSERT INTO whatsapp_mensajes_programados
+                    (clave, conversacion_id, telefono, tipo, mensaje, programado_para, estado, motivo, created_at, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING *
+            """, (clave, conversacion_id, re.sub(r'\D+', '', str(telefono or '')), 'cierre_gracias', msg, due, 'pendiente', 'gracias_sin_indicio_seguir', now_mexico(), now_mexico())).fetchone()
+            return dict(row) if row else {'mensaje': msg, 'programado_para': due}
+    except Exception as exc:
+        print('WARN programar cierre WA:', exc, flush=True)
+        return {'mensaje': msg, 'programado_para': due, 'error': str(exc)}
+
+
+@app.route('/api/whatsapp-ia/cierres-pendientes', methods=['GET'])
+def whatsapp_ia_cierres_pendientes():
+    """Lista cierres ya vencidos. Cuando exista WhatsApp Cloud API, este endpoint servirá para enviarlos."""
+    _wa_v15_programados_schema()
+    limit = min(int(request.args.get('limit') or 50), 200)
+    try:
+        with DB() as db:
+            rows = db.execute("""
+                SELECT * FROM whatsapp_mensajes_programados
+                WHERE estado='pendiente' AND programado_para <= %s
+                ORDER BY programado_para ASC
+                LIMIT %s
+            """, (now_mexico(), limit)).fetchall()
+        return jsonify(json_safe({'ok': True, 'cierres': [dict(r) for r in rows]}))
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/whatsapp-ia/cierre-marcar-enviado', methods=['POST'])
+def whatsapp_ia_cierre_marcar_enviado():
+    data = request.get_json(force=True) or {}
+    rid = data.get('id')
+    if not rid:
+        return jsonify({'ok': False, 'error': 'Falta id'}), 400
+    _wa_v15_programados_schema()
+    try:
+        with DB() as db:
+            db.execute("""
+                UPDATE whatsapp_mensajes_programados
+                SET estado='enviado', updated_at=%s
+                WHERE id=%s
+            """, (now_mexico(), rid))
+        return jsonify({'ok': True})
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+def whatsapp_ia_simular_v15():
+    data = request.get_json(force=True) or {}
+    texto = (data.get('texto') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    hilo = (data.get('hilo') or '').strip()
+    cliente_nombre = (data.get('cliente_nombre') or '').strip()
+    telefono = (data.get('telefono') or '').strip()
+    texto_imagen = (data.get('texto_imagen') or '').strip()
+    imagen_referencia = bool(data.get('imagen_referencia'))
+    conversacion_id = data.get('conversacion_id')
+    nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
+
+    texto_total = ' '.join(x for x in [texto, texto_imagen] if x).strip()
+    if not texto_total:
+        return jsonify({'ok': False, 'error': 'Escribe o pega un mensaje de clienta primero.'}), 400
+
+    memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+
+    # Si la clienta continuó con un pedido o pregunta, cancelar cierres pendientes.
+    if not _wa_v15_es_cortesia_cierre(texto_total):
+        _wa_v15_cancelar_cierres(conversacion_id, telefono, 'cliente_envio_nuevo_mensaje')
+
+    # Caso especial: solo agradecimiento/cierre. No responder al instante; programar cierre.
+    if _wa_v15_es_cortesia_cierre(texto_total):
+        if nueva_conversacion:
+            conversacion_id = None
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id, telefono, cliente_nombre)
+        cierre = _wa_v15_programar_cierre(conversacion_id, telefono)
+        try:
+            with DB() as db:
+                db.execute("""
+                    INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (conversacion_id, 'IN', 'texto', texto_total, '', json.dumps({'motor': 'cierre_diferido_v15', 'cierre_programado': cierre}, ensure_ascii=False)))
+        except Exception as exc:
+            print('WARN guardar gracias WA:', exc, flush=True)
+        # Actualiza solo último mensaje sin borrar contexto de producto/hilo.
+        try:
+            with DB() as db:
+                clave = _wa_memoria_clave(conversacion_id, telefono)
+                if clave:
+                    db.execute("""
+                        INSERT INTO whatsapp_contexto_cliente
+                            (clave, conversacion_id, telefono, cliente_nombre, marca_actual, hilo_actual, ultima_intencion,
+                             ultimo_codigo, ultimo_color, pedido_en_proceso, dudas_pendientes, historial_resumen,
+                             ultimo_mensaje, ultima_respuesta, created_at, updated_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (clave) DO UPDATE SET
+                            conversacion_id=EXCLUDED.conversacion_id,
+                            telefono=EXCLUDED.telefono,
+                            cliente_nombre=EXCLUDED.cliente_nombre,
+                            ultimo_mensaje=EXCLUDED.ultimo_mensaje,
+                            updated_at=EXCLUDED.updated_at
+                    """, (
+                        clave, conversacion_id, re.sub(r'\D+', '', str(telefono or '')), cliente_nombre,
+                        (memoria_previa or {}).get('marca_actual'), (memoria_previa or {}).get('hilo_actual'), (memoria_previa or {}).get('ultima_intencion'),
+                        (memoria_previa or {}).get('ultimo_codigo'), (memoria_previa or {}).get('ultimo_color'),
+                        (memoria_previa or {}).get('pedido_en_proceso'), (memoria_previa or {}).get('dudas_pendientes'), (memoria_previa or {}).get('historial_resumen'),
+                        texto_total[:2000], (memoria_previa or {}).get('ultima_respuesta'), now_mexico(), now_mexico()
+                    ))
+        except Exception as exc:
+            print('WARN actualizar memoria gracias WA:', exc, flush=True)
+        return jsonify(json_safe({
+            'ok': True,
+            'conversacion_id': conversacion_id,
+            'motor': 'cierre_diferido_v15',
+            'mensaje_cliente': texto_total,
+            'respuesta_sugerida': '',
+            'respuesta_diferida': WA_V15_CIERRE_TEXTO,
+            'cierre_programado': True,
+            'cierre_minutos': WA_V15_CIERRE_MINUTOS,
+            'programado_para': cierre.get('programado_para') if isinstance(cierre, dict) else None,
+            'intencion': 'cortesia_cierre',
+            'confianza': 'alta',
+            'accion_recomendada': 'esperar_y_cerrar_si_no_responde',
+            'puede_auto_enviar': False,
+            'pedidos': [],
+            'preguntas': [],
+            'errores': [],
+            'advertencias': ['No responder inmediatamente. Si la clienta no escribe algo más, enviar el cierre después del tiempo programado.'],
+            'parser': {},
+            'memoria_usada': memoria_previa,
+            'memoria_actual': _wa_memoria_cargar(conversacion_id, telefono),
+        }))
+
+    productos_mem = _wa_memoria_productos_min()
+    marca_parser, hilo_parser, memoria_aplicada = _wa_memoria_resolver_contexto_para_parser(
+        texto_total, marca, hilo, memoria_previa, productos_mem
+    )
+
+    parser_payload = {
+        'texto': texto,
+        'marca': marca_parser,
+        'hilo': hilo_parser,
+        'cliente_nombre': cliente_nombre,
+        'telefono': telefono,
+        'texto_imagen': texto_imagen,
+        'imagen_referencia': imagen_referencia,
+    }
+    parsed, status = _call_parser_whatsapp_local(parser_payload)
+    if status >= 400 or not parsed.get('ok', False):
+        return jsonify(parsed), status
+
+    meta = _clasificar_intencion_wa(texto_total, parsed)
+    contexto = {
+        'marca': marca_parser or marca or 'Todas',
+        'hilo': hilo_parser or hilo or 'Todos',
+        'cliente_nombre': cliente_nombre,
+        'telefono': telefono,
+        'fase': 'simulador_manual_pre_whatsapp_cloud_api',
+        'memoria_conversacion': memoria_aplicada,
+        'historial_reciente': _wa_memoria_historial_reciente(conversacion_id) if conversacion_id and not nueva_conversacion else [],
+        'regla_cierre': f'Si la clienta solo agradece, no responder de inmediato; programar cierre en {WA_V15_CIERRE_MINUTOS} minutos.',
+    }
+    respuesta, motor = _generar_respuesta_wa_con_openai(texto_total, parsed, meta, contexto)
+
+    try:
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id if not nueva_conversacion else None, telefono, cliente_nombre)
+        with DB() as db:
+            db.execute("""
+                INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (conversacion_id, 'IN', 'texto', texto_total, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': motor, 'memoria_usada': memoria_aplicada}, ensure_ascii=False)))
+    except Exception as exc:
+        print('WARN no se pudo guardar simulacion WA v15:', exc, flush=True)
+
+    memoria_actualizada = _wa_memoria_actualizar(
+        conversacion_id=conversacion_id,
+        telefono=telefono,
+        cliente_nombre=cliente_nombre,
+        texto=texto_total,
+        respuesta=respuesta,
+        parsed=parsed,
+        meta=meta,
+        marca_parser=marca_parser,
+        hilo_parser=hilo_parser,
+        memoria_previa=memoria_previa,
+        productos=productos_mem,
+    )
+
+    return jsonify(json_safe({
+        'ok': True,
+        'conversacion_id': conversacion_id,
+        'motor': motor + ':memoria_v15_cierre',
+        'mensaje_cliente': texto_total,
+        'respuesta_sugerida': respuesta,
+        'intencion': meta.get('intencion'),
+        'confianza': meta.get('confianza'),
+        'accion_recomendada': meta.get('accion_recomendada'),
+        'puede_auto_enviar': meta.get('puede_auto_enviar'),
+        'pedidos': parsed.get('pedidos') or [],
+        'preguntas': parsed.get('preguntas') or [],
+        'errores': parsed.get('errores') or [],
+        'advertencias': parsed.get('advertencias') or [],
+        'parser': parsed,
+        'memoria_usada': memoria_aplicada,
+        'memoria_actual': memoria_actualizada,
+    }))
+
+
+# Sobrescribe el endpoint del simulador para usar la lógica V15 sin perder compatibilidad.
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v15
