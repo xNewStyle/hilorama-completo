@@ -7760,32 +7760,116 @@ def _wa_v10_tone_resource_from_code(texto):
 
 _wa_generar_respuesta_v6_core = _generar_respuesta_wa_con_openai
 
+def _wa_v11_pide_carta_o_gama(texto):
+    """Detecta cuando la clienta realmente quiere ver la gama/carta/catálogo de colores.
+    IMPORTANTE: la palabra "tono/color" sola no basta, porque en "cuánto cuesta Velluto" no se debe mandar la carta.
+    """
+    try:
+        t = _v6_norm(texto or '')
+    except Exception:
+        t = str(texto or '').lower()
+    patrones = [
+        r'\b(gama|carta|catalogo|catálogo)\b',
+        r'\b(que|qué|cuales|cuáles)\s+(colores|tonos)\b',
+        r'\b(colores|tonos)\s+(tienen|manejan|disponibles|hay)\b',
+        r'\b(manda|mandame|mándame|enviame|envíame|pasa|pasame|pásame|muestra|muestrame|muéstrame)\b.*\b(colores|tonos)\b',
+        r'\b(ver|mostrar)\b.*\b(colores|tonos)\b',
+    ]
+    return any(re.search(pat, t, re.I) for pat in patrones)
+
+
+def _wa_v11_es_pregunta_precio(texto):
+    try:
+        t = _v6_norm(texto or '')
+    except Exception:
+        t = str(texto or '').lower()
+    return bool(re.search(r'\b(cuanto|cuánto|precio|cuesta|costo|vale|en cuanto|sale)\b', t, re.I))
+
+
+def _wa_v11_es_pregunta_envio(texto):
+    try:
+        t = _v6_norm(texto or '')
+    except Exception:
+        t = str(texto or '').lower()
+    return bool(re.search(r'\b(envio|envío|envios|envíos|paqueteria|paquetería|cp|codigo postal|código postal|mandan|mandas)\b', t, re.I))
+
+
+def _wa_v11_es_pregunta_pago(texto):
+    try:
+        t = _v6_norm(texto or '')
+    except Exception:
+        t = str(texto or '').lower()
+    return bool(re.search(r'\b(pago|pagar|transferencia|mercado pago|mercadopago|clabe|cuenta|comprobante|deposito|depósito)\b', t, re.I))
+
+
+_wa_generar_respuesta_v10_core = _wa_generar_respuesta_v6_core
+
 def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
-    """V10: biblioteca/aprendizaje, con prioridad absoluta a foto individual por código exacto."""
+    """V11: decide mejor cuándo usar Biblioteca IA.
+
+    Corrección clave:
+    - Pregunta de precio ("¿cuánto cuesta Velluto?") NO debe disparar la gama de colores.
+    - Petición de gama/carta/colores SÍ debe disparar el grupo de imágenes.
+    - Petición de foto/tono + código exacto sigue teniendo prioridad sobre la gama.
+    """
     pedidos = parsed.get('pedidos') or []
     preguntas = parsed.get('preguntas') or []
     errores = parsed.get('errores') or []
+
+    # Primero calculamos la respuesta comercial base con almacén/precios.
     respuesta_base, motor_base = _wa_generar_respuesta_v6_core(texto, parsed, meta, contexto)
-    es_consulta = False
+
     try:
         es_consulta = _v6_is_consultation(texto)
     except Exception:
-        pass
+        es_consulta = False
 
-    # Regla crítica: si piden "foto/tono/color" + código, mandar foto individual si existe.
-    # Esto evita que "tono Velluto 56" dispare la gama completa solo por contener la palabra tono/color.
+    pide_carta = _wa_v11_pide_carta_o_gama(texto)
+    pregunta_precio = _wa_v11_es_pregunta_precio(texto)
+    pregunta_envio = _wa_v11_es_pregunta_envio(texto)
+    pregunta_pago = _wa_v11_es_pregunta_pago(texto)
+
+    # 1) Prioridad absoluta: foto/tono/color + código exacto => recurso individual.
     recurso_exact_code = _wa_v10_tone_resource_from_code(texto)
     if recurso_exact_code and (not pedidos or preguntas or errores or es_consulta):
         resp = _wa_v7_respuesta_de_recurso(recurso_exact_code)
         if resp:
             rid = recurso_exact_code.get('id') or recurso_exact_code.get('_v10_exact_code') or 'fisico'
-            return resp, f"biblioteca_ia_v10_tono_exacto:{rid}"
+            return resp, f"biblioteca_ia_v11_tono_exacto:{rid}"
 
-    recurso = _wa_v7_buscar_recurso(texto)
-    if recurso and (not pedidos or preguntas or errores or es_consulta):
-        resp = _wa_v7_respuesta_de_recurso(recurso)
-        if resp:
-            return resp, f"biblioteca_ia_v7:{recurso.get('id')}"
+    # 2) Gama/carta: solo cuando de verdad la pidan. No usar por una pregunta de precio.
+    if pide_carta and (not pedidos or preguntas or errores or es_consulta):
+        recurso = _wa_v7_buscar_recurso(texto, categoria='carta_colores') or _wa_v7_buscar_recurso(texto)
+        if recurso:
+            resp = _wa_v7_respuesta_de_recurso(recurso)
+            if resp:
+                return resp, f"biblioteca_ia_v11_carta:{recurso.get('id')}"
+
+    # 3) Pago/envío: permitir recursos de esas categorías si existen.
+    #    Si no hay recurso, usar la respuesta base del agente.
+    if (pregunta_envio or pregunta_pago) and (not pedidos or preguntas or errores or es_consulta):
+        categoria = 'envio' if pregunta_envio else 'pago'
+        recurso = _wa_v7_buscar_recurso(texto, categoria=categoria)
+        if recurso:
+            resp = _wa_v7_respuesta_de_recurso(recurso)
+            if resp:
+                return resp, f"biblioteca_ia_v11_{categoria}:{recurso.get('id')}"
+
+    # 4) Para precio: NO buscar carta ni recursos generales. Usar almacén.
+    if pregunta_precio:
+        return respuesta_base, motor_base + ':v11_precio_sin_carta'
+
+    # 5) Recursos generales/aprendizajes: solo si no es pedido claro.
+    if (not pedidos or preguntas or errores or es_consulta):
+        recurso = _wa_v7_buscar_recurso(texto)
+        if recurso:
+            # Evitar que una carta se use por accidente si no pidieron carta/gama.
+            if str(recurso.get('categoria') or '').lower() == 'carta_colores' and not pide_carta:
+                return respuesta_base, motor_base + ':v11_omite_carta_no_solicitada'
+            resp = _wa_v7_respuesta_de_recurso(recurso)
+            if resp:
+                return resp, f"biblioteca_ia_v11:{recurso.get('id')}"
+
     return respuesta_base, motor_base
 
 
