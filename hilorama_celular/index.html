@@ -107,6 +107,25 @@
           <div class="small" style="margin-top:6px">Aquí probamos el mismo cerebro que después recibirá mensajes desde WhatsApp Cloud API. Por ahora no envía nada: solo sugiere respuesta y productos.</div>
           <div class="grid2" style="margin-top:8px"><button class="secondary" type="button" onclick="simularWhatsAppIA()">Probar agente Hilorama</button><button class="light" type="button" onclick="copiarRespuestaWA()">Copiar respuesta</button></div>
           <div id="whatsappIAResult" class="wa-agent-box hidden"></div>
+          <details class="ai-block" style="margin-top:8px"><summary>🧠 Aprendizaje humano</summary>
+            <div class="small" style="margin-top:6px">Cuando la IA no resuelva bien, contesta tú manualmente y guarda esa respuesta. La próxima vez el agente la tomará como referencia.</div>
+            <label>Respuesta humana correcta</label>
+            <textarea id="waRespuestaHumana" placeholder="Pega aquí la respuesta correcta que sí le mandarías a la clienta"></textarea>
+            <label>Tags / palabras clave opcionales</label>
+            <input id="waAprendizajeTags" placeholder="ej. abuelita, sustituto, kurumi, envio, cp">
+            <div class="grid2" style="margin-top:8px"><button class="green" type="button" onclick="guardarAprendizajeIA()">Guardar aprendizaje</button><button class="light" type="button" onclick="marcarPendienteHumano()">Mandar a humano</button></div>
+            <div id="waAprendizajeStatus" class="small" style="margin-top:8px"></div>
+          </details>
+        </details>
+        <details class="ai-block"><summary>📚 Biblioteca IA / Recursos para clientes</summary>
+          <div class="small" style="margin-top:6px">Aquí guardas cartas de colores, catálogos, respuestas de envío, datos de pago, productos similares y aprendizajes humanos.</div>
+          <div class="grid2" style="margin-top:8px"><input id="iaRecursoNombre" placeholder="Nombre: Carta Velluto / Envíos / Datos pago"><select id="iaRecursoCategoria"><option value="respuesta">Respuesta</option><option value="carta_colores">Carta de colores</option><option value="catalogo">Catálogo</option><option value="envio">Envío</option><option value="pago">Pago</option><option value="producto_similar">Producto similar</option><option value="aprendizaje_humano">Aprendizaje humano</option></select></div>
+          <div class="grid2"><input id="iaRecursoMarca" placeholder="Marca opcional"><input id="iaRecursoHilo" placeholder="Hilo opcional"></div>
+          <label>Palabras clave / triggers</label><textarea id="iaRecursoTriggers" placeholder="velluto, colores velluto, carta velluto, alize velluto"></textarea>
+          <label>Respuesta que debe usar la IA</label><textarea id="iaRecursoRespuesta" placeholder="Sí 😊 tenemos Alize Velluto disponible. Le comparto la carta de colores..."></textarea>
+          <label>Link de imagen, catálogo o Canva/Drive opcional</label><input id="iaRecursoUrl" placeholder="https://...">
+          <div class="grid2" style="margin-top:8px"><button class="green" type="button" onclick="crearRecursoIA()">Guardar recurso</button><button class="light" type="button" onclick="cargarRecursosIA()">Ver biblioteca</button></div>
+          <div id="iaRecursosList" class="small" style="margin-top:8px"></div>
         </details>
         <details class="ai-block"><summary>🎤 Voz y audios</summary>
           <div class="speech-controls" style="margin-top:8px"><button class="secondary" id="btnStartDictado" type="button" onclick="startDictadoPedido()">🎙️ Iniciar dictado preciso</button><button class="red" id="btnStopDictado" type="button" onclick="stopDictadoPedido()">✅ Terminar dictado</button></div>
@@ -454,6 +473,66 @@ function copiarRespuestaWA(){
   if(!txt.trim())return alert('Todavía no hay respuesta sugerida.');
   if(navigator.clipboard){navigator.clipboard.writeText(txt).then(()=>alert('Respuesta copiada.'),()=>alert(txt));}
   else alert(txt);
+}
+
+async function guardarAprendizajeIA(){
+  const msg=($('pedidoTexto')&&$('pedidoTexto').value||'').trim();
+  const resp=($('waRespuestaHumana')&&$('waRespuestaHumana').value||'').trim();
+  const tags=($('waAprendizajeTags')&&$('waAprendizajeTags').value||'').trim();
+  const st=$('waAprendizajeStatus');
+  if(!msg)return alert('Primero pega el mensaje de la clienta.');
+  if(!resp)return alert('Escribe la respuesta humana correcta.');
+  try{
+    if(st)st.textContent='Guardando aprendizaje...';
+    const r=await apiFetch('/api/whatsapp-ia/guardar-aprendizaje',{method:'POST',body:JSON.stringify({
+      mensaje_cliente:msg,
+      respuesta_humana:resp,
+      respuesta_ia:state.whatsappIARespuesta||'',
+      tags,
+      contexto:{marca:$('marcaCtx')?.value||'',hilo:$('hiloCtx')?.value||'',conversacion_id:state.whatsappConversacionId||null}
+    })});
+    if(st)st.textContent='Aprendizaje guardado. La IA lo usará en casos parecidos. ID '+(r.recurso&&r.recurso.id?r.recurso.id:'');
+    if($('waRespuestaHumana'))$('waRespuestaHumana').value='';
+    await cargarRecursosIA(false);
+  }catch(e){if(st)st.textContent='Error: '+e.message;else alert(e.message)}
+}
+async function marcarPendienteHumano(){
+  const msg=($('pedidoTexto')&&$('pedidoTexto').value||'').trim();
+  const st=$('waAprendizajeStatus');
+  if(!msg)return alert('Primero pega el mensaje de la clienta.');
+  try{
+    const r=await apiFetch('/api/whatsapp-ia/pendiente-humano',{method:'POST',body:JSON.stringify({
+      mensaje_cliente:msg,
+      respuesta_ia:state.whatsappIARespuesta||'',
+      motivo:'La IA no resolvió bien o requiere respuesta humana',
+      contexto:{marca:$('marcaCtx')?.value||'',hilo:$('hiloCtx')?.value||'',conversacion_id:state.whatsappConversacionId||null}
+    })});
+    if(st)st.textContent='Pendiente humano guardado. ID '+(r.pendiente&&r.pendiente.id?r.pendiente.id:'');
+  }catch(e){if(st)st.textContent='Error: '+e.message;else alert(e.message)}
+}
+async function crearRecursoIA(){
+  const nombre=($('iaRecursoNombre')&&$('iaRecursoNombre').value||'').trim();
+  const categoria=($('iaRecursoCategoria')&&$('iaRecursoCategoria').value||'respuesta').trim();
+  const marca=($('iaRecursoMarca')&&$('iaRecursoMarca').value||'').trim();
+  const hilo=($('iaRecursoHilo')&&$('iaRecursoHilo').value||'').trim();
+  const triggers=($('iaRecursoTriggers')&&$('iaRecursoTriggers').value||'').trim();
+  const respuesta=($('iaRecursoRespuesta')&&$('iaRecursoRespuesta').value||'').trim();
+  const archivo_url=($('iaRecursoUrl')&&$('iaRecursoUrl').value||'').trim();
+  if(!respuesta&&!archivo_url)return alert('Agrega una respuesta o un link de recurso.');
+  try{
+    await apiFetch('/api/ia/recursos',{method:'POST',body:JSON.stringify({nombre,categoria,marca,hilo,triggers,respuesta,archivo_url,prioridad:80})});
+    ['iaRecursoNombre','iaRecursoMarca','iaRecursoHilo','iaRecursoTriggers','iaRecursoRespuesta','iaRecursoUrl'].forEach(id=>{if($(id))$(id).value=''});
+    await cargarRecursosIA();
+    alert('Recurso guardado en Biblioteca IA.');
+  }catch(e){alert(e.message)}
+}
+async function cargarRecursosIA(showAlert=true){
+  const box=$('iaRecursosList'); if(!box)return;
+  try{
+    box.innerHTML='Cargando biblioteca...';
+    const r=await apiFetch('/api/ia/recursos?limit=80');
+    box.innerHTML=(r||[]).map(x=>`<div class="line"><b>${escapeHtml(x.nombre||'Recurso')}</b> <span class="badge gray">${escapeHtml(x.categoria||'')}</span> ${x.activo?'<span class="badge green">activo</span>':'<span class="badge orange">inactivo</span>'}<div>${escapeHtml((x.respuesta||'').slice(0,180))}${(x.respuesta||'').length>180?'...':''}</div>${x.archivo_url?`<div class="small">📎 ${escapeHtml(x.archivo_url)}</div>`:''}<div class="small">Tags: ${escapeHtml(x.triggers||'')}</div></div>`).join('')||'<div class="empty">No hay recursos todavía.</div>';
+  }catch(e){box.innerHTML='<span class="danger-text">'+escapeHtml(e.message)+'</span>'}
 }
 function addParsed(idx){addToCart(state.parserPedidos[idx],Number(state.parserPedidos[idx].cantidad||1),true)}function addAllParsed(silent=false){(state.parserPedidos||[]).forEach(p=>addToCart(p,Number(p.cantidad||1),false));renderCart();if(!silent)alert('Agregado al carrito. Revisa cantidades.')}
 async function buscarProductos(){const q=$('buscarProducto').value.trim();const params=new URLSearchParams({q,marca:$('marcaManual').value,hilo:$('hiloManual').value,limit:'80'});if(!q&&!$('marcaManual').value&&!$('hiloManual').value){$('productosList').innerHTML='';return}try{state.productos=await apiFetch('/api/productos?'+params);$('productosList').innerHTML=state.productos.map((p,idx)=>`<div class="product"><div><strong>${escapeHtml(p.codigo||'')} · ${escapeHtml(p.color||'')}</strong><div class="small">${escapeHtml(p.marca||'')} / ${escapeHtml(p.hilo||'')} · Stock: ${p.stock} · ${money(p.precio_venta)}</div><div class="qtybar" style="margin-top:8px"><button class="light" onclick="changeSearchQty(${idx},-1)">−</button><input id="qty_${idx}" type="number" value="1" min="1"><button class="light" onclick="changeSearchQty(${idx},1)">+</button></div></div><button class="light" onclick="agregarProductoIdx(${idx})">Agregar</button></div>`).join('')||'<div class="empty">No encontré productos.</div>'}catch(e){$('productosList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}}

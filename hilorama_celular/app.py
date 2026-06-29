@@ -7378,3 +7378,326 @@ def _wa_parsear_con_contexto_almacen(texto_total, productos_all, marca='', hilo=
             'respuesta_preferida': '', 'ventas_info': {'tipo': 'ambiguedad_numerica_v6'}
         }
     return _wa_parsear_con_contexto_almacen_v6_core(texto_total, productos_all, marca, hilo, extraer_pedidos_func)
+
+
+# ==========================================================
+# WhatsApp IA V7 - Biblioteca IA + aprendizaje humano
+# ==========================================================
+# Esta capa agrega una memoria administrable para que el agente deje de depender
+# solo de reglas: cuando una conversación se mande a humano, la respuesta correcta
+# se puede guardar como aprendizaje y se reutiliza en casos parecidos.
+
+WA_V7_STOPWORDS = set("""hola buenos dias buenas tardes noches gracias por favor favor me mi mis tu tus su sus el la los las un una uno unas unos de del al a y o en con para por que qué cual cuál cuanto cuánto cuesta precio tiene tienen maneja manejan dame deme quiero ocupo necesito agregar agregame agrégame articulos artículos piezas pieza pz pzas madeja madejas estambre hilo hilos color colores tono tonos disponible disponibilidad""".split())
+
+def _wa_v7_schema():
+    try:
+        with DB() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS ia_recursos (
+                    id SERIAL PRIMARY KEY,
+                    nombre TEXT,
+                    categoria TEXT DEFAULT 'respuesta',
+                    marca TEXT,
+                    hilo TEXT,
+                    triggers TEXT,
+                    pregunta_ejemplo TEXT,
+                    respuesta TEXT,
+                    archivo_url TEXT,
+                    notas TEXT,
+                    prioridad INTEGER DEFAULT 50,
+                    activo BOOLEAN DEFAULT TRUE,
+                    auto_aprendido BOOLEAN DEFAULT FALSE,
+                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS ia_pendientes_humano (
+                    id SERIAL PRIMARY KEY,
+                    mensaje_cliente TEXT,
+                    respuesta_ia TEXT,
+                    motivo TEXT,
+                    contexto TEXT,
+                    estado TEXT DEFAULT 'PENDIENTE',
+                    respuesta_humana TEXT,
+                    recurso_id INTEGER,
+                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            for col in [
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS nombre TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'respuesta'",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS marca TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS hilo TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS triggers TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS pregunta_ejemplo TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS respuesta TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS archivo_url TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS notas TEXT",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS prioridad INTEGER DEFAULT 50",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT TRUE",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS auto_aprendido BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE ia_recursos ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS mensaje_cliente TEXT",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS respuesta_ia TEXT",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS motivo TEXT",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS contexto TEXT",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'PENDIENTE'",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS respuesta_humana TEXT",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS recurso_id INTEGER",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE ia_pendientes_humano ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            ]:
+                db.execute(col)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_ia_recursos_activo_categoria ON ia_recursos(activo, categoria)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_ia_pendientes_estado ON ia_pendientes_humano(estado, updated_at DESC)")
+            base_count = db.execute("SELECT COUNT(*) AS c FROM ia_recursos").fetchone()['c']
+            if int(base_count or 0) == 0:
+                seeds = [
+                    ('Colores Velluto', 'carta_colores', 'ALIZE', 'VELLUTO', 'velluto, alize velluto, colores velluto, carta velluto, tonos velluto', 'Hola, me interesa Alize Velluto. ¿Qué colores tienen disponibles?', 'Sí 😊 tenemos Alize Velluto disponible. Le comparto la carta de colores actualizada. Si busca algún tono o código en especial, indíqueme cuál y con gusto le reviso disponibilidad.', '', 'Usar cuando pregunten por carta/colores de Alize Velluto.', 80),
+                    ('Colores Komfy Mini', 'carta_colores', 'KARINA', 'KOMFY MINI', 'komfy mini, komfi mini, konfy mini, colores komfy, carta komfy, tonos komfy', '¿Y de Komfy Mini qué colores tienen?', 'Sí 😊 manejamos Komfy Mini. Le comparto la carta de colores disponible. Si me indica los códigos o tonos que le gusten, le preparo su cotización.', '', 'Usar cuando pregunten por colores o disponibilidad de Komfy Mini.', 80),
+                    ('Colores Kurumi', 'carta_colores', 'KARINA', 'KURUMI', 'kurumi, colores kurumi, carta kurumi, disponibilidad kurumi', 'Me puedes mandar disponibilidad de Kurumi, por favor.', 'Sí 😊 manejamos Kurumi. Le comparto la disponibilidad actualizada para que pueda elegir tonos.', '', 'Usar cuando pregunten por Kurumi.', 80),
+                    ('Envío por código postal', 'envio', '', '', 'envio, envío, envios, envíos, paqueteria, paquetería, correos, estafeta, fedex, codigo postal, código postal, cp', '¿Tienen envíos a todo México?', 'Sí 😊 hacemos envíos a todo México. Para cotizarle opciones de paquetería me comparte su código postal, por favor.', '', 'Usar cuando pregunten por envíos y no haya CP claro.', 70),
+                    ('Datos de pago', 'pago', '', '', 'pago, pagar, transferencia, mercado pago, datos de pago, cuenta, clabe', '¿Me puede pasar los datos de pago?', 'Claro 😊 le comparto los datos de pago. Cuando realice el pago me manda su comprobante para revisarlo y continuar con su pedido.', '', 'Adjuntar imagen de datos de pago si se carga en archivo_url.', 70),
+                    ('La Abuelita alternativa', 'producto_similar', '', '', 'abuelita, la abuelita, estambre abuelita, parecido a la abuelita, similar a la abuelita', 'Busco algo parecido a La Abuelita, ¿qué me recomiendas?', 'La Abuelita por el momento no la manejamos 😊 pero puedo ofrecerle opciones parecidas según su proyecto: Kurumi si busca algo más firme/delgado para amigurumi, o Komfy Mini si quiere algo suave tipo chenille. ¿Para qué trabajo lo ocuparía?', '', 'Producto externo: sugerir opciones del almacén sin inventar que se maneja.', 75),
+                ]
+                for row in seeds:
+                    db.execute("""
+                        INSERT INTO ia_recursos (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,FALSE,%s,%s)
+                    """, (*row, now_mexico(), now_mexico()))
+    except Exception as exc:
+        print('WARN schema IA recursos:', exc, flush=True)
+
+
+def _wa_v7_tokens(txt):
+    txt = _v6_norm(txt or '') if '_v6_norm' in globals() else str(txt or '').lower()
+    return [w for w in re.findall(r'[a-z0-9ñ]+', txt) if len(w) >= 3 and w not in WA_V7_STOPWORDS]
+
+
+def _wa_v7_score_recurso(texto, recurso):
+    t = _v6_norm(texto or '') if '_v6_norm' in globals() else str(texto or '').lower()
+    score = 0
+    triggers = str(recurso.get('triggers') or '')
+    pregunta = str(recurso.get('pregunta_ejemplo') or '')
+    nombre = str(recurso.get('nombre') or '')
+    hay_trigger_fuerte = False
+    for raw in re.split(r'[,;\n]+', triggers):
+        tr = _v6_norm(raw.strip()) if '_v6_norm' in globals() else raw.strip().lower()
+        if not tr:
+            continue
+        if tr in t:
+            score += 55 + min(len(tr), 30)
+            hay_trigger_fuerte = True
+        else:
+            toks = _wa_v7_tokens(tr)
+            if toks:
+                inter = len(set(toks) & set(_wa_v7_tokens(t)))
+                if inter:
+                    score += inter * 10
+    ref_tokens = set(_wa_v7_tokens(' '.join([pregunta, nombre, str(recurso.get('categoria') or ''), str(recurso.get('marca') or ''), str(recurso.get('hilo') or '')])))
+    msg_tokens = set(_wa_v7_tokens(t))
+    if ref_tokens and msg_tokens:
+        score += int(100 * len(ref_tokens & msg_tokens) / max(6, len(ref_tokens | msg_tokens)))
+    try:
+        score += min(int(recurso.get('prioridad') or 0), 100) // 10
+    except Exception:
+        pass
+    return score, hay_trigger_fuerte
+
+
+def _wa_v7_buscar_recurso(texto, categoria=None):
+    _wa_v7_schema()
+    try:
+        with DB() as db:
+            params=[]
+            where="activo=TRUE"
+            if categoria:
+                where += " AND categoria=%s"
+                params.append(categoria)
+            rows = db.execute(f"""
+                SELECT * FROM ia_recursos
+                WHERE {where}
+                ORDER BY prioridad DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC
+                LIMIT 500
+            """, tuple(params)).fetchall()
+        best=None; best_score=0; best_strong=False
+        for r in rows:
+            d=dict(r)
+            sc,strong = _wa_v7_score_recurso(texto, d)
+            if sc > best_score:
+                best, best_score, best_strong = d, sc, strong
+        if best and (best_score >= 42 or best_strong):
+            best['_score'] = best_score
+            return best
+    except Exception as exc:
+        print('WARN buscar recurso IA:', exc, flush=True)
+    return None
+
+
+def _wa_v7_respuesta_de_recurso(recurso):
+    if not recurso:
+        return ''
+    resp = str(recurso.get('respuesta') or '').strip()
+    url = str(recurso.get('archivo_url') or '').strip()
+    nombre = str(recurso.get('nombre') or '').strip()
+    if url:
+        extra = f"\n\n📎 Recurso para enviar: {nombre}\n{url}"
+        if extra not in resp:
+            resp += extra
+    return resp.strip()
+
+
+_wa_generar_respuesta_v6_core = _generar_respuesta_wa_con_openai
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    """V7: primero revisa biblioteca/aprendizajes humanos; si no aplica, usa V6."""
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    respuesta_base, motor_base = _wa_generar_respuesta_v6_core(texto, parsed, meta, contexto)
+    recurso = _wa_v7_buscar_recurso(texto)
+    es_consulta = False
+    try:
+        es_consulta = _v6_is_consultation(texto)
+    except Exception:
+        pass
+    if recurso and (not pedidos or preguntas or errores or es_consulta):
+        resp = _wa_v7_respuesta_de_recurso(recurso)
+        if resp:
+            return resp, f"biblioteca_ia_v7:{recurso.get('id')}"
+    return respuesta_base, motor_base
+
+
+@app.route('/api/ia/recursos', methods=['GET'])
+def ia_recursos_listar():
+    _wa_v7_schema()
+    q = (request.args.get('q') or '').strip()
+    limit = min(int(request.args.get('limit') or 100), 500)
+    params=[]
+    where="1=1"
+    if q:
+        like = '%' + q + '%'
+        where += " AND (nombre ILIKE %s OR categoria ILIKE %s OR marca ILIKE %s OR hilo ILIKE %s OR triggers ILIKE %s OR pregunta_ejemplo ILIKE %s OR respuesta ILIKE %s OR notas ILIKE %s)"
+        params += [like]*8
+    with DB() as db:
+        rows = db.execute(f"""
+            SELECT * FROM ia_recursos
+            WHERE {where}
+            ORDER BY activo DESC, prioridad DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC
+            LIMIT %s
+        """, tuple(params+[limit])).fetchall()
+    return jsonify(json_safe([dict(r) for r in rows]))
+
+
+@app.route('/api/ia/recursos', methods=['POST'])
+def ia_recursos_crear():
+    _wa_v7_schema()
+    data = request.get_json(force=True) or {}
+    nombre = (data.get('nombre') or data.get('titulo') or '').strip() or 'Recurso IA'
+    categoria = (data.get('categoria') or 'respuesta').strip()
+    marca = (data.get('marca') or '').strip()
+    hilo = (data.get('hilo') or '').strip()
+    triggers = (data.get('triggers') or data.get('tags') or '').strip()
+    pregunta = (data.get('pregunta_ejemplo') or data.get('pregunta') or '').strip()
+    respuesta = (data.get('respuesta') or '').strip()
+    archivo_url = (data.get('archivo_url') or data.get('url') or '').strip()
+    notas = (data.get('notas') or '').strip()
+    prioridad = int(data.get('prioridad') or 50)
+    activo = bool(data.get('activo', True))
+    auto_aprendido = bool(data.get('auto_aprendido', False))
+    if not respuesta and not archivo_url:
+        return jsonify({'ok': False, 'error': 'Agrega una respuesta o un link/archivo del recurso.'}), 400
+    with DB() as db:
+        r = db.execute("""
+            INSERT INTO ia_recursos (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING *
+        """, (nombre,categoria,marca,hilo,triggers,pregunta,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,now_mexico(),now_mexico())).fetchone()
+    return jsonify(json_safe({'ok': True, 'recurso': dict(r)}))
+
+
+@app.route('/api/ia/recursos/<int:rid>', methods=['PUT'])
+def ia_recursos_actualizar(rid):
+    _wa_v7_schema()
+    data = request.get_json(force=True) or {}
+    campos=[]; vals=[]
+    allowed = ['nombre','categoria','marca','hilo','triggers','pregunta_ejemplo','respuesta','archivo_url','notas','prioridad','activo']
+    for k in allowed:
+        if k in data:
+            campos.append(f"{k}=%s")
+            vals.append(data[k])
+    if not campos:
+        return jsonify({'ok': False, 'error': 'No hay cambios.'}), 400
+    campos.append('updated_at=%s'); vals.append(now_mexico()); vals.append(rid)
+    with DB() as db:
+        r = db.execute(f"UPDATE ia_recursos SET {', '.join(campos)} WHERE id=%s RETURNING *", tuple(vals)).fetchone()
+    return jsonify(json_safe({'ok': True, 'recurso': dict(r) if r else None}))
+
+
+@app.route('/api/whatsapp-ia/pendiente-humano', methods=['POST'])
+def whatsapp_ia_pendiente_humano():
+    _wa_v7_schema()
+    data = request.get_json(force=True) or {}
+    mensaje = (data.get('mensaje_cliente') or data.get('mensaje') or '').strip()
+    respuesta_ia = (data.get('respuesta_ia') or '').strip()
+    motivo = (data.get('motivo') or 'Requiere revisión humana').strip()
+    contexto = data.get('contexto') or {}
+    if not mensaje:
+        return jsonify({'ok': False, 'error': 'Falta el mensaje de la clienta.'}), 400
+    with DB() as db:
+        r = db.execute("""
+            INSERT INTO ia_pendientes_humano (mensaje_cliente,respuesta_ia,motivo,contexto,estado,fecha,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *
+        """, (mensaje,respuesta_ia,motivo,json.dumps(contexto,ensure_ascii=False),'PENDIENTE',now_mexico(),now_mexico())).fetchone()
+    return jsonify(json_safe({'ok': True, 'pendiente': dict(r)}))
+
+
+@app.route('/api/whatsapp-ia/pendientes', methods=['GET'])
+def whatsapp_ia_pendientes_listar():
+    _wa_v7_schema()
+    estado = (request.args.get('estado') or '').strip()
+    where='1=1'; params=[]
+    if estado:
+        where += ' AND estado=%s'; params.append(estado)
+    with DB() as db:
+        rows = db.execute(f"""
+            SELECT * FROM ia_pendientes_humano
+            WHERE {where}
+            ORDER BY updated_at DESC NULLS LAST, fecha DESC
+            LIMIT 100
+        """, tuple(params)).fetchall()
+    return jsonify(json_safe([dict(r) for r in rows]))
+
+
+@app.route('/api/whatsapp-ia/guardar-aprendizaje', methods=['POST'])
+def whatsapp_ia_guardar_aprendizaje():
+    _wa_v7_schema()
+    data = request.get_json(force=True) or {}
+    mensaje = (data.get('mensaje_cliente') or data.get('mensaje') or '').strip()
+    respuesta_humana = (data.get('respuesta_humana') or data.get('respuesta') or '').strip()
+    respuesta_ia = (data.get('respuesta_ia') or '').strip()
+    categoria = (data.get('categoria') or 'aprendizaje_humano').strip()
+    tags = (data.get('tags') or '').strip()
+    if not mensaje or not respuesta_humana:
+        return jsonify({'ok': False, 'error': 'Falta mensaje de clienta o respuesta humana correcta.'}), 400
+    toks = _wa_v7_tokens(mensaje)
+    auto_tags = ', '.join(list(dict.fromkeys(toks))[:12])
+    triggers = tags or auto_tags
+    nombre = (data.get('nombre') or ('Aprendizaje: ' + (mensaje[:52] + ('...' if len(mensaje) > 52 else '')))).strip()
+    contexto = data.get('contexto') or {}
+    with DB() as db:
+        recurso = db.execute("""
+            INSERT INTO ia_recursos (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,TRUE,%s,%s)
+            RETURNING *
+        """, (nombre,categoria,(contexto.get('marca') if isinstance(contexto,dict) else '') or '',(contexto.get('hilo') if isinstance(contexto,dict) else '') or '',triggers,mensaje,respuesta_humana,'', 'Respuesta guardada desde intervención humana. Respuesta IA anterior: ' + respuesta_ia[:500], 95, now_mexico(), now_mexico())).fetchone()
+        pendiente_id = data.get('pendiente_id')
+        if pendiente_id:
+            db.execute("""
+                UPDATE ia_pendientes_humano SET estado=%s,respuesta_humana=%s,recurso_id=%s,updated_at=%s
+                WHERE id=%s
+            """, ('APRENDIDO', respuesta_humana, recurso['id'], now_mexico(), pendiente_id))
+    return jsonify(json_safe({'ok': True, 'recurso': dict(recurso)}))
