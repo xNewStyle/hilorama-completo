@@ -9787,3 +9787,177 @@ def whatsapp_ia_simular_v17():
 
 # Sobrescribe el endpoint del simulador para usar V17.
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v17
+
+# -----------------------------------------------------------------------------
+# V18 - Parser WhatsApp: listas con encabezado + primer producto en la misma línea
+# -----------------------------------------------------------------------------
+# Corrige casos como:
+# "me puede poner esta lista 550 x2" + líneas siguientes.
+# V17 saltaba esa primera línea por traer la palabra "lista" y por eso podía caer
+# en respuesta de foto de tono en lugar de armar pedido.
+
+
+def _wa_v18_limpiar_intro_linea(linea):
+    raw = str(linea or '').strip().strip(',.;')
+    if not raw:
+        return ''
+    s = raw.replace('×', 'x').replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s).strip()
+    # Quitar encabezados típicos ANTES del primer item, conservando lo que venga después.
+    # Ej: "me puede poner esta lista 550 x2" -> "550 x2"
+    patrones = [
+        r'^.*?\b(?:esta\s+)?lista\b\s*(?:de\s+(?:colores|tonos|codigos|códigos))?\s*(?:por\s*favor|porfavor)?\s*',
+        r'^\s*(?:me\s+puede\s+|me\s+podria\s+|me\s+podría\s+)?(?:poner|agregar|apartar|surtir|cotizar)\s*(?:esta|la|mi)?\s*(?:lista)?\s*',
+        r'^\s*(?:quiero|dame|deme|ocupo|necesito|agregame|agrégame|ponme)\s+',
+        r'^\s*(?:buenas\s+tardes|buen\s+dia|buen\s+día|hola)\s*,?\s*',
+    ]
+    out = s
+    for pat in patrones:
+        nuevo = re.sub(pat, '', out, flags=re.I).strip()
+        # Solo aceptamos la limpieza si todavía queda algún número o una descripción útil.
+        if nuevo and (re.search(r'\d', nuevo) or re.search(r'[a-záéíóúñ]{3,}', nuevo, flags=re.I)):
+            out = nuevo
+    return out.strip()
+
+
+def _wa_v18_linea_a_item(linea):
+    """Versión más permisiva para líneas de pedido reales."""
+    raw = str(linea or '').strip()
+    if not raw:
+        return []
+
+    # Primero intenta la lógica V17 exacta.
+    try:
+        items = _wa_v17_linea_a_item(raw)
+        if items:
+            return items
+    except Exception:
+        pass
+
+    limpia = _wa_v18_limpiar_intro_linea(raw)
+    if limpia and limpia != raw:
+        try:
+            items = _wa_v17_linea_a_item(limpia)
+            if items:
+                # Mantener el raw original para que el usuario vea lo que se leyó.
+                for it in items:
+                    it['raw'] = raw
+                return items
+        except Exception:
+            pass
+
+    # Buscar patrones incrustados dentro de una frase.
+    # Ej: "me puede poner esta lista 550 x2".
+    s = raw.replace('×', 'x').replace('–', '-').replace('—', '-')
+    m = re.search(r'(?<!\d)(\d{1,4})\s*(?:x|por|\*)\s*(\d{1,3})(?!\d)', s, flags=re.I)
+    if m:
+        return [{'codigo': (m.group(1).lstrip('0') or m.group(1)), 'cantidad': int(m.group(2)), 'desc': '', 'raw': raw}]
+
+    # Ej: "agregue blanco 01- 2".
+    m = re.search(r'([A-Za-zÁÉÍÓÚáéíóúÑñ ]{3,})\s+(\d{1,4})\s*-\s*(\d{1,3})(?!\d)', s)
+    if m:
+        desc = re.sub(r'^.*?\b(?:agregue|agrega|poner|ponme|quiero|dame|deme)\b\s*', '', m.group(1).strip(), flags=re.I).strip()
+        return [{'codigo': (m.group(2).lstrip('0') or m.group(2)), 'cantidad': int(m.group(3)), 'desc': desc, 'raw': raw}]
+
+    return []
+
+
+def _wa_v18_extraer_items_lista(texto_cliente):
+    texto = str(texto_cliente or '').strip()
+    if not texto:
+        return [], False
+    lineas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+    if not lineas:
+        return [], False
+
+    norm_full = _wa_v17_norm(texto)
+    hay_disparador_lista = bool(re.search(r'\b(lista|serian|serían|estos|son|colores|tonos|codigos|códigos)\b', norm_full))
+    hay_verbo_pedido = bool(re.search(r'\b(poner|ponme|agregar|agregame|agrégame|apartar|aparta|surtir|surte|cotizar|cotizacion|cotización|quiero|dame|deme|ocupo|necesito|pedido)\b', norm_full))
+
+    items = []
+    lineas_con_item = 0
+    ya_empezo_lista = False
+
+    for ln in lineas:
+        tl = _wa_v17_norm(ln)
+        its = _wa_v18_linea_a_item(ln)
+        if its:
+            items.extend(its)
+            lineas_con_item += 1
+            ya_empezo_lista = True
+            continue
+        # Encabezado o cortesía: no rompe la lista.
+        if _wa_v17_es_linea_ruido(ln):
+            continue
+        if re.search(r'\b(lista|colores|tonos|codigos|códigos|serian|serían|estos|son)\b', tl):
+            ya_empezo_lista = True
+            continue
+        # Si ya empezó una lista y llega texto no interpretable, lo ignoramos para no inventar.
+        if ya_empezo_lista:
+            continue
+
+    # Una lista real puede ser:
+    # - frase "lista/colores" + al menos 1 item,
+    # - verbo de pedido + al menos 1 item,
+    # - varias líneas de códigos sin texto.
+    lista_pura = lineas_con_item >= 3 and len(items) >= 3
+    es_lista = bool((hay_disparador_lista and len(items) >= 1) or (hay_verbo_pedido and len(items) >= 1) or lista_pura)
+
+    # Evitar confundir consulta de foto/tono de un solo código con pedido/lista.
+    if len(items) == 1 and re.search(r'\b(foto|imagen|mostrar|muestra|ver|enseñar|ensena|enseña)\b', norm_full):
+        es_lista = False
+
+    return items, es_lista
+
+
+# Sobrescribe el extractor V17 con el extractor corregido V18.
+_wa_v17_extraer_items_lista = _wa_v18_extraer_items_lista
+
+
+_wa_v18_generar_respuesta_anterior = _generar_respuesta_wa_con_openai
+
+
+def _wa_v18_respuesta_lista(parsed):
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    if not pedidos:
+        return ''
+    lineas = []
+    total_pzas = 0
+    for p in pedidos:
+        qty = int(p.get('cantidad') or 1)
+        total_pzas += qty
+        hilo = str(p.get('hilo') or '').strip()
+        codigo = str(p.get('codigo') or '').strip()
+        color = str(p.get('color') or '').strip()
+        nombre = ' '.join(x for x in [hilo, codigo, color] if x).strip()
+        if not nombre:
+            nombre = str(p.get('nombre') or 'producto').strip()
+        lineas.append(f"- {nombre} x{qty}")
+    resp = "Claro 😊 le agrego:\n" + "\n".join(lineas)
+    resp += f"\n\nTotal: {total_pzas} pieza" + ("s" if total_pzas != 1 else "") + "."
+    if errores:
+        resp += "\n\nNo ubiqué estos códigos en almacén: " + ", ".join(str(e) for e in errores) + "."
+    if preguntas:
+        resp += "\n\n" + "\n".join(str(q) for q in preguntas[:4])
+    else:
+        resp += "\nLe preparo su cotización."
+    return resp
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    """V18: si ya detectamos una lista de pedido, responder como pedido y no como foto/gama."""
+    try:
+        modo = str(parsed.get('modo') or '')
+        if 'lista_whatsapp_real' in modo and (parsed.get('pedidos') or []):
+            resp = _wa_v18_respuesta_lista(parsed)
+            if resp:
+                return resp, 'reglas_hilorama_v18_lista_pedido_sin_foto'
+    except Exception as exc:
+        print('WARN respuesta lista v18:', exc, flush=True)
+    return _wa_v18_generar_respuesta_anterior(texto, parsed, meta, contexto)
+
+
+# Mantener el mismo endpoint V17, pero usando extractor/generador V18 por sobrescritura global.
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v17
