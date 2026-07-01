@@ -9378,3 +9378,412 @@ def whatsapp_ia_simular_v16():
 
 # Sobrescribe el endpoint del simulador para usar V16.
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v16
+
+# -----------------------------------------------------------------------------
+# V17 - Parser WhatsApp de listas reales: no quedarse solo con el primer código
+# -----------------------------------------------------------------------------
+# Corrige casos reales donde la clienta manda:
+# "le paso la lista de colores" y luego códigos uno por línea.
+# También entiende líneas tipo "550 x2", "216 canario - 4", "Blanco 01- 2".
+
+WA_V17_CORTESIA_LINEA = {
+    'ok', 'oki', 'okay', 'va', 'vale', 'muy bien', 'perfecto', 'gracias',
+    'muchas gracias', 'si', 'sí', 'si por favor', 'sí por favor', 'por favor'
+}
+
+
+def _wa_v17_norm(v):
+    try:
+        return _v6_norm(v or '')
+    except Exception:
+        return re.sub(r'\s+', ' ', str(v or '').lower()).strip()
+
+
+def _wa_v17_es_linea_ruido(linea):
+    t = _wa_v17_norm(linea)
+    if not t:
+        return True
+    if t in WA_V17_CORTESIA_LINEA:
+        return True
+    if _wa_v16_es_mensaje_media_o_ruido(linea):
+        return True
+    # Mensajes que abren una lista, pero no son producto.
+    if re.search(r'\b(le\s+paso|paso|mando|envio|envío|lista|colores|tonos|porfavor|por\s+favor)\b', t) and not re.search(r'\d', t):
+        return True
+    return False
+
+
+def _wa_v17_linea_a_item(linea):
+    """Devuelve items de una línea de pedido real de WhatsApp.
+
+    Soporta:
+    - 60
+    - 550 x2
+    - 60 x 2
+    - 216 canario - 4
+    - Blanco 01- 2
+    - Rojo escolar- 2
+    """
+    raw = str(linea or '').strip().strip(',.;')
+    if not raw:
+        return []
+    s = raw.replace('×', 'x').replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s).strip()
+    t = _wa_v17_norm(s)
+    if _wa_v17_es_linea_ruido(s):
+        return []
+
+    # Una línea puede traer varios códigos separados por espacios/comas: "60 310 107".
+    if re.fullmatch(r'(?:\d{1,4}\s*[,\s]+){1,}\d{1,4}', s):
+        return [{'codigo': c.lstrip('0') or c, 'cantidad': 1, 'desc': '', 'raw': raw} for c in re.findall(r'\d{1,4}', s)]
+
+    # Código puro: 60
+    m = re.fullmatch(r'(\d{1,4})', s)
+    if m:
+        code = m.group(1)
+        return [{'codigo': code.lstrip('0') or code, 'cantidad': 1, 'desc': '', 'raw': raw}]
+
+    # Código x cantidad: 550 x2 / 60 x 2 / 550 por 2
+    m = re.fullmatch(r'(\d{1,4})\s*(?:x|por|\*)\s*(\d{1,3})', t)
+    if m:
+        return [{'codigo': (m.group(1).lstrip('0') or m.group(1)), 'cantidad': int(m.group(2)), 'desc': '', 'raw': raw}]
+
+    # Código color - cantidad: 216 canario - 4
+    m = re.fullmatch(r'(\d{1,4})\s+(.+?)\s*-\s*(\d{1,3})', s, flags=re.I)
+    if m:
+        code = m.group(1)
+        return [{'codigo': code.lstrip('0') or code, 'cantidad': int(m.group(3)), 'desc': m.group(2).strip(), 'raw': raw}]
+
+    # Color código - cantidad: Blanco 01- 2 / Rosa bte 185 - 1
+    m = re.fullmatch(r'(.+?)\s+(\d{1,4})\s*-\s*(\d{1,3})', s, flags=re.I)
+    if m:
+        code = m.group(2)
+        return [{'codigo': code.lstrip('0') or code, 'cantidad': int(m.group(3)), 'desc': m.group(1).strip(), 'raw': raw}]
+
+    # Color/código con x cantidad: Blanco 01 x2
+    m = re.fullmatch(r'(.+?)\s+(\d{1,4})\s*(?:x|por|\*)\s*(\d{1,3})', s, flags=re.I)
+    if m:
+        code = m.group(2)
+        return [{'codigo': code.lstrip('0') or code, 'cantidad': int(m.group(3)), 'desc': m.group(1).strip(), 'raw': raw}]
+
+    # Color - cantidad: Rojo escolar- 2 / Hueso - 1
+    m = re.fullmatch(r'(.+?)\s*-\s*(\d{1,3})', s, flags=re.I)
+    if m:
+        desc = m.group(1).strip()
+        if desc and not desc.isdigit():
+            return [{'codigo': '', 'cantidad': int(m.group(2)), 'desc': desc, 'raw': raw}]
+
+    return []
+
+
+def _wa_v17_extraer_items_lista(texto_cliente):
+    texto = str(texto_cliente or '').strip()
+    if not texto:
+        return [], False
+    lineas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+    if not lineas:
+        return [], False
+    norm_full = _wa_v17_norm(texto)
+    hay_disparador_lista = bool(re.search(r'\b(lista|serian|serían|estos|son|colores|tonos|codigos|códigos)\b', norm_full))
+
+    # Si hay frase tipo "le paso la lista", tomar preferentemente lo que va después de esa frase.
+    start = 0
+    for i, ln in enumerate(lineas):
+        tl = _wa_v17_norm(ln)
+        if re.search(r'\b(le\s+paso|paso|mando|envio|envío|lista|serian|serían|estos|son)\b', tl) and re.search(r'\b(colores|tonos|codigos|códigos|lista)\b', tl):
+            start = i + 1
+    candidatas = lineas[start:] if start < len(lineas) else lineas
+
+    items = []
+    lineas_con_item = 0
+    for ln in candidatas:
+        its = _wa_v17_linea_a_item(ln)
+        if its:
+            items.extend(its)
+            lineas_con_item += 1
+        else:
+            # Si ya empezó la lista y aparece una línea que no es producto, no la metemos.
+            continue
+
+    # También aceptar listas puras aunque no venga la frase "lista".
+    lista_pura = lineas_con_item >= 3 and len(items) >= 3
+    es_lista = bool((hay_disparador_lista and len(items) >= 2) or lista_pura)
+    return items, es_lista
+
+
+def _wa_v17_producto_dict(prod, cantidad):
+    return {
+        'producto_id': prod.get('id'),
+        'codigo': prod.get('codigo'),
+        'marca': prod.get('marca') or '',
+        'hilo': prod.get('hilo') or '',
+        'color': prod.get('color') or '',
+        'stock': int(prod.get('stock') or 0),
+        'precio_venta': float(prod.get('precio_venta') or 0),
+        'cantidad': int(cantidad or 1),
+        'es_inventariable': prod.get('es_inventariable', True),
+    }
+
+
+def _wa_v17_resolver_items_lista(items, productos, marca_parser='', hilo_parser=''):
+    pedidos = {}
+    preguntas = []
+    errores = []
+    advertencias = []
+
+    productos_ctx = list(productos or [])
+    if marca_parser:
+        mn = _wa_v17_norm(marca_parser)
+        productos_ctx = [p for p in productos_ctx if _wa_v17_norm(p.get('marca') or '') == mn]
+    if hilo_parser:
+        productos_ctx = _v6_products_for_hilo(productos_ctx, hilo_parser)
+
+    def add_prod(prod, qty):
+        key = str(prod.get('id') or prod.get('codigo') or '') + '|' + str(prod.get('marca') or '') + '|' + str(prod.get('hilo') or '')
+        if key in pedidos:
+            pedidos[key]['cantidad'] = int(pedidos[key].get('cantidad') or 0) + int(qty or 1)
+        else:
+            pedidos[key] = _wa_v17_producto_dict(prod, qty)
+
+    for it in items:
+        code = str(it.get('codigo') or '').strip().lstrip('0') or str(it.get('codigo') or '').strip()
+        desc = str(it.get('desc') or '').strip()
+        qty = int(it.get('cantidad') or 1)
+        raw = str(it.get('raw') or '').strip()
+        prod = None
+        opciones = []
+
+        if code:
+            matches = (_v6_code_map(productos_ctx).get(code) or [])
+            if not matches and not hilo_parser:
+                matches = (_v6_code_map(productos or []).get(code) or [])
+            # Evitar elegir entre varios hilos si no hay contexto. Si todos son de la misma familia, sí se puede.
+            if matches:
+                normales = [p for p in matches if not any(x in _wa_v17_norm(p.get('color') or '') for x in ['combo', 'paquete', 'surtido'])]
+                matches = normales or matches
+                familias = sorted(set(_v6_hilo_family(p.get('hilo') or '') for p in matches))
+                if not hilo_parser and len(familias) > 1:
+                    opts = ', '.join(sorted(set(str(p.get('hilo') or '') for p in matches))[:5])
+                    preguntas.append(f"El código {code} aparece en varios hilos ({opts}). ¿De cuál hilo lo agrego?")
+                    continue
+                prod = sorted(matches, key=lambda p: int(p.get('stock') or 0), reverse=True)[0]
+            else:
+                errores.append(code)
+                continue
+        elif desc:
+            if not hilo_parser:
+                preguntas.append(f"Para '{raw}' necesito confirmar el hilo antes de agregarlo.")
+                continue
+            prod, opciones = _wa_resolver_producto_por_color(productos_ctx, desc)
+            if not prod and opciones:
+                opts = ', '.join([f"{p.get('codigo')} {p.get('color')}".strip() for p in opciones[:5]])
+                preguntas.append(f"Para '{desc}' tengo varias opciones: {opts}. ¿Cuál le agrego?")
+                continue
+            if not prod:
+                preguntas.append(f"No ubiqué exacto '{desc}', ¿me confirma código o tono?")
+                continue
+
+        if prod:
+            add_prod(prod, qty)
+
+    return list(pedidos.values()), preguntas, errores, advertencias
+
+
+def whatsapp_ia_simular_v17():
+    data = request.get_json(force=True) or {}
+    texto_original = (data.get('texto') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    hilo = (data.get('hilo') or '').strip()
+    cliente_nombre = (data.get('cliente_nombre') or '').strip()
+    telefono = (data.get('telefono') or '').strip()
+    texto_imagen = (data.get('texto_imagen') or '').strip()
+    imagen_referencia = bool(data.get('imagen_referencia'))
+    conversacion_id = data.get('conversacion_id')
+    nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
+
+    export_info = _wa_v16_extraer_bloque_cliente(texto_original, telefono)
+    texto_cliente = (export_info.get('texto_cliente') or texto_original).strip()
+    telefono = telefono or export_info.get('telefono') or ''
+    cliente_nombre = cliente_nombre or export_info.get('cliente_nombre') or ''
+
+    texto_total_preview = ' '.join(x for x in [texto_cliente, texto_imagen] if x).strip()
+    if not texto_total_preview:
+        return jsonify({'ok': False, 'error': 'No encontré un mensaje pendiente de clienta para responder.'}), 400
+
+    memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+
+    # Si la clienta continuó con un pedido o pregunta, cancelar cierres pendientes.
+    if not _wa_v15_es_cortesia_cierre(texto_total_preview):
+        _wa_v15_cancelar_cierres(conversacion_id, telefono, 'cliente_envio_nuevo_mensaje')
+
+    # Caso especial: solo agradecimiento/cierre.
+    if _wa_v15_es_cortesia_cierre(texto_total_preview):
+        if nueva_conversacion:
+            conversacion_id = None
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id, telefono, cliente_nombre)
+        cierre = _wa_v15_programar_cierre(conversacion_id, telefono)
+        try:
+            with DB() as db:
+                db.execute("""
+                    INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (conversacion_id, 'IN', 'texto', texto_total_preview, '', json.dumps({'motor': 'cierre_diferido_v17', 'cierre_programado': cierre, 'export_info': export_info}, ensure_ascii=False)))
+        except Exception as exc:
+            print('WARN guardar gracias WA v17:', exc, flush=True)
+        return jsonify(json_safe({
+            'ok': True,
+            'conversacion_id': conversacion_id,
+            'motor': 'cierre_diferido_v17',
+            'mensaje_cliente': texto_total_preview,
+            'respuesta_sugerida': '',
+            'respuesta_diferida': WA_V15_CIERRE_TEXTO,
+            'cierre_programado': True,
+            'cierre_minutos': WA_V15_CIERRE_MINUTOS,
+            'programado_para': cierre.get('programado_para') if isinstance(cierre, dict) else None,
+            'intencion': 'cortesia_cierre',
+            'confianza': 'alta',
+            'accion_recomendada': 'esperar_y_cerrar_si_no_responde',
+            'puede_auto_enviar': False,
+            'pedidos': [], 'preguntas': [], 'errores': [],
+            'advertencias': ['No responder inmediatamente. Si la clienta no escribe algo más, enviar el cierre después del tiempo programado.'],
+            'parser': {},
+            'memoria_usada': memoria_previa,
+            'memoria_actual': _wa_memoria_cargar(conversacion_id, telefono),
+            'whatsapp_export': export_info,
+        }))
+
+    productos_mem = _wa_memoria_productos_min()
+    items_lista, es_lista_real = _wa_v17_extraer_items_lista(texto_cliente)
+
+    # Para listas de códigos, resolver contexto ANTES de mandar al parser normal.
+    marca_parser, hilo_parser, memoria_aplicada = _wa_memoria_resolver_contexto_para_parser(
+        texto_cliente, marca, hilo, memoria_previa, productos_mem
+    )
+
+    parsed = None
+    status = 200
+    texto_parser_base = _wa_v16_preparar_texto_parser(texto_cliente, memoria_previa)
+    texto_total = ' '.join(x for x in [texto_parser_base, texto_imagen] if x).strip()
+    motor_extra = ''
+
+    if es_lista_real:
+        pedidos, preguntas, errores, advertencias = _wa_v17_resolver_items_lista(items_lista, productos_mem, marca_parser, hilo_parser)
+        parsed = {
+            'ok': True,
+            'modo': 'lista_whatsapp_real_v17',
+            'modo_especial': 'lista_codigos_colores',
+            'contexto': {
+                'marca': marca_parser or marca,
+                'hilo': hilo_parser or hilo,
+                'productos_contexto': len(productos_mem),
+                'contexto_inferido': {'marca': marca_parser or marca or '', 'hilo': hilo_parser or hilo or ''},
+                'hilos_detectados': [hilo_parser] if hilo_parser else [],
+            },
+            'pedidos': pedidos,
+            'errores': sorted(set(str(e) for e in errores if e)),
+            'advertencias': sorted(set(str(a) for a in advertencias if a)),
+            'preguntas': sorted(set(str(p) for p in preguntas if p)),
+            'sugerencias': {},
+            'sugerencias_almacen': [],
+            'respuesta_preferida': '',
+            'items_lista_v17': items_lista,
+        }
+        texto_total = 'Lista de pedido detectada:\n' + '\n'.join([str(x.get('raw') or '') for x in items_lista])
+        motor_extra = ':lista_real_v17'
+    else:
+        parser_payload = {
+            'texto': texto_total,
+            'marca': marca_parser,
+            'hilo': hilo_parser,
+            'cliente_nombre': cliente_nombre,
+            'telefono': telefono,
+            'texto_imagen': '',
+            'imagen_referencia': imagen_referencia,
+        }
+        parsed, status = _call_parser_whatsapp_local(parser_payload)
+        if status >= 400 or not parsed.get('ok', False):
+            return jsonify(parsed), status
+
+    meta = _clasificar_intencion_wa(texto_total, parsed)
+    # Si el parser especial encontró pedidos sin dudas, subir confianza.
+    if es_lista_real and (parsed.get('pedidos') or []) and not parsed.get('preguntas') and not parsed.get('errores'):
+        meta['intencion'] = 'pedido'
+        meta['confianza'] = 'alta'
+        meta['accion_recomendada'] = 'agregar_productos'
+        meta['puede_auto_enviar'] = True
+
+    contexto = {
+        'marca': marca_parser or marca or 'Todas',
+        'hilo': hilo_parser or hilo or 'Todos',
+        'cliente_nombre': cliente_nombre,
+        'telefono': telefono,
+        'fase': 'simulador_manual_pre_whatsapp_cloud_api',
+        'memoria_conversacion': memoria_aplicada,
+        'historial_reciente': _wa_memoria_historial_reciente(conversacion_id) if conversacion_id and not nueva_conversacion else [],
+        'regla_cierre': f'Si la clienta solo agradece, no responder de inmediato; programar cierre en {WA_V15_CIERRE_MINUTOS} minutos.',
+        'whatsapp_export': export_info,
+        'mensaje_original_cliente': texto_cliente,
+        'mensaje_parser_v17': texto_total,
+        'items_lista_v17': items_lista,
+    }
+    respuesta, motor = _generar_respuesta_wa_con_openai(texto_total, parsed, meta, contexto)
+
+    try:
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id if not nueva_conversacion else None, telefono, cliente_nombre)
+        with DB() as db:
+            db.execute("""
+                INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (conversacion_id, 'IN', 'texto', texto_total_preview, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': motor + motor_extra, 'memoria_usada': memoria_aplicada, 'v17_texto_parser': texto_total, 'export_info': export_info}, ensure_ascii=False)))
+    except Exception as exc:
+        print('WARN no se pudo guardar simulacion WA v17:', exc, flush=True)
+
+    memoria_actualizada = _wa_memoria_actualizar(
+        conversacion_id=conversacion_id,
+        telefono=telefono,
+        cliente_nombre=cliente_nombre,
+        texto=texto_total_preview,
+        respuesta=respuesta,
+        parsed=parsed,
+        meta=meta,
+        marca_parser=marca_parser,
+        hilo_parser=hilo_parser,
+        memoria_previa=memoria_previa,
+        productos=productos_mem,
+    )
+
+    advertencias = parsed.get('advertencias') or []
+    if export_info.get('es_export'):
+        advertencias = list(advertencias) + [f"V17: se leyó solo el último bloque pendiente de la clienta ({export_info.get('sender') or 'sin nombre'})."]
+        if export_info.get('ultimo_mensaje_era_de_hilorama'):
+            advertencias.append('V17: el último mensaje del pegado parece ser de Hilorama; en WhatsApp real no se respondería hasta que la clienta escriba otra vez.')
+    if es_lista_real:
+        advertencias = list(advertencias) + [f'V17: lista real detectada con {len(items_lista)} línea(s)/producto(s) antes de llamar al parser normal.']
+    elif texto_total != texto_total_preview:
+        advertencias = list(advertencias) + ['V17: texto normalizado antes del parser.']
+
+    return jsonify(json_safe({
+        'ok': True,
+        'conversacion_id': conversacion_id,
+        'motor': motor + ':memoria_v17_parser_whatsapp_real' + motor_extra,
+        'mensaje_cliente': texto_total_preview,
+        'mensaje_parser': texto_total,
+        'respuesta_sugerida': respuesta,
+        'intencion': meta.get('intencion'),
+        'confianza': meta.get('confianza'),
+        'accion_recomendada': meta.get('accion_recomendada'),
+        'puede_auto_enviar': meta.get('puede_auto_enviar'),
+        'pedidos': parsed.get('pedidos') or [],
+        'preguntas': parsed.get('preguntas') or [],
+        'errores': parsed.get('errores') or [],
+        'advertencias': advertencias,
+        'parser': parsed,
+        'memoria_usada': memoria_aplicada,
+        'memoria_actual': memoria_actualizada,
+        'whatsapp_export': export_info,
+        'items_lista_v17': items_lista if es_lista_real else [],
+    }))
+
+
+# Sobrescribe el endpoint del simulador para usar V17.
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v17
