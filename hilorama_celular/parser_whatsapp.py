@@ -68,6 +68,9 @@ def norm_codigo(v):
 
 def limpiar_texto(texto):
     texto = _sin_acentos(texto)
+    # Quita encabezados de WhatsApp exportado sin convertir fechas/teléfonos en códigos.
+    texto = re.sub(r",(?=\[\d{1,2}:\d{2}\s*(?:a|p)\.?\s*m\.? ,?)", "\n", texto, flags=re.I)
+    texto = re.sub(r"\[\d{1,2}:\d{2}\s*(?:a|p)\.?\s*m\.?\s*,\s*\d{1,2}/\d{1,2}/\d{4}\]\s*[^:\n]{1,120}:\s*", "\n", texto, flags=re.I)
     # Normaliza errores comunes de escritura de WhatsApp: "de del 55", "de de 55".
     texto = re.sub(r"\bde\s+del\b", "del", texto)
     texto = re.sub(r"\bde\s+de\b", "de", texto)
@@ -79,7 +82,9 @@ def limpiar_texto(texto):
     texto = texto.replace("×", "x")
     texto = texto.replace(";", "\n")
     texto = re.sub(r"[{}\[\]|]", " ", texto)
-    texto = re.sub(r"\s+", " ", texto)
+    # Preserva saltos de línea para listas de códigos de WhatsApp.
+    texto = re.sub(r"[ \t\r\f\v]+", " ", texto)
+    texto = re.sub(r" *\n+ *", "\n", texto)
     return texto.strip()
 
 

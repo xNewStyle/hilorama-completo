@@ -9064,3 +9064,317 @@ def whatsapp_ia_simular_v15():
 
 # Sobrescribe el endpoint del simulador para usar la lógica V15 sin perder compatibilidad.
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v15
+
+# -----------------------------------------------------------------------------
+# V16 - Parser WhatsApp real: exportaciones, mensajes por bloques y listas de códigos
+# -----------------------------------------------------------------------------
+# Mejora casos reales pegados desde WhatsApp:
+# - Quita encabezados [hora, fecha] Nombre/Teléfono: para no leer fechas/teléfonos como códigos.
+# - Usa solo el último bloque pendiente de la clienta, no toda la conversación vieja.
+# - Junta mensajes separados por minutos cuando forman un pedido/lista.
+# - Si la clienta dice "lista de colores" y luego manda puros códigos, los interpreta como pedido x1.
+
+WA_V16_MEDIA_MARKERS = {'foto', 'imagen', 'video', 'audio', 'sticker', 'documento', 'archivo'}
+WA_V16_OWN_NAMES = {'hilorama', 'tu', 'tú', 'yo'}
+
+
+def _wa_v16_norm(v):
+    try:
+        return _v6_norm(v or '')
+    except Exception:
+        return re.sub(r'\s+', ' ', str(v or '').lower()).strip()
+
+
+def _wa_v16_es_mensaje_media_o_ruido(txt):
+    t = _wa_v16_norm(txt)
+    if not t:
+        return True
+    if t in WA_V16_MEDIA_MARKERS:
+        return True
+    if re.match(r'^cot[-_\w\d]+\.pdf\b', t):
+        return True
+    if re.match(r'.+\.(pdf|jpg|jpeg|png|webp|heic|mp4|mp3|opus)\b', t):
+        return True
+    return False
+
+
+def _wa_v16_parse_export_whatsapp(raw):
+    """Convierte texto exportado/copypaste de WhatsApp en mensajes estructurados."""
+    raw = str(raw or '')
+    if not raw.strip():
+        return []
+    # A veces el usuario pega varios extractos separados por coma antes del siguiente encabezado.
+    raw = re.sub(r',(?=\[\d{1,2}:\d{2}\s*(?:a|p)\.?\s*m\.?,)', '\n', raw, flags=re.I)
+    raw = re.sub(r'(?<!\n)(?=\[\d{1,2}:\d{2}\s*(?:a|p)\.?\s*m\.?,)', '\n', raw, flags=re.I)
+    header = re.compile(r'^\s*\[(?P<hora>\d{1,2}:\d{2}\s*(?:a|p)\.?\s*m\.?),\s*(?P<fecha>\d{1,2}/\d{1,2}/\d{4})\]\s*(?P<sender>[^:\n]{1,120}):\s*(?P<msg>.*)$', re.I)
+    mensajes = []
+    actual = None
+    for line in raw.splitlines():
+        m = header.match(line)
+        if m:
+            if actual:
+                actual['texto'] = actual.get('texto', '').strip()
+                mensajes.append(actual)
+            sender = (m.group('sender') or '').strip()
+            msg = (m.group('msg') or '').strip()
+            actual = {
+                'hora': m.group('hora'),
+                'fecha': m.group('fecha'),
+                'sender': sender,
+                'texto': msg,
+                'own': _wa_v16_norm(sender) in WA_V16_OWN_NAMES or 'hilorama' in _wa_v16_norm(sender),
+                'telefono': re.sub(r'\D+', '', sender) if '+' in sender or re.search(r'\d{7,}', sender) else '',
+            }
+        else:
+            if actual is not None:
+                actual['texto'] = (actual.get('texto') or '') + ('\n' if actual.get('texto') else '') + line.strip()
+            elif line.strip():
+                # No parece export, pero conservamos como mensaje suelto para compatibilidad.
+                mensajes.append({'sender': '', 'texto': line.strip(), 'own': False, 'telefono': ''})
+    if actual:
+        actual['texto'] = actual.get('texto', '').strip()
+        mensajes.append(actual)
+    # Si no detectó encabezados reales, no es export.
+    if not any(m.get('sender') for m in mensajes):
+        return []
+    return mensajes
+
+
+def _wa_v16_extraer_bloque_cliente(raw, telefono_actual=''):
+    mensajes = _wa_v16_parse_export_whatsapp(raw)
+    if not mensajes:
+        return {'es_export': False, 'texto_cliente': str(raw or '').strip(), 'telefono': telefono_actual or '', 'cliente_nombre': ''}
+
+    # Busca el último mensaje NO propio. Si el último mensaje del chat es de Hilorama,
+    # se toma el último bloque de clienta anterior solo para simular; en WhatsApp real no respondería a algo ya contestado.
+    idx = None
+    for i in range(len(mensajes) - 1, -1, -1):
+        if not mensajes[i].get('own'):
+            idx = i
+            break
+    if idx is None:
+        return {'es_export': True, 'texto_cliente': '', 'telefono': telefono_actual or '', 'cliente_nombre': ''}
+
+    # Junta mensajes consecutivos de clienta antes de que Hilorama responda.
+    sender_obj = mensajes[idx].get('sender') or ''
+    bloque = []
+    j = idx
+    while j >= 0 and not mensajes[j].get('own'):
+        # Si vienen diferentes clientas mezcladas en el pegado, no mezclar.
+        if sender_obj and mensajes[j].get('sender') and mensajes[j].get('sender') != sender_obj:
+            break
+        txt = (mensajes[j].get('texto') or '').strip()
+        if txt and not _wa_v16_es_mensaje_media_o_ruido(txt):
+            bloque.append(txt)
+        j -= 1
+    bloque.reverse()
+
+    # Si el bloque último solo dice ok/gracias/muy bien, busca si en el mismo bloque hay algo accionable anterior.
+    # Si no, se deja para cierre diferido V15.
+    texto_cliente = '\n'.join(bloque).strip()
+    tel = telefono_actual or mensajes[idx].get('telefono') or ''
+    nombre = '' if mensajes[idx].get('telefono') else (mensajes[idx].get('sender') or '')
+    return {
+        'es_export': True,
+        'texto_cliente': texto_cliente,
+        'telefono': tel,
+        'cliente_nombre': nombre,
+        'mensajes_total': len(mensajes),
+        'sender': sender_obj,
+        'ultimo_mensaje_era_de_hilorama': bool(mensajes and mensajes[-1].get('own')),
+    }
+
+
+def _wa_v16_es_lista_codigos_pura(texto):
+    t = _wa_v16_norm(texto)
+    if not t:
+        return False
+    # Debe tener varios números de 2-4 dígitos y pocas palabras. Sirve para listas tipo:
+    # 60\n310\n107\n329...
+    nums = re.findall(r'(?<!\d)\d{1,4}(?!\d)', t)
+    palabras = [p for p in re.findall(r'[a-zñ]+', t) if p not in ('x', 'de', 'del')]
+    if len(nums) >= 3 and len(palabras) <= 8:
+        return True
+    return False
+
+
+def _wa_v16_preparar_texto_parser(texto_cliente, memoria_previa=None):
+    """Ajusta el mensaje para que el parser entienda intención real de venta."""
+    texto_cliente = str(texto_cliente or '').strip()
+    if not texto_cliente:
+        return texto_cliente
+    lineas = [l.strip() for l in texto_cliente.splitlines() if l.strip()]
+    t = _wa_v16_norm(texto_cliente)
+
+    # Caso muy común: "le paso la lista de los colores" + mensaje siguiente con códigos.
+    pide_lista = bool(re.search(r'\b(lista|tonos|colores|codigos|códigos)\b', t) and re.search(r'\b(le\s+paso|paso|mando|envio|envío|serian|serían|estos|son)\b', t))
+    nums = re.findall(r'(?<!\d)\d{1,4}(?!\d)', texto_cliente)
+    if (pide_lista and len(nums) >= 2) or _wa_v16_es_lista_codigos_pura(texto_cliente):
+        # Evita que palabras como "colores" disparen carta/foto. Lo convertimos a pedido x1.
+        solo_nums = '\n'.join(nums)
+        return 'quiero 1 de cada uno:\n' + solo_nums
+
+    # Si la memoria dice que la clienta estaba armando pedido y ahora manda puros códigos,
+    # interpretarlos como lista, no como consulta de foto de tono.
+    mem = memoria_previa or {}
+    if _wa_v16_es_lista_codigos_pura(texto_cliente) and str(mem.get('hilo_actual') or '').strip():
+        return 'quiero 1 de cada uno:\n' + '\n'.join(nums)
+
+    return texto_cliente
+
+
+def whatsapp_ia_simular_v16():
+    data = request.get_json(force=True) or {}
+    texto_original = (data.get('texto') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    hilo = (data.get('hilo') or '').strip()
+    cliente_nombre = (data.get('cliente_nombre') or '').strip()
+    telefono = (data.get('telefono') or '').strip()
+    texto_imagen = (data.get('texto_imagen') or '').strip()
+    imagen_referencia = bool(data.get('imagen_referencia'))
+    conversacion_id = data.get('conversacion_id')
+    nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
+
+    export_info = _wa_v16_extraer_bloque_cliente(texto_original, telefono)
+    texto_cliente = (export_info.get('texto_cliente') or texto_original).strip()
+    telefono = telefono or export_info.get('telefono') or ''
+    cliente_nombre = cliente_nombre or export_info.get('cliente_nombre') or ''
+
+    texto_total_preview = ' '.join(x for x in [texto_cliente, texto_imagen] if x).strip()
+    if not texto_total_preview:
+        return jsonify({'ok': False, 'error': 'No encontré un mensaje pendiente de clienta para responder.'}), 400
+
+    memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+    texto_parser_base = _wa_v16_preparar_texto_parser(texto_cliente, memoria_previa)
+    texto_total = ' '.join(x for x in [texto_parser_base, texto_imagen] if x).strip()
+
+    # Si la clienta continuó con un pedido o pregunta, cancelar cierres pendientes.
+    if not _wa_v15_es_cortesia_cierre(texto_total_preview):
+        _wa_v15_cancelar_cierres(conversacion_id, telefono, 'cliente_envio_nuevo_mensaje')
+
+    # Caso especial: solo agradecimiento/cierre. No responder al instante; programar cierre.
+    if _wa_v15_es_cortesia_cierre(texto_total_preview):
+        if nueva_conversacion:
+            conversacion_id = None
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id, telefono, cliente_nombre)
+        cierre = _wa_v15_programar_cierre(conversacion_id, telefono)
+        try:
+            with DB() as db:
+                db.execute("""
+                    INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (conversacion_id, 'IN', 'texto', texto_total_preview, '', json.dumps({'motor': 'cierre_diferido_v16', 'cierre_programado': cierre, 'export_info': export_info}, ensure_ascii=False)))
+        except Exception as exc:
+            print('WARN guardar gracias WA v16:', exc, flush=True)
+        return jsonify(json_safe({
+            'ok': True,
+            'conversacion_id': conversacion_id,
+            'motor': 'cierre_diferido_v16',
+            'mensaje_cliente': texto_total_preview,
+            'respuesta_sugerida': '',
+            'respuesta_diferida': WA_V15_CIERRE_TEXTO,
+            'cierre_programado': True,
+            'cierre_minutos': WA_V15_CIERRE_MINUTOS,
+            'programado_para': cierre.get('programado_para') if isinstance(cierre, dict) else None,
+            'intencion': 'cortesia_cierre',
+            'confianza': 'alta',
+            'accion_recomendada': 'esperar_y_cerrar_si_no_responde',
+            'puede_auto_enviar': False,
+            'pedidos': [], 'preguntas': [], 'errores': [],
+            'advertencias': ['No responder inmediatamente. Si la clienta no escribe algo más, enviar el cierre después del tiempo programado.'],
+            'parser': {},
+            'memoria_usada': memoria_previa,
+            'memoria_actual': _wa_memoria_cargar(conversacion_id, telefono),
+            'whatsapp_export': export_info,
+        }))
+
+    productos_mem = _wa_memoria_productos_min()
+    marca_parser, hilo_parser, memoria_aplicada = _wa_memoria_resolver_contexto_para_parser(
+        texto_total, marca, hilo, memoria_previa, productos_mem
+    )
+
+    parser_payload = {
+        'texto': texto_total,
+        'marca': marca_parser,
+        'hilo': hilo_parser,
+        'cliente_nombre': cliente_nombre,
+        'telefono': telefono,
+        'texto_imagen': '',
+        'imagen_referencia': imagen_referencia,
+    }
+    parsed, status = _call_parser_whatsapp_local(parser_payload)
+    if status >= 400 or not parsed.get('ok', False):
+        return jsonify(parsed), status
+
+    meta = _clasificar_intencion_wa(texto_total, parsed)
+    contexto = {
+        'marca': marca_parser or marca or 'Todas',
+        'hilo': hilo_parser or hilo or 'Todos',
+        'cliente_nombre': cliente_nombre,
+        'telefono': telefono,
+        'fase': 'simulador_manual_pre_whatsapp_cloud_api',
+        'memoria_conversacion': memoria_aplicada,
+        'historial_reciente': _wa_memoria_historial_reciente(conversacion_id) if conversacion_id and not nueva_conversacion else [],
+        'regla_cierre': f'Si la clienta solo agradece, no responder de inmediato; programar cierre en {WA_V15_CIERRE_MINUTOS} minutos.',
+        'whatsapp_export': export_info,
+        'mensaje_original_cliente': texto_cliente,
+        'mensaje_parser_v16': texto_total,
+    }
+    respuesta, motor = _generar_respuesta_wa_con_openai(texto_total, parsed, meta, contexto)
+
+    try:
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id if not nueva_conversacion else None, telefono, cliente_nombre)
+        with DB() as db:
+            db.execute("""
+                INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (conversacion_id, 'IN', 'texto', texto_total_preview, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': motor, 'memoria_usada': memoria_aplicada, 'v16_texto_parser': texto_total, 'export_info': export_info}, ensure_ascii=False)))
+    except Exception as exc:
+        print('WARN no se pudo guardar simulacion WA v16:', exc, flush=True)
+
+    memoria_actualizada = _wa_memoria_actualizar(
+        conversacion_id=conversacion_id,
+        telefono=telefono,
+        cliente_nombre=cliente_nombre,
+        texto=texto_total_preview,
+        respuesta=respuesta,
+        parsed=parsed,
+        meta=meta,
+        marca_parser=marca_parser,
+        hilo_parser=hilo_parser,
+        memoria_previa=memoria_previa,
+        productos=productos_mem,
+    )
+
+    advertencias = parsed.get('advertencias') or []
+    if export_info.get('es_export'):
+        advertencias = list(advertencias) + [f"V16: se leyó solo el último bloque pendiente de la clienta ({export_info.get('sender') or 'sin nombre'})."]
+        if export_info.get('ultimo_mensaje_era_de_hilorama'):
+            advertencias.append('V16: el último mensaje del pegado parece ser de Hilorama; en WhatsApp real no se respondería hasta que la clienta escriba otra vez.')
+    if texto_total != texto_total_preview:
+        advertencias = list(advertencias) + ['V16: lista de códigos normalizada como pedido de 1 pieza por código.']
+
+    return jsonify(json_safe({
+        'ok': True,
+        'conversacion_id': conversacion_id,
+        'motor': motor + ':memoria_v16_parser_whatsapp_real',
+        'mensaje_cliente': texto_total_preview,
+        'mensaje_parser': texto_total,
+        'respuesta_sugerida': respuesta,
+        'intencion': meta.get('intencion'),
+        'confianza': meta.get('confianza'),
+        'accion_recomendada': meta.get('accion_recomendada'),
+        'puede_auto_enviar': meta.get('puede_auto_enviar'),
+        'pedidos': parsed.get('pedidos') or [],
+        'preguntas': parsed.get('preguntas') or [],
+        'errores': parsed.get('errores') or [],
+        'advertencias': advertencias,
+        'parser': parsed,
+        'memoria_usada': memoria_aplicada,
+        'memoria_actual': memoria_actualizada,
+        'whatsapp_export': export_info,
+    }))
+
+
+# Sobrescribe el endpoint del simulador para usar V16.
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v16
