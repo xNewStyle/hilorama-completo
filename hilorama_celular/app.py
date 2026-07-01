@@ -9961,3 +9961,312 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
 
 # Mantener el mismo endpoint V17, pero usando extractor/generador V18 por sobrescritura global.
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v17
+
+# -----------------------------------------------------------------------------
+# V19 - Corrección de contexto "Todos/Todas" + confirmación de hilo para listas
+# -----------------------------------------------------------------------------
+# Problemas corregidos:
+# - El selector "Todas/Todos" del simulador no debe bloquear la memoria de conversación.
+# - Si la clienta confirma "sería todo de Velluto" después de una lista con dudas,
+#   se reintenta resolver la última lista usando ese hilo, en lugar de responder precio.
+# - Si solo confirma hilo sin lista pendiente, se actualiza contexto y no se contesta como consulta de precio.
+
+
+def _wa_v19_clean_selector(valor):
+    v = str(valor or '').strip()
+    n = _wa_memoria_norm(v)
+    if not v or n in {'todo', 'todos', 'toda', 'todas', 'all', 'ninguno', 'ninguna'}:
+        return ''
+    return v
+
+
+_wa_v19_resolver_contexto_anterior = _wa_memoria_resolver_contexto_para_parser
+
+
+def _wa_memoria_resolver_contexto_para_parser(texto, marca_ui, hilo_ui, memoria, productos):
+    """V19: tratar Todas/Todos como vacío para que sí funcione la memoria."""
+    return _wa_v19_resolver_contexto_anterior(
+        texto,
+        _wa_v19_clean_selector(marca_ui),
+        _wa_v19_clean_selector(hilo_ui),
+        memoria,
+        productos,
+    )
+
+
+def _wa_v19_es_confirmacion_todo_hilo(texto, productos):
+    """Detecta frases tipo: 'sería todo de velluto', 'todos son velluto'."""
+    t = _wa_memoria_norm(texto or '')
+    if not t:
+        return False, '', ''
+    hilos = _wa_memoria_detectar_hilos_explicitos(texto, productos) or []
+    if not hilos:
+        return False, '', ''
+    # Debe sonar a corrección/confirmación de contexto, no a pregunta de precio ni carta.
+    if re.search(r'\b(cuanto|cuánto|precio|cuesta|vale|costo|gama|carta|colores disponibles|foto|imagen|mostrar|muestra)\b', t):
+        return False, '', ''
+    patron_confirmacion = bool(re.search(
+        r'\b(seria|sería|es|son|todo|todos|toda|todas|los|las|lista|pedido|colores)\b.*\b(de|en|para|como)?\b.*\b(velluto|veluto|komfy|komfi|konfy|kurumi|kairo|trapillo|alize|karina)\b'
+        r'|\b(velluto|veluto|komfy|komfi|konfy|kurumi|kairo|trapillo)\b.*\b(todo|todos|toda|todas|lista|pedido)\b',
+        t
+    ))
+    if not patron_confirmacion:
+        return False, '', ''
+    hilo = hilos[0]
+    marca = _wa_memoria_marca_para_hilo(productos, hilo)
+    return True, marca, hilo
+
+
+def _wa_v19_ultima_lista_items(conversacion_id=None, telefono=''):
+    """Recupera la última lista de pedido guardada en la conversación para resolver dudas posteriores."""
+    try:
+        if not conversacion_id:
+            return []
+        with DB() as db:
+            rows = db.execute("""
+                SELECT metadata, texto
+                FROM whatsapp_mensajes
+                WHERE conversacion_id=%s
+                ORDER BY fecha DESC, id DESC
+                LIMIT 20
+            """, (conversacion_id,)).fetchall()
+        for r in rows:
+            meta_raw = (dict(r).get('metadata') or '')
+            texto = dict(r).get('texto') or ''
+            meta = {}
+            try:
+                meta = json.loads(meta_raw) if isinstance(meta_raw, str) and meta_raw else (meta_raw or {})
+            except Exception:
+                meta = {}
+            parsed = meta.get('parsed') or {}
+            items = parsed.get('items_lista_v17') or meta.get('items_lista_v17') or []
+            if items:
+                return items
+            # Respaldo: si se guardó texto normalizado de lista, re-extraer.
+            posible = meta.get('v17_texto_parser') or meta.get('v16_texto_parser') or texto
+            if isinstance(posible, str) and 'Lista de pedido detectada' in posible:
+                limpio = posible.replace('Lista de pedido detectada:', '').strip()
+                items2, es_lista = _wa_v17_extraer_items_lista(limpio)
+                if es_lista and items2:
+                    return items2
+    except Exception as exc:
+        print('WARN V19 recuperar ultima lista:', exc, flush=True)
+    return []
+
+
+def _wa_v19_producto_base_desde_desc(desc, productos_ctx):
+    """Fallback suave: 'rojo escolar' en Velluto puede mapear a 'rojo' si hay una sola opción clara."""
+    d = _wa_memoria_norm(desc or '')
+    if not d:
+        return None
+    bases = [
+        'blanco', 'negro', 'hueso', 'rojo', 'vino', 'rosa', 'azul', 'cielo', 'marino',
+        'verde', 'amarillo', 'lila', 'morado', 'cafe', 'café', 'gris', 'beige', 'arena',
+        'camel', 'canario', 'uva', 'naranja', 'durazno', 'lavanda', 'palo de rosa'
+    ]
+    candidatos_base = []
+    for b in bases:
+        if b in d:
+            candidatos_base.append(b)
+    for b in candidatos_base:
+        try:
+            prod, opciones = _wa_resolver_producto_por_color(productos_ctx, b)
+            if prod:
+                return prod
+            if opciones and len(opciones) == 1:
+                return opciones[0]
+        except Exception:
+            pass
+    return None
+
+
+_wa_v19_resolver_items_anterior = _wa_v17_resolver_items_lista
+
+
+def _wa_v17_resolver_items_lista(items, productos, marca_parser='', hilo_parser=''):
+    """V19: resolver listas respetando contexto limpio y con fallback para colores coloquiales."""
+    marca_parser = _wa_v19_clean_selector(marca_parser)
+    hilo_parser = _wa_v19_clean_selector(hilo_parser)
+    pedidos, preguntas, errores, advertencias = _wa_v19_resolver_items_anterior(items, productos, marca_parser, hilo_parser)
+
+    # Si hay contexto de hilo y quedaron preguntas por descripciones como 'Rojo escolar',
+    # intenta una segunda pasada solo para descripciones sin código que aún no se agregaron.
+    if hilo_parser and preguntas:
+        productos_ctx = list(productos or [])
+        if marca_parser:
+            mn = _wa_memoria_norm(marca_parser)
+            productos_ctx = [p for p in productos_ctx if _wa_memoria_norm(p.get('marca') or '') == mn]
+        productos_ctx = _v6_products_for_hilo(productos_ctx, hilo_parser)
+        ya = set(str(p.get('producto_id') or '') for p in pedidos)
+        nuevas_preguntas = []
+        agregados = []
+        for q in preguntas:
+            # Busca el raw entre comillas simples: Para 'Rojo escolar- 2'...
+            m = re.search(r"'([^']+)'", str(q))
+            raw_desc = m.group(1) if m else ''
+            item = None
+            if raw_desc:
+                for it in items or []:
+                    if not str(it.get('codigo') or '').strip() and _wa_memoria_norm(raw_desc) in _wa_memoria_norm(it.get('raw') or it.get('desc') or ''):
+                        item = it
+                        break
+            if item:
+                prod = _wa_v19_producto_base_desde_desc(item.get('desc') or item.get('raw'), productos_ctx)
+                if prod and str(prod.get('id') or '') not in ya:
+                    agregados.append(_wa_v17_producto_dict(prod, int(item.get('cantidad') or 1)))
+                    ya.add(str(prod.get('id') or ''))
+                    continue
+            nuevas_preguntas.append(q)
+        if agregados:
+            # Combinar cantidades si se repitió producto.
+            merged = {}
+            for p in list(pedidos) + agregados:
+                key = str(p.get('producto_id') or p.get('codigo') or '')
+                if key in merged:
+                    merged[key]['cantidad'] = int(merged[key].get('cantidad') or 0) + int(p.get('cantidad') or 1)
+                else:
+                    merged[key] = p
+            pedidos = list(merged.values())
+            preguntas = nuevas_preguntas
+            advertencias = list(advertencias or []) + ['V19: se resolvió un color coloquial usando el contexto de hilo.']
+    return pedidos, preguntas, errores, advertencias
+
+
+_wa_v19_view_anterior = app.view_functions.get('whatsapp_ia_simular')
+
+
+def whatsapp_ia_simular_v19():
+    data = request.get_json(force=True) or {}
+    texto_original = (data.get('texto') or '').strip()
+    marca = _wa_v19_clean_selector(data.get('marca') or '')
+    hilo = _wa_v19_clean_selector(data.get('hilo') or '')
+    cliente_nombre = (data.get('cliente_nombre') or '').strip()
+    telefono = (data.get('telefono') or '').strip()
+    texto_imagen = (data.get('texto_imagen') or '').strip()
+    conversacion_id = data.get('conversacion_id')
+    nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
+
+    export_info = _wa_v16_extraer_bloque_cliente(texto_original, telefono)
+    texto_cliente = (export_info.get('texto_cliente') or texto_original).strip()
+    telefono = telefono or export_info.get('telefono') or ''
+    cliente_nombre = cliente_nombre or export_info.get('cliente_nombre') or ''
+    texto_total_preview = ' '.join(x for x in [texto_cliente, texto_imagen] if x).strip()
+
+    productos_mem = _wa_memoria_productos_min()
+    es_conf_hilo, marca_conf, hilo_conf = _wa_v19_es_confirmacion_todo_hilo(texto_total_preview, productos_mem)
+
+    if es_conf_hilo:
+        memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+        _wa_v15_cancelar_cierres(conversacion_id, telefono, 'cliente_confirmo_hilo')
+        if nueva_conversacion:
+            conversacion_id = None
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id, telefono, cliente_nombre)
+
+        items_previos = _wa_v19_ultima_lista_items(conversacion_id, telefono)
+        if items_previos:
+            pedidos, preguntas, errores, advertencias = _wa_v17_resolver_items_lista(items_previos, productos_mem, marca_conf, hilo_conf)
+            parsed = {
+                'ok': True,
+                'modo': 'lista_whatsapp_real_v19_confirmacion_hilo',
+                'modo_especial': 'resolver_lista_previa_con_hilo_confirmado',
+                'contexto': {
+                    'marca': marca_conf,
+                    'hilo': hilo_conf,
+                    'productos_contexto': len(productos_mem),
+                    'contexto_inferido': {'marca': marca_conf or '', 'hilo': hilo_conf or ''},
+                    'hilos_detectados': [hilo_conf] if hilo_conf else [],
+                },
+                'pedidos': pedidos,
+                'errores': sorted(set(str(e) for e in errores if e)),
+                'advertencias': sorted(set(str(a) for a in advertencias if a)),
+                'preguntas': sorted(set(str(p) for p in preguntas if p)),
+                'sugerencias': {},
+                'sugerencias_almacen': [],
+                'respuesta_preferida': '',
+                'items_lista_v17': items_previos,
+            }
+            meta = _clasificar_intencion_wa('Lista previa confirmada como ' + hilo_conf, parsed)
+            meta['intencion'] = 'pedido'
+            meta['confianza'] = 'alta' if pedidos and not preguntas and not errores else 'media'
+            meta['accion_recomendada'] = 'agregar_productos' if pedidos and not preguntas and not errores else 'revisar'
+            meta['puede_auto_enviar'] = bool(pedidos and not preguntas and not errores)
+            respuesta_base = _wa_v18_respuesta_lista(parsed)
+            if respuesta_base:
+                respuesta = f"Perfecto 😊 tomo la lista anterior como {hilo_conf}.\n" + respuesta_base.replace('Claro 😊 le agrego:\n', 'Le agrego:\n')
+            else:
+                respuesta = f"Perfecto 😊 tomo la lista anterior como {hilo_conf}, pero necesito revisar los tonos antes de agregar." 
+            motor = 'reglas_hilorama_v19_confirmacion_hilo_resuelve_lista'
+        else:
+            parsed = {
+                'ok': True,
+                'modo': 'confirmacion_hilo_v19_sin_lista_pendiente',
+                'contexto': {'marca': marca_conf, 'hilo': hilo_conf, 'contexto_inferido': {'marca': marca_conf or '', 'hilo': hilo_conf or ''}},
+                'pedidos': [], 'preguntas': [], 'errores': [], 'advertencias': [], 'sugerencias': {}, 'sugerencias_almacen': []
+            }
+            meta = {'intencion': 'confirmacion_contexto', 'confianza': 'alta', 'accion_recomendada': 'responder', 'puede_auto_enviar': False}
+            respuesta = f"Perfecto 😊 entonces lo manejamos como {hilo_conf}. Me puede pasar los códigos o cantidades y se lo cotizo."
+            motor = 'reglas_hilorama_v19_confirmacion_hilo_sin_precio'
+
+        try:
+            with DB() as db:
+                db.execute("""
+                    INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (conversacion_id, 'IN', 'texto', texto_total_preview, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': motor, 'memoria_usada': memoria_previa, 'export_info': export_info}, ensure_ascii=False)))
+        except Exception as exc:
+            print('WARN guardar simulacion WA v19:', exc, flush=True)
+
+        memoria_actualizada = _wa_memoria_actualizar(
+            conversacion_id=conversacion_id,
+            telefono=telefono,
+            cliente_nombre=cliente_nombre,
+            texto=texto_total_preview,
+            respuesta=respuesta,
+            parsed=parsed,
+            meta=meta,
+            marca_parser=marca_conf,
+            hilo_parser=hilo_conf,
+            memoria_previa=memoria_previa,
+            productos=productos_mem,
+        )
+        return jsonify(json_safe({
+            'ok': True,
+            'conversacion_id': conversacion_id,
+            'motor': motor + ':memoria_v19_contexto_confirmado',
+            'mensaje_cliente': texto_total_preview,
+            'mensaje_parser': texto_total_preview,
+            'respuesta_sugerida': respuesta,
+            'intencion': meta.get('intencion'),
+            'confianza': meta.get('confianza'),
+            'accion_recomendada': meta.get('accion_recomendada'),
+            'puede_auto_enviar': meta.get('puede_auto_enviar'),
+            'pedidos': parsed.get('pedidos') or [],
+            'preguntas': parsed.get('preguntas') or [],
+            'errores': parsed.get('errores') or [],
+            'advertencias': list(parsed.get('advertencias') or []) + ['V19: se interpretó como confirmación de hilo/contexto, no como pregunta de precio.'],
+            'parser': parsed,
+            'memoria_usada': memoria_previa,
+            'memoria_actual': memoria_actualizada,
+            'whatsapp_export': export_info,
+        }))
+
+    # Caso normal: usar el endpoint anterior, con los selectores ya corregidos por el wrapper global.
+    return _wa_v19_view_anterior()
+
+
+_wa_v19_generar_respuesta_anterior = _generar_respuesta_wa_con_openai
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    """V19: evitar que 'sería todo de Velluto' se convierta en respuesta de precio."""
+    try:
+        productos_mem = _wa_memoria_productos_min()
+        es_conf, marca_conf, hilo_conf = _wa_v19_es_confirmacion_todo_hilo(texto, productos_mem)
+        if es_conf and not (parsed.get('pedidos') or []):
+            return f"Perfecto 😊 entonces lo manejamos como {hilo_conf}. Me puede pasar los códigos o cantidades y se lo cotizo.", 'reglas_hilorama_v19_confirmacion_hilo_sin_precio'
+    except Exception as exc:
+        print('WARN respuesta confirmacion hilo v19:', exc, flush=True)
+    return _wa_v19_generar_respuesta_anterior(texto, parsed, meta, contexto)
+
+
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v19
