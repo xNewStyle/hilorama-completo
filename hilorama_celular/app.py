@@ -10270,3 +10270,253 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
 
 
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v19
+
+# -----------------------------------------------------------------------------
+# V20 - Resolver listas con código + color sin equivocarse
+# -----------------------------------------------------------------------------
+# Corrige casos como:
+#   Blanco 01- 2
+#   Hueso 26- 1
+# Cuando el código no existe en el hilo actual o el código no coincide con el
+# nombre/color escrito por la clienta, el agente NO debe agregar el producto
+# equivocado. Primero intenta resolver por el nombre del color dentro del hilo
+# confirmado; si no es claro, pregunta.
+
+_WA_V20_COLOR_BASES = [
+    'blanco', 'negro', 'hueso', 'rojo', 'vino', 'rosa', 'azul', 'cielo', 'marino',
+    'verde', 'amarillo', 'lila', 'morado', 'cafe', 'café', 'gris', 'beige', 'arena',
+    'camel', 'canario', 'uva', 'naranja', 'durazno', 'lavanda', 'palo de rosa',
+    'palo rosa', 'piel', 'carne', 'trigo', 'mandarina', 'pizarra', 'botella',
+    'bandera', 'turquesa', 'agua', 'chocolate'
+]
+
+_WA_V20_ALIASES_COLOR = {
+    'rojo escolar': 'rojo',
+    'rosa bebe': 'rosa',
+    'rosa bebé': 'rosa',
+    'azul bebe': 'azul',
+    'azul bebé': 'azul',
+    'azul cielo': 'cielo',
+    'cafe': 'café',
+    'cafe oscuro': 'café',
+    'café oscuro': 'café',
+    'cafe claro': 'café',
+    'café claro': 'café',
+}
+
+
+def _wa_v20_norm(v):
+    try:
+        return _wa_memoria_norm(v or '')
+    except Exception:
+        return _wa_v17_norm(v or '')
+
+
+def _wa_v20_color_tokens(desc):
+    d = _wa_v20_norm(desc or '')
+    if not d:
+        return []
+    toks = []
+    for k, v in _WA_V20_ALIASES_COLOR.items():
+        if _wa_v20_norm(k) in d:
+            toks.append(_wa_v20_norm(v))
+    for b in _WA_V20_COLOR_BASES:
+        bn = _wa_v20_norm(b)
+        if bn and bn in d:
+            toks.append(bn)
+    # Quitar duplicados conservando orden
+    out = []
+    for x in toks:
+        if x and x not in out:
+            out.append(x)
+    return out
+
+
+def _wa_v20_desc_compatible_con_producto(prod, desc):
+    """True si el texto color/código de la clienta coincide con el producto."""
+    d = _wa_v20_norm(desc or '')
+    if not d:
+        return True
+    color = _wa_v20_norm((prod or {}).get('color') or (prod or {}).get('nombre') or '')
+    if not color:
+        return False
+    if d in color or color in d:
+        return True
+    for token in _wa_v20_color_tokens(d):
+        if token and token in color:
+            return True
+    return False
+
+
+def _wa_v20_buscar_por_desc(productos_ctx, desc):
+    """Resolver por nombre/color dentro del hilo actual, con fallback a color base."""
+    desc = str(desc or '').strip()
+    if not desc:
+        return None, []
+    try:
+        prod, opciones = _wa_resolver_producto_por_color(productos_ctx, desc)
+        if prod:
+            return prod, opciones or []
+        if opciones and len(opciones) == 1:
+            return opciones[0], opciones
+    except Exception:
+        opciones = []
+
+    # Fallback: blanco/hueso/rojo escolar/etc. Busca una sola coincidencia clara.
+    for token in _wa_v20_color_tokens(desc):
+        try:
+            prod, opciones = _wa_resolver_producto_por_color(productos_ctx, token)
+            if prod:
+                return prod, opciones or []
+            if opciones and len(opciones) == 1:
+                return opciones[0], opciones
+        except Exception:
+            pass
+    return None, opciones or []
+
+
+def _wa_v20_nombre_producto(prod):
+    if not prod:
+        return ''
+    hilo = str(prod.get('hilo') or '').strip()
+    codigo = str(prod.get('codigo') or '').strip()
+    color = str(prod.get('color') or '').strip()
+    return ' '.join(x for x in [hilo, codigo, color] if x).strip() or str(prod.get('nombre') or 'producto')
+
+
+def _wa_v20_merge_pedidos(pedidos):
+    merged = {}
+    for p in pedidos or []:
+        key = str(p.get('producto_id') or p.get('id') or p.get('codigo') or '') + '|' + str(p.get('marca') or '') + '|' + str(p.get('hilo') or '')
+        if key in merged:
+            merged[key]['cantidad'] = int(merged[key].get('cantidad') or 0) + int(p.get('cantidad') or 1)
+        else:
+            merged[key] = p
+    return list(merged.values())
+
+
+_wa_v20_resolver_items_anterior = _wa_v17_resolver_items_lista
+
+
+def _wa_v17_resolver_items_lista(items, productos, marca_parser='', hilo_parser=''):
+    """V20: no agregar un código si el nombre escrito por la clienta lo contradice."""
+    marca_parser = _wa_v19_clean_selector(marca_parser)
+    hilo_parser = _wa_v19_clean_selector(hilo_parser)
+
+    productos_ctx = list(productos or [])
+    if marca_parser:
+        mn = _wa_v20_norm(marca_parser)
+        productos_ctx = [p for p in productos_ctx if _wa_v20_norm(p.get('marca') or '') == mn]
+    if hilo_parser:
+        productos_ctx = _v6_products_for_hilo(productos_ctx, hilo_parser)
+
+    pedidos = []
+    preguntas = []
+    errores = []
+    advertencias = []
+
+    code_map_ctx = _v6_code_map(productos_ctx)
+    code_map_all = _v6_code_map(productos or [])
+
+    for it in items or []:
+        code_raw = str(it.get('codigo') or '').strip()
+        code = code_raw.lstrip('0') or code_raw
+        desc = str(it.get('desc') or '').strip()
+        qty = int(it.get('cantidad') or 1)
+        raw = str(it.get('raw') or '').strip()
+        prod = None
+
+        matches = []
+        if code:
+            matches = code_map_ctx.get(code) or []
+            if not matches and not hilo_parser:
+                matches = code_map_all.get(code) or []
+            if matches:
+                normales = [p for p in matches if not any(x in _wa_v20_norm(p.get('color') or '') for x in ['combo', 'paquete', 'surtido'])]
+                matches = normales or matches
+                familias = sorted(set(_v6_hilo_family(p.get('hilo') or '') for p in matches))
+                if not hilo_parser and len(familias) > 1:
+                    opts = ', '.join(sorted(set(str(p.get('hilo') or '') for p in matches))[:5])
+                    preguntas.append(f"El código {code} aparece en varios hilos ({opts}). ¿De cuál hilo lo agrego?")
+                    continue
+                prod_code = sorted(matches, key=lambda p: int(p.get('stock') or 0), reverse=True)[0]
+
+                # Si la línea trae descripción, validar que el código coincida con el color.
+                if desc and not _wa_v20_desc_compatible_con_producto(prod_code, desc):
+                    prod_desc, opciones_desc = _wa_v20_buscar_por_desc(productos_ctx, desc)
+                    if prod_desc and str(prod_desc.get('id') or '') != str(prod_code.get('id') or ''):
+                        prod = prod_desc
+                        advertencias.append(
+                            f"V20: en '{raw}' el código {code} corresponde a {_wa_v20_nombre_producto(prod_code)}, "
+                            f"pero el texto dice '{desc}'. Se resolvió por nombre/color como {_wa_v20_nombre_producto(prod_desc)}."
+                        )
+                    elif prod_desc:
+                        prod = prod_code
+                    else:
+                        preguntas.append(
+                            f"En '{raw}', el código {code} corresponde a {_wa_v20_nombre_producto(prod_code)}, "
+                            f"pero el texto dice '{desc}'. ¿Agrego el código {code} o el color '{desc}'?"
+                        )
+                        continue
+                else:
+                    prod = prod_code
+            else:
+                # Código no ubicado en ese hilo. Si hay nombre/color, intentar por nombre antes de marcar error.
+                if desc:
+                    prod_desc, opciones_desc = _wa_v20_buscar_por_desc(productos_ctx, desc)
+                    if prod_desc:
+                        prod = prod_desc
+                        advertencias.append(
+                            f"V20: en '{raw}' no se ubicó el código {code} en {hilo_parser or 'el contexto'}, "
+                            f"se resolvió por color como {_wa_v20_nombre_producto(prod_desc)}."
+                        )
+                    elif opciones_desc:
+                        opts = ', '.join([f"{p.get('codigo')} {p.get('color')}".strip() for p in opciones_desc[:5]])
+                        preguntas.append(f"Para '{raw}' no ubiqué el código {code}; por color encontré: {opts}. ¿Cuál le agrego?")
+                        continue
+                    else:
+                        errores.append(code)
+                        preguntas.append(f"No ubiqué '{raw}' en {hilo_parser or 'almacén'}. ¿Me confirma el código o tono?")
+                        continue
+                else:
+                    errores.append(code)
+                    continue
+        elif desc:
+            if not hilo_parser:
+                preguntas.append(f"Para '{raw}' necesito confirmar el hilo antes de agregarlo.")
+                continue
+            prod_desc, opciones_desc = _wa_v20_buscar_por_desc(productos_ctx, desc)
+            if prod_desc:
+                prod = prod_desc
+            elif opciones_desc:
+                opts = ', '.join([f"{p.get('codigo')} {p.get('color')}".strip() for p in opciones_desc[:5]])
+                preguntas.append(f"Para '{desc}' tengo varias opciones: {opts}. ¿Cuál le agrego?")
+                continue
+            else:
+                preguntas.append(f"No ubiqué exacto '{desc}', ¿me confirma código o tono?")
+                continue
+
+        if prod:
+            pedidos.append(_wa_v17_producto_dict(prod, qty))
+
+    pedidos = _wa_v20_merge_pedidos(pedidos)
+    return pedidos, sorted(set(preguntas)), sorted(set(str(e) for e in errores if e)), sorted(set(advertencias))
+
+
+_wa_v20_generar_respuesta_anterior = _generar_respuesta_wa_con_openai
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    """V20: listas con conflictos código/color siguen siendo pedido, no foto ni precio."""
+    try:
+        modo = str(parsed.get('modo') or '')
+        if ('lista_whatsapp_real' in modo or 'resolver_lista_previa' in modo) and (parsed.get('pedidos') or []):
+            resp = _wa_v18_respuesta_lista(parsed)
+            if resp:
+                return resp, 'reglas_hilorama_v20_lista_codigo_color_seguro'
+    except Exception as exc:
+        print('WARN respuesta lista v20:', exc, flush=True)
+    return _wa_v20_generar_respuesta_anterior(texto, parsed, meta, contexto)
+
+# Mantener endpoint V19, pero usando el resolver V20 por sobrescritura global.
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v19
