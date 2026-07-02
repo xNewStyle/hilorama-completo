@@ -60,7 +60,9 @@ HILO_ALIASES = {
 }
 
 COLOR_ALIASES = {
-    "blanco": ["blanco", "blanca", "hueso", "marfil", "crudo", "white"],
+    # Ojo: blanco y hueso NO son lo mismo en todos los hilos.
+    # Se separan para no convertir "hueso" en blanco cuando la clienta escribió hueso.
+    "blanco": ["blanco", "blanca", "white"],
     "hueso": ["hueso", "marfil", "crudo", "ivory", "crema"],
     "negro": ["negro", "negra", "black"],
     "rojo": ["rojo", "roja", "rojo escolar", "escolar"],
@@ -82,6 +84,8 @@ NORMALIZACIONES = [
     (r"\bganas\s+de\s+colores\b", "gama de colores"),
     (r"\bvigenete\b", "vigente"),
     (r"\bcoti+iza\b", "cotiza"),
+    (r"\bcotisar\b|\bcotisarme\b|\bcotizame\b|\bcot[íi]zame\b", "cotiza"),
+    (r"\bporfavro\b|\bporfa\b", "por favor"),
     (r"\bkonfy\b|\bkomfi\b|\bcomfy\b", "komfy mini"),
     (r"\bbelluto\b|\bveluto\b|\bvellluto\b", "velluto"),
     (r"\bazul\s+sielo\b", "azul cielo"),
@@ -313,7 +317,7 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     elif re.search(r"\b(todo|todos|toda|todas)\s+(?:seria|serian|es|son)?\s*(?:de|en)?\s*(velluto|komfy|kurumi|kairo|trapillo)\b", texto):
         principal = "confirmacion_contexto"
         estado = "preparando_cotizacion"
-    elif re.search(r"\b(quita|quitame|corrige|corregir|me equivoque|cambia)\b", texto):
+    elif re.search(r"\b(quita|quite|quitar|quitame|quítame|corrige|corregir|me equivoque|cambia)\b", texto):
         principal = "correccion_pedido"
     elif _parece_lista_o_pedido(texto, memoria):
         principal = "pedido_lista"
@@ -646,9 +650,21 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
         matches = normales or matches
         fams = sorted({_hilo_family(p.get("hilo")) for p in matches})
         if not hilo_ctx and len(fams) > 1:
-            opciones = ", ".join(_hilo_display(f) for f in fams[:4])
-            out["preguntas"].append(f"El codigo {codigo_raw or codigo} aparece en varios hilos. Lo busca en {opciones}?")
-            return out
+            # Heurística comercial: muchos códigos cortos de Komfy Mini (01,06,08,14,20,99)
+            # aparecen en varios catálogos, pero si hay stock claro en Komfy Mini lo preferimos
+            # para evitar mandar todo a revisión cuando la clienta sí dio una lista normal.
+            komfy = [p for p in matches if _hilo_family(p.get("hilo")) == "KOMFY MINI" and _stock(p) > 0]
+            velluto = [p for p in matches if _hilo_family(p.get("hilo")) == "VELLUTO" and _stock(p) > 0]
+            if codigo_raw.zfill(2) in {"01", "06", "08", "14", "20", "99"} and komfy:
+                matches = komfy
+                fams = ["KOMFY MINI"]
+            elif codigo_raw in {"55", "56", "60", "216", "310", "329", "428", "429", "466", "493", "532", "550"} and velluto:
+                matches = velluto
+                fams = ["VELLUTO"]
+            else:
+                opciones = ", ".join(_hilo_display(f) for f in fams[:4])
+                out["preguntas"].append(f"El codigo {codigo_raw or codigo} aparece en varios hilos. Lo busca en {opciones}?")
+                return out
         prod_codigo = sorted(matches, key=lambda p: _stock(p), reverse=True)[0]
         if desc and not _desc_compatible(prod_codigo, desc):
             if prod_por_desc:
@@ -867,7 +883,7 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
     sugerencias = resolucion.get("sugerencias") or []
     envio = envio or {}
 
-    def decision(tipo, resumen, opciones=None, prioridad="media"):
+    def decision(tipo, resumen, opciones=None, prioridad="media", respuesta_provisional=None):
         return {
             "requiere_humano": True,
             "tipo_decision": tipo,
@@ -876,9 +892,11 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
             "opciones_sugeridas": opciones or [
                 "Responder manualmente",
                 "Mantener condiciones actuales",
-                "Pedir mas informacion a la clienta",
+                "Pedir más información a la clienta",
             ],
-            "respuesta_provisional": RESPUESTA_REVISION_HUMANA,
+            # Este texto sí puede ver la clienta. Debe ser humano y específico,
+            # no una frase técnica ni genérica cuando ya sabemos qué falta.
+            "respuesta_provisional": respuesta_provisional or RESPUESTA_REVISION_HUMANA,
         }
 
     if re.search(r"\b(descuento|rebaja|mejor precio|mejora(?:r|me)? el precio|precio especial|precio final|menos precio|bajar(?:le)?|ajustar precio)\b", texto):
@@ -924,9 +942,10 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
     if envio.get("requiere_humano"):
         return decision(
             envio.get("tipo_decision") or "envio_sin_tarifa_segura",
-            envio.get("resumen_para_admin") or "Envia.com fallo o no regreso una tarifa segura. Se requiere revisar envio manualmente.",
-            envio.get("opciones_sugeridas") or ["Revisar tarifa manual", "Pedir otro CP/datos de envio", "Responder manualmente"],
+            envio.get("resumen_para_admin") or "Envia.com falló o no regresó una tarifa segura. Se requiere revisar envío manualmente.",
+            envio.get("opciones_sugeridas") or ["Revisar tarifa manual", "Pedir otro CP/datos de envío", "Responder manualmente"],
             "alta",
+            respuesta_provisional=envio.get("respuesta") or RESPUESTA_REVISION_HUMANA,
         )
 
     if re.search(r"\b(reembolso|devolucion|devoluci[oó]n|cambio|cambiarlo|garantia|garant[ií]a|cancelar compra|cancelacion|cancelaci[oó]n)\b", texto):
@@ -956,16 +975,19 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
         if not re.search(r"\b(comprobante|foto|ticket|recibo|captura|adjunto|mando|mande|envio|envi[oó])\b", texto):
             return decision(
                 "pago_sin_comprobante",
-                "La clienta dice que ya pago pero no envio comprobante en el mensaje. Se requiere revision antes de avanzar.",
+                "La clienta dice que ya pagó pero no envió comprobante en el mensaje. Se requiere revisión antes de avanzar.",
                 ["Pedir comprobante", "Revisar movimientos bancarios", "Responder manualmente"],
                 "alta",
+                respuesta_provisional=f"Perfecto {EMOJI_OK} me puede mandar foto del comprobante para revisarlo, por favor.",
             )
 
     insuficientes = [
         p for p in pedidos
         if p.get("es_inventariable", True) and int(p.get("stock") or 0) < int(p.get("cantidad") or 1)
     ]
-    if insuficientes:
+    # Si solo preguntó disponibilidad, no mandamos a decisión humana por stock 0;
+    # respondemos como vendedora diciendo que no aparece disponible.
+    if insuficientes and principal not in ("consulta_stock",):
         detalle = "; ".join(
             f"{_linea_producto(p)} stock {int(p.get('stock') or 0)} / pidio {int(p.get('cantidad') or 1)}"
             for p in insuficientes[:5]
@@ -1039,7 +1061,10 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
 
     if principal == "pide_gama":
         if recursos.get("respuesta"):
-            return recursos["respuesta"]
+            resp_rec = recursos["respuesta"]
+            if "gama" not in _norm(resp_rec):
+                resp_rec = f"Claro {EMOJI_OK} le comparto la gama/carta de colores. " + str(resp_rec)
+            return resp_rec
         hilo = _hilo_display(contexto.get("hilo_actual") or "")
         return f"Claro {EMOJI_OK} le comparto la gama de colores de {hilo or 'ese hilo'}. Si le gusta algun tono, me pasa el codigo y le reviso disponibilidad."
 
@@ -1056,7 +1081,7 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
         return _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, extraccion)
 
     if principal == "envio":
-        return f"Claro {EMOJI_OK} para decirle el costo exacto de envío necesito su código postal, por favor."
+        return f"Claro {EMOJI_OK} para decirle el costo exacto de envío necesito su código postal (CP), por favor."
 
     if principal == "cp_envio":
         if envio.get("respuesta"):
@@ -1077,6 +1102,22 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
         if hilo:
             return f"Claro {EMOJI_OK} mándeme la lista cuando guste y se la cotizo en {hilo}."
         return f"Claro {EMOJI_OK} mándeme la lista cuando guste y con gusto se la cotizo."
+
+    if principal == "correccion_pedido":
+        nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)
+        mem = contexto.get("memoria_previa") or {}
+        prev = _cargar_lista_pendiente(mem)
+        # Respuesta humana: no prometemos que ya quedó aplicado si falta UI, pero sí entendemos la corrección.
+        if re.search(r"\b(quita|quitame|quítame|quite|quitar)\b", texto) and nums:
+            extra_prev = ""
+            if prev:
+                cods = ", ".join(str(x.get("codigo") or x.get("codigo_raw") or "").strip() for x in prev[:6] if (x.get("codigo") or x.get("codigo_raw")))
+                if cods:
+                    extra_prev = f" Tenía en la lista: {cods}."
+            return f"Claro {EMOJI_OK} corrijo la cotización: quito el código {nums[-1]}.{extra_prev} Le actualizo la lista para que quede correcto."
+        if nums:
+            return f"Claro {EMOJI_OK} corrijo la cotización y dejo el código {nums[-1]} como me indica. Le actualizo el pedido."
+        return f"Claro {EMOJI_OK} con gusto le corrijo la cotización. ¿Me confirma qué tono o cantidad cambiamos?"
 
     if resolucion.get("pedidos"):
         return _respuesta_pedido(resolucion, contexto)
@@ -1166,8 +1207,8 @@ def _respuesta_producto_no_manejado(texto, productos):
             alternativas.append(_hilo_display(fam))
     extra = ", ".join(alternativas[:3]) if alternativas else "otras opciones del catalogo"
     if "abuelita" in _norm(texto):
-        return f"La Abuelita por el momento no la manejamos {EMOJI_OK} pero puedo ofrecerle alternativas que sí tenemos, como {extra}. ¿Para qué proyecto lo ocuparía?"
-    return f"Por el momento no me aparece ese producto en almacén {EMOJI_OK} pero puedo revisarle alternativas que sí tenemos, como {extra}."
+        return f"La Abuelita por el momento no la manejamos {EMOJI_OK} pero le puedo mostrar opciones parecidas que sí tenemos, como {extra}. ¿Para qué proyecto lo ocuparía?"
+    return f"Por el momento no me aparece ese producto en almacén {EMOJI_OK} pero puedo revisarle opciones que sí tenemos, como {extra}."
 
 
 def _respuesta_pregunta_corta(resolucion, contexto):
@@ -1220,7 +1261,7 @@ def _respuesta_pedido(resolucion, contexto):
     if ok:
         total = sum(int(p.get("cantidad") or 1) for p in ok)
         lineas = [f"* {_linea_producto(p)} x{int(p.get('cantidad') or 1)}" for p in ok]
-        partes.append(f"Claro {EMOJI_OK} le agrego:\n\n" + "\n".join(lineas))
+        partes.append(f"Claro {EMOJI_OK} le agrego a su lista/pedido:\n\n" + "\n".join(lineas))
         partes.append(f"Total: {total} pieza" + ("s." if total != 1 else "."))
         if contexto.get("total_esperado") and total != int(contexto.get("total_esperado") or 0):
             partes.append(f"Me quedan {int(contexto.get('total_esperado') or 0) - total} piezas por completar de las que me indicó.")
@@ -1238,7 +1279,7 @@ def _respuesta_pedido(resolucion, contexto):
         else:
             partes.append(_limpiar_pregunta_publica(pendientes[0], contexto))
     if ok and not faltantes and not agotados and not pendientes and not errores:
-        partes.append("Le preparo su cotización.")
+        partes.append("Le preparo su cotización del pedido.")
     return "\n\n".join(partes).strip()
 
 
