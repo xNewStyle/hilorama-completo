@@ -1,0 +1,937 @@
+[
+  {
+    "category": "v39_accesorio_relleno_precio_stock",
+    "turns": [
+      "Oye una pregunta",
+      "maneja relleno medio kilo?",
+      "me puede decir precio o si hay?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "relleno",
+        "medio kilo",
+        "manej",
+        "tenemos",
+        "precio",
+        "stock",
+        "hay",
+        "disponible"
+      ],
+      "must_not_only_ask_hilo_codigo": true,
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    },
+    "objetivo": "Debe reconocer relleno como accesorio real; no pedir hilo/código ni cotizar 'Pregunta x1'."
+  },
+  {
+    "category": "v39_accesorio_ojo_followup",
+    "turns": [
+      "hola",
+      "tienes ojo de seguridad negro de 14 mm?",
+      "y bolsa de 100 cuanto?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "ojo",
+        "seguridad",
+        "14",
+        "negro",
+        "precio",
+        "bolsa",
+        "manej",
+        "tenemos"
+      ],
+      "must_not_only_ask_hilo_codigo": true,
+      "must_contain_all": [
+        "ojo",
+        "seguridad"
+      ],
+      "must_not_contain_any": [
+        "Komfy",
+        "Komfy Mini",
+        "madeja"
+      ]
+    },
+    "objetivo": "Mantener contexto de accesorio en seguimiento de precio."
+  },
+  {
+    "category": "v39_accesorio_gancho_medida",
+    "turns": [
+      "disculpa",
+      "manejan ganchos de aluminio?",
+      "ocupo del 4.5 y del 5 si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "aluminio",
+        "4.5",
+        "5",
+        "medida",
+        "manej",
+        "revis"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "No tratar 'disculpa' ni medidas como producto raro."
+  },
+  {
+    "category": "v39_saludo_no_cotizar_pregunta",
+    "turns": [
+      "Oye una pregunta"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "dígame",
+        "digame",
+        "con gusto",
+        "le atiendo"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "cotizo"
+      ]
+    },
+    "objetivo": "Un abridor humano no se debe cotizar."
+  },
+  {
+    "category": "v39_saludo_disculpa_no_generico",
+    "turns": [
+      "Disculpa"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "dígame",
+        "digame",
+        "con gusto",
+        "le atiendo"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "me indica qué hilo, color o código"
+      ]
+    },
+    "objetivo": "Disculpa debe ser apertura, no producto ni pregunta genérica dura."
+  },
+  {
+    "category": "v39_hilo_dinamico_kotton_milk_precio",
+    "turns": [
+      "hola",
+      "cuanto cuesta kotton milk?",
+      "y tienes colores claros?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "kotton",
+        "milk",
+        "precio",
+        "colores",
+        "tonos",
+        "claro"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Detectar hilos reales del almacén aunque no estén en aliases fijos."
+  },
+  {
+    "category": "v39_hilo_dinamico_baby_best",
+    "turns": [
+      "buen día",
+      "manejas baby best?",
+      "sirve para bebé?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "baby",
+        "best",
+        "bebé",
+        "bebe",
+        "suave",
+        "manej"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Reconocer producto/hilo real y responder uso sin pedir código."
+  },
+  {
+    "category": "v39_marca_sola_karina",
+    "turns": [
+      "hola",
+      "maneja karina?",
+      "qué hilos de karina tienes?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "karina",
+        "komfy",
+        "kurumi",
+        "kotton",
+        "trapillo",
+        "hilos",
+        "maneja"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Marca sola debe responder catálogo por marca."
+  },
+  {
+    "category": "v39_marca_sola_alize",
+    "turns": [
+      "buenas tardes",
+      "trabajas alize?",
+      "de alize tienes velluto?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "alize",
+        "velluto",
+        "manej",
+        "tenemos"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Marca y familia deben mantener contexto."
+  },
+  {
+    "category": "v39_recomendacion_no_repetir_no_se",
+    "turns": [
+      "hola",
+      "quiero hacer amigurumis pero no se que hilo me conviene",
+      "algo suave y económico"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "komfy",
+        "kurumi",
+        "amigurumi",
+        "suave",
+        "económico",
+        "economico"
+      ],
+      "must_not_contain_any": [
+        "no se vaya",
+        "no sé",
+        "no se"
+      ]
+    },
+    "objetivo": "El cliente puede decir 'no sé', pero la respuesta no debe sonar insegura ni repetir 'no se vaya'."
+  },
+  {
+    "category": "v39_recomendacion_amigurumi_ojitos",
+    "turns": [
+      "quiero hacer un osito de 20 cm",
+      "quiero que quede suave pero no tan caro",
+      "también ocuparía ojos de seguridad"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "amigurumi",
+        "suave",
+        "ojos",
+        "seguridad"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Recomendar hilo y detectar accesorio adicional."
+  },
+  {
+    "category": "v39_recomendacion_definicion_vs_suave",
+    "turns": [
+      "qué me conviene para amigurumi chiquito?",
+      "quiero que se marque bien el punto no tan pachon"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "kurumi",
+        "definición",
+        "definicion",
+        "punto",
+        "amigurumi"
+      ],
+      "must_not_contain_any": [
+        "no se"
+      ]
+    },
+    "objetivo": "Distinguir suave/pachón vs definición."
+  },
+  {
+    "category": "v39_confirmacion_todo_es_velluto",
+    "turns": [
+      "buenas tardes le paso lista",
+      "60\n310\n107\n329\n466\n26\n87",
+      "perdón todo eso sería de belluto"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "velluto",
+        "lista",
+        "tomo",
+        "confirm",
+        "60",
+        "310"
+      ],
+      "must_not_contain_any": [
+        "Perdon Todo Eso Seria x1",
+        "Me confirma si quiere perdon"
+      ]
+    },
+    "objetivo": "Confirmación de contexto no debe convertirse en color suelto."
+  },
+  {
+    "category": "v39_confirmacion_contexto_despues_lista_sin_hilo",
+    "turns": [
+      "te mando códigos",
+      "55 60 429 530",
+      "todos son velluto porfa"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "530",
+        "tomo",
+        "lista"
+      ],
+      "must_not_contain_any": [
+        "Todos Son Velluto x1"
+      ]
+    },
+    "objetivo": "Lista de códigos + aclaración posterior."
+  },
+  {
+    "category": "v39_pedido_cantidades_en_palabras",
+    "turns": [
+      "quiero velluto",
+      "dos del 55 y cinco del 60"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 5
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "2",
+        "5",
+        "velluto"
+      ]
+    },
+    "objetivo": "Números escritos como palabras."
+  },
+  {
+    "category": "v39_pedido_todos_x2",
+    "turns": [
+      "velluto por favor",
+      "55, 60, 429 todos x2"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 2
+        },
+        {
+          "codigo": "429",
+          "cantidad": 2
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "x2",
+        "2"
+      ]
+    },
+    "objetivo": "Aplicar cantidad global a lista."
+  },
+  {
+    "category": "v39_pedido_formato_invertido",
+    "turns": [
+      "me cotiza velluto",
+      "55 x 3\n60 x 2\n429 x 1"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 3
+        },
+        {
+          "codigo": "60",
+          "cantidad": 2
+        },
+        {
+          "codigo": "429",
+          "cantidad": 1
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429"
+      ]
+    },
+    "objetivo": "Formato código x cantidad por líneas."
+  },
+  {
+    "category": "v39_pedido_color_alias",
+    "turns": [
+      "quiero komfy mini",
+      "3 negros y 2 blancos"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "negro",
+        "blanco",
+        "3",
+        "2"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Color por alias con cantidad sin código."
+  },
+  {
+    "category": "v39_pedido_codigos_ambiguuos_con_contexto",
+    "turns": [
+      "komfy mini porfa",
+      "2 del 1 y 2 del 99"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "1",
+          "cantidad": 2
+        },
+        {
+          "codigo": "99",
+          "cantidad": 2
+        }
+      ],
+      "must_contain_any": [
+        "komfy",
+        "99",
+        "1"
+      ]
+    },
+    "objetivo": "Código 1/01 y 99 deben respetar Komfy Mini."
+  },
+  {
+    "category": "v39_cambio_hilo_a_mitad",
+    "turns": [
+      "quiero velluto",
+      "2 del 55",
+      "mejor ese no, ahora quiero komfy mini",
+      "2 del 01 y 2 del 99"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99"
+      ],
+      "must_not_contain_any": [
+        "Velluto 01",
+        "Velluto 99"
+      ]
+    },
+    "objetivo": "Cambio explícito de hilo no debe arrastrar contexto anterior."
+  },
+  {
+    "category": "v39_correccion_no_duplicar",
+    "turns": [
+      "velluto",
+      "10 del 60",
+      "perdón no eran 10 eran 2"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "2",
+        "60",
+        "corrijo",
+        "actualizo"
+      ],
+      "must_not_contain_any": [
+        "20 piezas",
+        "12 piezas"
+      ]
+    },
+    "objetivo": "Corrección de cantidad no debe sumar duplicado."
+  },
+  {
+    "category": "v39_quitar_producto",
+    "turns": [
+      "velluto",
+      "2 del 55 y 2 del 60",
+      "quita el 60 mejor"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "quito",
+        "60",
+        "actualizo"
+      ],
+      "must_not_contain_any": [
+        "agrego"
+      ]
+    },
+    "objetivo": "Quitar código de cotización."
+  },
+  {
+    "category": "v39_agregar_accesorio_a_pedido",
+    "turns": [
+      "quiero velluto",
+      "2 del 55",
+      "agrega también un gancho del 5 si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "5",
+        "agrego",
+        "revis",
+        "cotiz"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Pedido mixto hilo + accesorio."
+  },
+  {
+    "category": "v39_envio_cp_con_pedido_activo",
+    "turns": [
+      "quiero velluto",
+      "5 del 55 y 5 del 60",
+      "cuanto sería con envío al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envío",
+        "envio",
+        "reviso",
+        "manual",
+        "paquetería",
+        "paqueteria"
+      ],
+      "must_not_contain_any": [
+        "97000 x1"
+      ]
+    },
+    "objetivo": "CP no se debe tomar como código/producto."
+  },
+  {
+    "category": "v39_envio_cp_sin_pedido",
+    "turns": [
+      "hola",
+      "cuánto sale el envío al 97000?"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envío",
+        "envio",
+        "pedido",
+        "paquetería",
+        "paqueteria",
+        "reviso"
+      ],
+      "must_not_contain_any": [
+        "97000 x1"
+      ]
+    },
+    "objetivo": "Si no hay pedido, pedir lista o explicar que depende del pedido."
+  },
+  {
+    "category": "v39_descuento_no_aprobar",
+    "turns": [
+      "quiero 20 velluto surtidos",
+      "me mejoras precio si llevo todo eso?"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "reviso",
+        "confirmo",
+        "mejor opción",
+        "opcion"
+      ],
+      "must_not_contain_any": [
+        "descuento aprobado",
+        "se lo dejo",
+        "$55"
+      ]
+    },
+    "objetivo": "Decisión comercial debe ir a humano."
+  },
+  {
+    "category": "v39_no_manejado_abuelita_recomienda",
+    "turns": [
+      "manejas estambre la abuelita?",
+      "si no tienes cuál me recomiendas parecido?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "no",
+        "manejo",
+        "recom",
+        "opción",
+        "opcion",
+        "kurumi",
+        "kotton",
+        "komfy"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Producto no manejado + alternativa."
+  },
+  {
+    "category": "v39_catalogo_vs_pedido",
+    "turns": [
+      "me mandas la carta de colores de velluto",
+      "y luego te paso pedido"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "carta",
+        "gama",
+        "colores",
+        "velluto"
+      ],
+      "must_not_contain_any": [
+        "Carta De Colores x1",
+        "pedido x1"
+      ]
+    },
+    "objetivo": "Pedir catálogo no debe crear cotización."
+  },
+  {
+    "category": "v39_foto_tono_no_agregar",
+    "turns": [
+      "me pasas foto del tono 429 de velluto?",
+      "y también del 60"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "foto",
+        "429",
+        "60",
+        "tono"
+      ],
+      "must_not_contain_any": [
+        "agrego",
+        "Total agregado"
+      ]
+    },
+    "objetivo": "Fotos de tonos no son pedido."
+  },
+  {
+    "category": "v39_cliente_manda_total_para_validar",
+    "turns": [
+      "velluto",
+      "5 del 55 y 10 del 60",
+      "serían 15 piezas verdad?"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "15",
+        "piezas",
+        "sí",
+        "si",
+        "correcto"
+      ],
+      "must_not_contain_any": [
+        "15 x1",
+        "mejoras precio"
+      ]
+    },
+    "objetivo": "Número total de validación no debe volverse producto."
+  },
+  {
+    "category": "v39_lista_con_ruido_whatsapp",
+    "turns": [
+      "[10:33 a. m., 2/7/2026] Cliente: hola",
+      "[10:34 a. m., 2/7/2026] Cliente: velluto 55 x2; 60 x3"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 3
+        }
+      ],
+      "must_not_contain_any": [
+        "2026 x1",
+        "1033 x1"
+      ]
+    },
+    "objetivo": "No convertir horarios/fechas del export de WhatsApp en códigos."
+  },
+  {
+    "category": "v39_codigo_inexistente_sugerir",
+    "turns": [
+      "velluto",
+      "2 del 9999"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "9999",
+        "no",
+        "aparece",
+        "confirm",
+        "parecid",
+        "opción",
+        "opcion"
+      ],
+      "must_not_contain_any": [
+        "agrego"
+      ]
+    },
+    "objetivo": "Código inexistente no debe agregarse."
+  },
+  {
+    "category": "v39_stock_insuficiente",
+    "turns": [
+      "velluto",
+      "quiero 999 del 60"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "60",
+        "stock",
+        "disponible",
+        "reviso",
+        "no me aparece",
+        "piezas"
+      ],
+      "must_not_contain_any": [
+        "Total agregado: 999"
+      ]
+    },
+    "objetivo": "Cantidad exagerada debe pedir revisión de stock."
+  },
+  {
+    "category": "v39_pedido_mixto_hilos_diferentes",
+    "turns": [
+      "me cotizas",
+      "velluto 55 x2",
+      "komfy mini 99 x3",
+      "y trapillo negro 1"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "komfy",
+        "trapillo",
+        "55",
+        "99",
+        "negro"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Cambio de familia por línea."
+  },
+  {
+    "category": "v39_cliente_escribe_todo_junto",
+    "turns": [
+      "holaaa quiero3del55 y2del60 de belluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "55",
+        "60",
+        "velluto",
+        "3",
+        "2"
+      ],
+      "must_not_contain_any": [
+        "Holaaa Quiero"
+      ]
+    },
+    "objetivo": "Espacios faltantes comunes."
+  },
+  {
+    "category": "v39_producto_y_uso_no_precio",
+    "turns": [
+      "velluto pica?",
+      "es para cobija de bebé"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "suave",
+        "bebé",
+        "bebe",
+        "cobija"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Duda de uso/textura no debe pedir código."
+  },
+  {
+    "category": "v39_datos_pago",
+    "turns": [
+      "ya pagué",
+      "te mando el comprobante ahorita",
+      "me confirmas si llegó?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "comprobante",
+        "pago",
+        "reviso",
+        "confirmo",
+        "llegó",
+        "llego"
+      ],
+      "must_not_only_ask_hilo_codigo": true
+    },
+    "objetivo": "Seguimiento de pago no debe pedir hilo/código."
+  },
+  {
+    "category": "v39_mayorista_no_precio_autorizado",
+    "turns": [
+      "manejas precio de mayoreo?",
+      "serían como 100 piezas surtidas de velluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "mayoreo",
+        "reviso",
+        "confirmo",
+        "velluto"
+      ],
+      "must_not_contain_any": [
+        "descuento aprobado",
+        "se lo dejo"
+      ]
+    },
+    "objetivo": "Mayoreo es decisión comercial, no prometer descuento."
+  },
+  {
+    "category": "v39_apartar_no_prometer",
+    "turns": [
+      "me apartas 10 del 55?",
+      "te pago en la noche"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "reviso",
+        "confirmo",
+        "pago",
+        "cotización",
+        "cotizacion"
+      ],
+      "must_not_contain_any": [
+        "le aparto",
+        "apartado",
+        "apartar confirmado"
+      ]
+    },
+    "objetivo": "No prometer apartados si no está autorizado."
+  },
+  {
+    "category": "v39_mensaje_largo_cliente_real",
+    "turns": [
+      "Hola buenas noches, disculpa tanta molestia, quiero hacer unas vaquitas amigurumi, necesito blanco, negro, rosa para nariz y algo café, pero que no me salga carísimo, y también ojitos. Qué me recomiendas?"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "amigurumi",
+        "blanco",
+        "negro",
+        "rosa",
+        "café",
+        "cafe",
+        "ojitos",
+        "komfy",
+        "kurumi"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "Pregunta x1"
+      ]
+    },
+    "objetivo": "Mensaje largo de recomendación + colores + accesorios."
+  },
+  {
+    "category": "v39_confirmacion_si_a_pregunta_de_cantidad",
+    "turns": [
+      "tienes velluto negro?",
+      "sí, 5"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "negro",
+        "5"
+      ],
+      "must_not_contain_any": [
+        "Sí X1",
+        "Si x1"
+      ]
+    },
+    "objetivo": "Respuesta corta con cantidad debe usar contexto previo."
+  }
+]

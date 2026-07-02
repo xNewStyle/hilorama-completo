@@ -1,0 +1,22 @@
+Pega esto en Codex si prefieres que él aplique los cambios manualmente:
+
+Corrige el motor de WhatsApp IA Hilorama para pasar los 5 fallos del tester V38:
+
+1. En extraer_productos_y_cantidades, detectar cantidades en palabras antes de "del/de/código/tono":
+   "dos del 55" => codigo 55 cantidad 2; "cinco del 60" => codigo 60 cantidad 5.
+
+2. Detectar cantidad global en listas:
+   "55, 60, 429 todos x2" => 55 x2, 60 x2, 429 x2.
+   No tomar el número 2 como código de producto.
+
+3. Si la clienta pregunta "serían 15 piezas verdad?" y existe pedido_en_proceso en memoria,
+   sumar cantidades del pedido y responder confirmando si coincide.
+
+4. Si hay memoria de pago/comprobante y la clienta dice "me confirmas si llegó?",
+   responder sobre el comprobante, no pedir hilo/color/código.
+
+5. Si dice "te pago en la noche / mañana / al rato", eso es pago futuro, no pago realizado.
+   Responder sin prometer apartado: "lo reviso en su cotización y le confirmo disponibilidad; cuando realice el pago me manda comprobante".
+
+6. Extra: preguntas de accesorios con medidas como "ojo de seguridad negro de 14 mm" no deben inferir Komfy Mini por el número 14 ni por negro.
+   Reconocer "tienes/manejas/vendes" como consulta de manejo y responder accesorios.

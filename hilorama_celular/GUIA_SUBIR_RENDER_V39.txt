@@ -1,0 +1,32 @@
+GUIA RAPIDA SUBIR V39 A RENDER
+
+1) Abre PowerShell en tu proyecto:
+cd C:\Users\jorge\OneDrive\Escritorio\Hilorama
+
+2) Copia/reemplaza la carpeta hilorama_celular de este ZIP dentro de tu proyecto.
+
+3) Revisa cambios:
+git status
+
+4) Guarda cambios:
+git add .
+git commit -m "Fix WhatsApp IA V39 tester humano"
+
+5) Sube a GitHub:
+git push origin main
+
+Si tu rama es master:
+git push origin master
+
+6) En Render:
+- Si tienes Auto Deploy activo, espera a que termine el deploy.
+- Si no se actualiza solo: entra a tu servicio > Manual Deploy > Deploy latest commit.
+
+7) Cuando termine el deploy, corre el tester:
+python hilorama_celular/tools/whatsapp_ia_human_tester_v39.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 50 --sleep 0.2
+
+8) Los reportes se guardan en:
+wa_tester_reports
+
+Para abrir esa carpeta:
+explorer .\wa_tester_reports

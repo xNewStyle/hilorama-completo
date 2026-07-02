@@ -352,7 +352,7 @@ def _extraer_total_esperado(texto):
 def _es_consulta_manejo(texto):
     """Pregunta tipo: ¿manejan/tienen/venden Komfy Mini?"""
     t = _norm(texto)
-    return bool(re.search(r"\b(manejan|maneja|tienen|tiene|hay|venden|vende|trabajan|trabaja)\b", t))
+    return bool(re.search(r"\b(manejan|maneja|manejas|tienen|tiene|tienes|hay|venden|vende|vendes|trabajan|trabaja|trabajas)\b", t))
 
 
 def _es_consulta_accesorio(texto):
@@ -450,6 +450,14 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         estado = "conversacion_cerrada"
     elif _es_saludo_simple(texto):
         principal = "saludo"
+    elif re.search(r"\b(?:te|le)?\s*pago\s+(?:en la noche|al rato|mas tarde|más tarde|manana|mañana|hoy|luego|saliendo)\b", texto):
+        # V39: promesa de pago futuro no significa que ya pagó; no pedir comprobante todavía.
+        principal = "decision_comercial"
+        secundaria = "promesa_pago_futuro"
+    elif re.search(r"\b(llego|llegó|recibiste|recibio|recibió|te llego|te llegó|me confirmas si llego|me confirmas si llegó|confirmas si llego|confirmas si llegó)\b", texto) and ((memoria or {}).get("pago_pendiente") or re.search(r"comprobante|pago", _norm((memoria or {}).get("ultima_respuesta_enviada") or ""))):
+        # V39: seguimiento después de comprobante/pago: responder revisando, no pedir hilo/código.
+        principal = "comprobante"
+        estado = "esperando_comprobante"
     elif re.search(r"\b(comprobante|ya pague|ya pagado|ya quedo el pago|pago|transferencia|deposito|ticket|recibo)\b", texto):
         principal = "comprobante" if re.search(r"\b(comprobante|ticket|recibo|ya pague|ya quedo)\b", texto) else "pago"
         estado = "esperando_comprobante"
@@ -545,6 +553,10 @@ def _inferir_hilo_por_codigos_y_texto(texto, productos=None):
     Ejemplo: "3 del 06 y 6 del 99" casi siempre es Komfy Mini.
     """
     t = _norm(texto)
+    # V39: si el número es medida de accesorio (14 mm, 4.5 mm, bolsa de 100),
+    # no inferir Komfy/Velluto por códigos.
+    if re.search(r"\b(ojo|ojos|seguridad|gancho|ganchos|aguja|agujas|relleno|bolsa|paquete)\b", t):
+        return ""
     if detectar_hilos(t, productos):
         return ""
     # Preferimos los números que realmente parecen códigos, no cantidades.
@@ -654,9 +666,12 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     texto_sin_totales = _quitar_totales_y_cp(texto)
     items = []
 
-    # 5 del 55, 10 de 60
-    for m in re.finditer(r"(?<!\d)(\d{1,3})\s*(?:piezas?\s*)?(?:del|de|codigo|cod|tono)\s*#?(\d{1,4})(?!\d)", texto_sin_totales):
-        items.append(_item(codigo=m.group(2), cantidad=int(m.group(1)), raw=m.group(0), fuente="cantidad_codigo"))
+    # 5 del 55, 10 de 60, dos del 55, cinco del 60
+    qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta"
+    for m in re.finditer(rf"(?<!\w)({qty_pat})\s*(?:piezas?\s*)?(?:del|de|codigo|cod|tono)\s*#?(\d{{1,4}})(?!\d)", texto_sin_totales):
+        qty = _qty(m.group(1))
+        if qty:
+            items.append(_item(codigo=m.group(2), cantidad=qty, raw=m.group(0), fuente="cantidad_codigo"))
 
     # 55 x2
     for m in re.finditer(r"(?<!\d)(\d{1,4})\s*(?:x|\*)\s*(\d{1,3})(?!\d)", texto_sin_totales):
@@ -694,8 +709,20 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
         if qty and desc and not re.search(r"\b(pedido|pedio|pregunta|lista|total|piezas)\b", desc):
             items.append(_item(cantidad=qty, desc=desc, raw=m.group(0), fuente="cantidad_color"))
 
+    # V39: lista de códigos con cantidad global: "55, 60, 429 todos x2".
+    texto_para_nums = texto_sin_totales
+    m_global = re.search(r"\b(?:todos|todas|todo|cada\s+uno|c/u|c\s+u)\s*(?:x|por|de)?\s*(\d{1,3})\b", texto_sin_totales)
+    if m_global:
+        qty_global = int(m_global.group(1))
+        prefijo = texto_sin_totales[:m_global.start()]
+        nums_global = re.findall(r"(?<!\d)\d{1,4}(?!\d)", prefijo)
+        for n in nums_global:
+            if n and not any((it.get("codigo_raw") or it.get("codigo")) == n for it in items):
+                items.append(_item(codigo=n, cantidad=qty_global, raw=f"{n} x{qty_global}", fuente="codigo_cantidad_global"))
+        texto_para_nums = texto_sin_totales[:m_global.start()] + " " + texto_sin_totales[m_global.end():]
+
     # Listas puras de codigos.
-    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto_sin_totales)
+    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto_para_nums)
     if nums and _debe_tomar_codigos_sueltos(texto, intencion, contexto, len(items), len(nums)):
         explicit = {str(it.get("codigo_raw") or it.get("codigo") or "") for it in items}
         cantidad_lista = 1 if len(nums) > 1 else None
@@ -779,6 +806,9 @@ def _limpiar_desc_color(desc):
 
 
 def _debe_tomar_codigos_sueltos(texto, intencion, contexto, items_count, nums_count):
+    t = _norm(texto)
+    if re.search(r"\b(ojo|ojos|seguridad|gancho|ganchos|aguja|agujas|relleno|bolsa|paquete)\b", t) and re.search(r"\b\d+(?:\.\d+)?\s*(?:mm|piezas|pz|bolsa)\b", t):
+        return False
     if intencion["principal"] == "pide_foto_tono":
         return False
     if _detectar_cp(texto):
@@ -1629,6 +1659,14 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     recursos = recursos or {}
     envio = envio or {}
 
+    # V39: si la clienta pregunta "serían 15 piezas, verdad?" se valida contra el pedido activo.
+    resp_total = _respuesta_validacion_total(normalizado, intencion, contexto)
+    if resp_total:
+        return resp_total
+
+    if principal == "decision_comercial" and intencion.get("secundaria") == "promesa_pago_futuro":
+        return f"Claro {EMOJI_OK} lo reviso en su cotización y le confirmo disponibilidad. Cuando realice el pago me manda su comprobante, por favor."
+
     if principal == "confirmacion_contexto":
         resp_previa = _respuesta_confirmacion_contexto_previo(contexto)
         if resp_previa:
@@ -1676,6 +1714,10 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
         return f"Perfecto {EMOJI_OK} con el CP {cp} reviso opciones de paqueteria para su pedido."
 
     if principal in ("pago", "comprobante"):
+        if re.search(r"\b(llego|llegó|recibiste|confirmas|confirmar|confirmo|confirmas si)\b", texto):
+            return f"Con gusto {EMOJI_OK} reviso el comprobante y le confirmo si ya aparece recibido."
+        if re.search(r"\b(te mando|mando|envio|envi[oó]|ahorita|adjunto|captura)\b", texto):
+            return f"Perfecto {EMOJI_OK} mándeme la foto del comprobante y lo reviso para confirmarle."
         return f"Perfecto {EMOJI_OK} me puede mandar foto del comprobante para revisarlo, por favor."
 
     if principal == "producto_no_manejado":
@@ -1982,6 +2024,36 @@ def guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extr
     return nueva
 
 
+
+
+def _cargar_pedido_en_proceso(memoria):
+    raw = (memoria or {}).get("pedido_en_proceso")
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [dict(x) for x in raw if isinstance(x, dict)]
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return []
+    if isinstance(obj, list):
+        return [dict(x) for x in obj if isinstance(x, dict)]
+    return []
+
+
+def _respuesta_validacion_total(normalizado, intencion, contexto):
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    total = intencion.get("total_esperado")
+    if not total or not re.search(r"\b(verdad|correcto|cierto|serian|seria|son|total)\b", texto):
+        return ""
+    pedidos_previos = _cargar_pedido_en_proceso((contexto or {}).get("memoria_previa") or {})
+    if not pedidos_previos:
+        return ""
+    total_prev = sum(int(p.get("cantidad") or 1) for p in pedidos_previos)
+    if total_prev == int(total):
+        return f"Sí {EMOJI_OK} correcto, serían {total_prev} piezas en su cotización. Le reviso el total con envío si me pasa su CP."
+    return f"Le reviso bien {EMOJI_OK} en la cotización me aparecen {total_prev} piezas, no {int(total)}. Permítame confirmar para no dejarlo mal."
+
 def _cargar_lista_pendiente(memoria):
     for key in ("ultima_lista_pendiente", "ultima_lista_recibida"):
         raw = (memoria or {}).get(key)
@@ -2045,7 +2117,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v38_motor_conversacional",
+            "motor": "v39_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -2094,7 +2166,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v38_motor_conversacional",
+        "motor": "v39_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
