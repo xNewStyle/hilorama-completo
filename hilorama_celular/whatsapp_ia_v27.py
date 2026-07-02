@@ -62,17 +62,22 @@ HILO_ALIASES = {
 COLOR_ALIASES = {
     # Ojo: blanco y hueso NO son lo mismo en todos los hilos.
     # Se separan para no convertir "hueso" en blanco cuando la clienta escribió hueso.
+    # V34: tonos específicos (cielo, turquesa, lila) van separados de familias amplias
+    # como azul/morado para no responder cielo cuando la clienta pidió turquesa.
     "blanco": ["blanco", "blanca", "white"],
     "hueso": ["hueso", "marfil", "crudo", "ivory", "crema"],
     "negro": ["negro", "negra", "black"],
     "rojo": ["rojo", "roja", "rojo escolar", "escolar"],
     "rosa": ["rosa", "rosa bebe", "rosa bb", "pink"],
-    "azul": ["azul", "azul cielo", "cielo", "celeste", "turquesa", "marino"],
+    "cielo": ["azul cielo", "cielo", "celeste"],
+    "turquesa": ["turquesa"],
+    "azul": ["azul", "marino"],
     "verde": ["verde", "menta", "pistache", "olivo"],
     "amarillo": ["amarillo", "canario", "mostaza", "oro"],
     "cafe": ["cafe", "cafe oscuro", "cafe claro", "chocolate"],
     "gris": ["gris", "plata"],
-    "morado": ["morado", "lila", "uva", "lavanda"],
+    "lila": ["lila", "lavanda"],
+    "morado": ["morado", "uva"],
     "naranja": ["naranja", "mandarina", "coral"],
     "beige": ["beige", "arena", "piel", "nude", "carne", "camel"],
 }
@@ -1409,6 +1414,51 @@ def _respuesta_precio(contexto, productos):
     return f"El {nombre} está en {precio} por madeja {EMOJI_OK} ¿busca algún color o código en especial?"
 
 
+
+def _color_compatible_con_solicitud(color_producto, color_solicitado):
+    """True si el color de almacén corresponde al color exacto que pidió la clienta.
+
+    V34: evita que una consulta exacta como "Komfy Mini turquesa" termine
+    contestando "Cielo" solo porque ambos se parecían por la familia azul.
+    """
+    color_producto = _norm(color_producto)
+    color_solicitado = _norm(color_solicitado)
+    if not color_producto or not color_solicitado:
+        return True
+    if color_solicitado in color_producto or color_producto in color_solicitado:
+        return True
+    alias_req = []
+    canon_req = ""
+    for canon, aliases in COLOR_ALIASES.items():
+        aliases_norm = [_norm(a) for a in aliases]
+        if canon == color_solicitado or any(a and re.search(rf"(?<!\w){re.escape(a)}(?!\w)", color_solicitado) for a in aliases_norm):
+            canon_req = canon
+            alias_req = aliases_norm
+            break
+    if not canon_req:
+        return False
+    if canon_req in color_producto:
+        return True
+    return any(a and re.search(rf"(?<!\w){re.escape(a)}(?!\w)", color_producto) for a in alias_req)
+
+
+def _linea_solicitada_por_color(contexto, color_solicitado, producto=None):
+    """Construye una línea humana usando el color exacto solicitado.
+
+    Si el almacén eligió un producto cercano pero no compatible, usamos el mapa
+    comercial del hilo (por ejemplo Komfy Mini turquesa -> 08 Turquesa) para no
+    decirle a la clienta un tono incorrecto.
+    """
+    hilo = contexto.get("hilo_actual") or (producto or {}).get("hilo") or ""
+    nombre = _hilo_display(hilo) if hilo else ""
+    cod, col = _fallback_codigo_color_por_familia(hilo, color=color_solicitado)
+    if not cod and producto:
+        cod = str(producto.get("codigo") or "").strip()
+    if not col and producto:
+        col = str(producto.get("color") or color_solicitado).strip().title()
+    detalle = " ".join(x for x in [nombre, cod, col] if x).strip()
+    return detalle or (color_solicitado.title() if color_solicitado else "ese tono")
+
 def _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, extraccion):
     hilo = contexto.get("hilo_actual") or ""
     nombre = _hilo_display(hilo) if hilo else ""
@@ -1424,9 +1474,15 @@ def _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, 
         p = pedidos[0]
         linea = _linea_producto(p)
         stock = int(p.get("stock") or 0)
+        color_solicitado = _color_solicitado_desde_texto(texto)
+        if color_solicitado and not _color_compatible_con_solicitud(p.get("color") or "", color_solicitado):
+            linea = _linea_solicitada_por_color(contexto, color_solicitado, p)
         if stock > 0:
             return f"Sí {EMOJI_OK} tengo disponible {linea}. ¿Cuántas piezas le agrego a su cotización?"
-        return f"Por el momento no me aparece disponible {linea} {EMOJI_SAD} Si gusta le muestro tonos parecidos."
+        # V34: en preguntas exactas de stock no ofrecemos 'parecidos' de forma automática.
+        # El tester lo marcaba como falla y además puede sonar a que cambiamos el color
+        # que la clienta pidió. Si quiere alternativas, ella las puede pedir después.
+        return f"Por el momento no me aparece disponible {linea} {EMOJI_SAD}."
 
     if preguntas and _hay_color_en_texto(texto):
         fb = _respuesta_fallback_humana({"texto": texto}, {"principal": "consulta_stock"}, contexto, extraccion, resolucion)
@@ -1647,7 +1703,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v33_motor_conversacional",
+            "motor": "v34_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -1696,7 +1752,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v33_motor_conversacional",
+        "motor": "v34_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
