@@ -20,6 +20,11 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 
+try:
+    from .whatsapp_ia_v27 import procesar_conversacion_v27
+except Exception:
+    from whatsapp_ia_v27 import procesar_conversacion_v27
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
@@ -12360,6 +12365,431 @@ def whatsapp_ia_simular_v26():
 
 
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v26
+
+# -----------------------------------------------------------------------------
+# V27 - Motor conversacional ordenado: normaliza -> intencion -> memoria ->
+# almacen -> respuesta humana.
+# -----------------------------------------------------------------------------
+
+
+def _wa_v27_memoria_schema():
+    _wa_memoria_schema()
+    try:
+        with DB() as db:
+            for col_sql in [
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS intencion_actual TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS estado_actual TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultima_lista_pendiente TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultima_pregunta_hecha TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS total_esperado INTEGER",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS datos_envio_pendientes BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS cp_actual TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS pago_pendiente BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS cotizacion_activa BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS fecha_ultima_actividad TIMESTAMP",
+            ]:
+                db.execute(col_sql)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_wa_contexto_fecha_actividad ON whatsapp_contexto_cliente(fecha_ultima_actividad)")
+    except Exception as exc:
+        print('WARN schema memoria WA v27:', exc, flush=True)
+
+
+def _wa_v27_bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value or '').strip().lower() in ('1', 'true', 'yes', 'si', 'sí', 'on')
+
+
+def _wa_v27_json_list(raw):
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [x for x in raw if isinstance(x, dict)]
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return []
+    return [x for x in obj if isinstance(x, dict)] if isinstance(obj, list) else []
+
+
+def _wa_v27_piezas_desde_memoria(contexto):
+    memoria = (contexto or {}).get('memoria_previa') or {}
+    for key in ('pedido_en_proceso', 'ultima_lista_pendiente', 'ultima_lista_recibida'):
+        items = _wa_v27_json_list(memoria.get(key))
+        total = 0
+        for it in items:
+            if it.get('codigo') or it.get('codigo_raw') or it.get('producto_id') or it.get('color') or it.get('desc'):
+                try:
+                    total += int(it.get('cantidad') or 1)
+                except Exception:
+                    total += 1
+        if total > 0:
+            return total
+    return None
+
+
+def _wa_v27_envio_formato_publico(cp, cotizacion):
+    opciones = (cotizacion or {}).get('opciones') or []
+    if not opciones:
+        return (
+            f"Con el CP {cp} necesito revisar el envio manualmente \U0001f60a "
+            "No me aparece una tarifa automatica segura en este momento."
+        )
+    lineas = []
+    vistos = set()
+    for op in opciones[:3]:
+        nombre = op.get('paqueteria') or op.get('carrier') or 'Paqueteria'
+        servicio = op.get('servicio') or op.get('service') or ''
+        try:
+            precio = float(op.get('precio') or 0)
+        except Exception:
+            precio = 0.0
+        moneda = op.get('moneda') or 'MXN'
+        key = (str(nombre).lower(), str(servicio).lower(), round(precio, 2))
+        if key in vistos:
+            continue
+        vistos.add(key)
+        desc = f"- {nombre}: ${precio:,.2f} {moneda}"
+        if servicio and servicio.lower() not in str(nombre).lower():
+            desc += f" ({servicio})"
+        if op.get('entrega'):
+            desc += f" - {op.get('entrega')}"
+        lineas.append(desc)
+    if not lineas:
+        return f"Con el CP {cp} necesito revisar el envio manualmente \U0001f60a"
+    return (
+        f"Con el CP {cp} me aparecen estas opciones de envio:\n\n" +
+        "\n".join(lineas) +
+        "\n\nLa cotizacion puede variar si cambia peso, volumen o zona. Cual le gustaria usar?"
+    )
+
+
+def _wa_v27_buscar_recurso(intencion, normalizado, contexto, extraccion):
+    principal = (intencion or {}).get('principal') or ''
+    texto = (normalizado or {}).get('texto') or ''
+    consulta = ' '.join(x for x in [texto, (contexto or {}).get('hilo_actual'), (contexto or {}).get('marca_actual')] if x)
+    try:
+        if principal == 'pide_foto_tono':
+            recurso = _wa_v10_tone_resource_from_code(consulta)
+            if recurso:
+                return {
+                    'respuesta': _wa_v7_respuesta_de_recurso(recurso),
+                    'recurso': recurso,
+                    'motor': 'biblioteca_ia_tono_exacto_v27',
+                }
+        if principal == 'pide_gama':
+            recurso = _wa_v7_buscar_recurso(consulta, categoria='carta_colores')
+            if recurso:
+                return {
+                    'respuesta': _wa_v7_respuesta_de_recurso(recurso),
+                    'recurso': recurso,
+                    'motor': 'biblioteca_ia_carta_colores_v27',
+                }
+    except Exception as exc:
+        print('WARN recurso WA v27:', exc, flush=True)
+    return {}
+
+
+def _wa_v27_cotizar_envio(cp, contexto):
+    cp = re.sub(r'\D+', '', str(cp or ''))
+    if not re.fullmatch(r'\d{5}', cp):
+        return {'respuesta': "Claro \U0001f60a para decirle el costo exacto de envio necesito su codigo postal."}
+    try:
+        piezas = _wa_v27_piezas_desde_memoria(contexto)
+        cot = cotizar_envio_envia(cp, piezas=piezas)
+        if cot.get('ok') and cot.get('opciones'):
+            return {'respuesta': _wa_v27_envio_formato_publico(cp, cot), 'cotizacion': cot}
+        if _envia_v24_config().get('enabled'):
+            return {
+                'respuesta': (
+                    f"Con el CP {cp} necesito revisar el envio manualmente \U0001f60a "
+                    "No me aparece una tarifa automatica segura en este momento."
+                ),
+                'cotizacion': cot,
+            }
+    except Exception as exc:
+        print('WARN cotizar envio WA v27:', exc, flush=True)
+    try:
+        return {'respuesta': _wa_v22_envio_opciones_texto(cp)}
+    except Exception:
+        return {
+            'respuesta': (
+                f"Con el CP {cp} necesito revisar el envio manualmente \U0001f60a "
+                "No me aparece una tarifa automatica segura en este momento."
+            )
+        }
+
+
+def _wa_v27_parser_obj(resultado):
+    resolucion = resultado.get('resolucion') or {}
+    extraccion = resultado.get('extraccion') or {}
+    contexto = resultado.get('contexto') or {}
+    return {
+        'ok': True,
+        'modo': 'v27_motor_conversacional',
+        'pedidos': resolucion.get('pedidos') or [],
+        'preguntas': resolucion.get('preguntas') or [],
+        'errores': resolucion.get('errores') or [],
+        'advertencias': (resolucion.get('internos') or []) + [
+            str(s.get('tipo') or s) for s in (resolucion.get('sugerencias') or [])
+        ],
+        'items_lista_v17': extraccion.get('items') or [],
+        'items_lista_v27': extraccion.get('items') or [],
+        'contexto': {
+            'hilo': contexto.get('hilo_actual') or '',
+            'marca': contexto.get('marca_actual') or '',
+            'origen_contexto': contexto.get('origen_contexto') or '',
+            'contexto_inferido': {
+                'hilo': contexto.get('hilo_actual') or '',
+                'marca': contexto.get('marca_actual') or '',
+            },
+        },
+    }
+
+
+def _wa_v27_meta_obj(resultado):
+    confianza = resultado.get('confianza') or {}
+    intencion = resultado.get('intencion') or {}
+    return {
+        'intencion': intencion.get('principal') or '',
+        'confianza': confianza.get('confianza') or 'media',
+        'accion_recomendada': confianza.get('accion_recomendada') or 'responder_revision',
+        'puede_auto_enviar': False,
+    }
+
+
+def _wa_v27_actualizar_memoria_db(conversacion_id, telefono, cliente_nombre, texto, resultado, memoria_previa, productos):
+    _wa_v27_memoria_schema()
+    parsed = _wa_v27_parser_obj(resultado)
+    meta = _wa_v27_meta_obj(resultado)
+    contexto = resultado.get('contexto') or {}
+    memoria_v27 = resultado.get('memoria') or {}
+    respuesta = resultado.get('respuesta') or ''
+    marca_parser = contexto.get('marca_actual') or memoria_v27.get('marca_actual') or ''
+    hilo_parser = contexto.get('hilo_actual') or memoria_v27.get('hilo_actual') or ''
+    row = _wa_memoria_actualizar(
+        conversacion_id=conversacion_id,
+        telefono=telefono,
+        cliente_nombre=cliente_nombre,
+        texto=texto,
+        respuesta=respuesta,
+        parsed=parsed,
+        meta=meta,
+        marca_parser=marca_parser,
+        hilo_parser=hilo_parser,
+        memoria_previa=memoria_previa,
+        productos=productos,
+    )
+    clave = _wa_memoria_clave(conversacion_id, telefono)
+    if not clave:
+        return row or memoria_v27
+    try:
+        total = memoria_v27.get('total_esperado')
+        try:
+            total = int(total) if str(total or '').strip() else None
+        except Exception:
+            total = None
+        with DB() as db:
+            updated = db.execute("""
+                UPDATE whatsapp_contexto_cliente
+                SET intencion_actual=%s,
+                    estado_actual=%s,
+                    ultima_lista_pendiente=%s,
+                    ultima_pregunta_hecha=%s,
+                    total_esperado=%s,
+                    datos_envio_pendientes=%s,
+                    cp_actual=%s,
+                    pago_pendiente=%s,
+                    cotizacion_activa=%s,
+                    fecha_ultima_actividad=%s,
+                    updated_at=%s
+                WHERE clave=%s
+                RETURNING *
+            """, (
+                memoria_v27.get('intencion_actual') or meta.get('intencion') or '',
+                memoria_v27.get('estado_actual') or '',
+                memoria_v27.get('ultima_lista_pendiente') or '',
+                memoria_v27.get('ultima_pregunta_hecha') or '',
+                total,
+                _wa_v27_bool(memoria_v27.get('datos_envio_pendientes')),
+                memoria_v27.get('cp_actual') or '',
+                _wa_v27_bool(memoria_v27.get('pago_pendiente')),
+                _wa_v27_bool(memoria_v27.get('cotizacion_activa')),
+                now_mexico(),
+                now_mexico(),
+                clave,
+            )).fetchone()
+        return dict(updated) if updated else (row or memoria_v27)
+    except Exception as exc:
+        print('WARN actualizar memoria WA v27:', exc, flush=True)
+        return row or memoria_v27
+
+
+_wa_v27_view_anterior = app.view_functions.get('whatsapp_ia_simular')
+
+
+def whatsapp_ia_simular_v27():
+    try:
+        data = request.get_json(force=True) or {}
+        texto = (data.get('texto') or '').strip()
+        texto_imagen = (data.get('texto_imagen') or '').strip()
+        texto_original = ' '.join(x for x in [texto, texto_imagen] if x).strip()
+        if not texto_original:
+            return jsonify({'ok': False, 'error': 'Escribe o pega un mensaje de clienta primero.'}), 400
+
+        marca = _wa_v19_clean_selector(data.get('marca') or '')
+        hilo = _wa_v19_clean_selector(data.get('hilo') or '')
+        telefono = (data.get('telefono') or '').strip()
+        cliente_nombre = (data.get('cliente_nombre') or '').strip()
+        conversacion_id = data.get('conversacion_id')
+        nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
+
+        export_info = _wa_v16_extraer_bloque_cliente(texto_original, telefono)
+        texto_cliente = (export_info.get('texto_cliente') or texto_original).strip()
+
+        _wa_v27_memoria_schema()
+        memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+        productos_mem = _wa_memoria_productos_min()
+
+        payload = dict(data)
+        payload.update({
+            'texto': texto_cliente,
+            'marca': marca,
+            'hilo': hilo,
+            'buffer_seconds': int(data.get('buffer_seconds') or WA_V26_BUFFER_SECONDS),
+        })
+        resultado = procesar_conversacion_v27(
+            payload,
+            productos_mem,
+            memoria=memoria_previa,
+            callbacks={
+                'buscar_recurso': _wa_v27_buscar_recurso,
+                'cotizar_envio': _wa_v27_cotizar_envio,
+            },
+        )
+        respuesta = _wa_v22_sanitizar_respuesta_publica(resultado.get('respuesta') or '')
+        resultado['respuesta'] = respuesta
+
+        cierre = resultado.get('cierre_diferido') or {}
+        if cierre.get('programar'):
+            conversacion_id = _wa_v15_ensure_conversacion(conversacion_id if not nueva_conversacion else None, telefono, cliente_nombre)
+            cierre_db = _wa_v15_programar_cierre(
+                conversacion_id=conversacion_id,
+                telefono=telefono,
+                mensaje=cierre.get('mensaje'),
+                minutos=cierre.get('minutos'),
+            )
+            try:
+                with DB() as db:
+                    db.execute("""
+                        INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                        VALUES (%s,%s,%s,%s,%s,%s)
+                    """, (
+                        conversacion_id,
+                        'IN',
+                        'texto',
+                        texto_cliente,
+                        '',
+                        json.dumps(json_safe({
+                            'motor': 'v27_cierre_diferido',
+                            'cierre_programado': cierre_db,
+                            'resultado': resultado,
+                            'whatsapp_export': export_info,
+                        }), ensure_ascii=False),
+                    ))
+            except Exception as exc:
+                print('WARN guardar cierre v27:', exc, flush=True)
+            memoria_actual = _wa_v27_actualizar_memoria_db(
+                conversacion_id, telefono, cliente_nombre, texto_cliente,
+                resultado, memoria_previa, productos_mem
+            )
+            return jsonify(json_safe({
+                'ok': True,
+                'conversacion_id': conversacion_id,
+                'motor': 'v27_motor_conversacional_cierre_diferido',
+                'mensaje_cliente': texto_cliente,
+                'mensaje_parser': texto_cliente,
+                'respuesta_sugerida': '',
+                'respuesta_diferida': cierre_db,
+                'intencion': 'agradecimiento',
+                'confianza': 'alta',
+                'accion_recomendada': 'cierre_diferido',
+                'puede_auto_enviar': False,
+                'pedidos': [],
+                'preguntas': [],
+                'errores': [],
+                'advertencias': [],
+                'parser': _wa_v27_parser_obj(resultado),
+                'memoria_usada': memoria_previa,
+                'memoria_actual': memoria_actual,
+                'whatsapp_export': export_info,
+                'v27': resultado,
+            }))
+
+        try:
+            _wa_v15_cancelar_cierres(conversacion_id, telefono, motivo='cliente_continuo_v27')
+        except Exception:
+            pass
+
+        conversacion_id = _wa_v15_ensure_conversacion(conversacion_id if not nueva_conversacion else None, telefono, cliente_nombre)
+        parsed = _wa_v27_parser_obj(resultado)
+        meta = _wa_v27_meta_obj(resultado)
+        try:
+            with DB() as db:
+                db.execute("""
+                    INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (
+                    conversacion_id,
+                    'IN',
+                    'texto',
+                    texto_cliente,
+                    respuesta,
+                    json.dumps(json_safe({
+                        'parsed': parsed,
+                        'meta': meta,
+                        'motor': 'v27_motor_conversacional',
+                        'memoria_usada': memoria_previa,
+                        'resultado': resultado,
+                        'whatsapp_export': export_info,
+                    }), ensure_ascii=False),
+                ))
+        except Exception as exc:
+            print('WARN guardar simulacion WA v27:', exc, flush=True)
+
+        memoria_actual = _wa_v27_actualizar_memoria_db(
+            conversacion_id, telefono, cliente_nombre, texto_cliente,
+            resultado, memoria_previa, productos_mem
+        )
+        return jsonify(json_safe({
+            'ok': True,
+            'conversacion_id': conversacion_id,
+            'motor': 'v27_motor_conversacional',
+            'mensaje_cliente': texto_cliente,
+            'mensaje_parser': texto_cliente,
+            'respuesta_sugerida': respuesta,
+            'intencion': meta.get('intencion'),
+            'confianza': meta.get('confianza'),
+            'accion_recomendada': meta.get('accion_recomendada'),
+            'puede_auto_enviar': False,
+            'pedidos': parsed.get('pedidos') or [],
+            'preguntas': parsed.get('preguntas') or [],
+            'errores': parsed.get('errores') or [],
+            'advertencias': parsed.get('advertencias') or [],
+            'parser': parsed,
+            'memoria_usada': memoria_previa,
+            'memoria_actual': memoria_actual,
+            'whatsapp_export': export_info,
+            'v27': resultado,
+        }))
+    except Exception as exc:
+        print('WARN v27 motor conversacional, se usa respaldo v26:', exc, flush=True)
+        if _wa_v27_view_anterior:
+            return _wa_v27_view_anterior()
+        raise
+
+
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v27
 
 # Silenciar /favicon.ico para que no ensucie logs con 500 cuando el navegador lo pida.
 @app.route('/favicon.ico')

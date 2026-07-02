@@ -1,0 +1,1098 @@
+import json
+import re
+import unicodedata
+from datetime import datetime, timedelta
+from difflib import SequenceMatcher
+
+
+EMOJI_OK = "\U0001f60a"
+EMOJI_SAD = "\U0001f614"
+
+INTENCIONES = {
+    "saludo",
+    "pregunta_precio",
+    "pide_gama",
+    "pide_foto_tono",
+    "consulta_stock",
+    "iniciar_pedido",
+    "pedido_lista",
+    "correccion_pedido",
+    "confirmacion_contexto",
+    "envio",
+    "cp_envio",
+    "pago",
+    "comprobante",
+    "datos_cliente",
+    "seguimiento",
+    "agradecimiento",
+    "cierre",
+    "duda_general",
+    "producto_no_manejado",
+    "pregunta_horario",
+    "pregunta_promocion",
+}
+
+ESTADOS_PEDIDO = {
+    "esperando_lista_de_colores",
+    "esperando_cantidad",
+    "esperando_confirmacion_hilo",
+    "esperando_cp",
+    "esperando_datos_envio",
+    "esperando_comprobante",
+    "preparando_cotizacion",
+    "pedido_confirmado",
+    "conversacion_cerrada",
+}
+
+HILO_ALIASES = {
+    "VELLUTO": [
+        "velluto", "veluto", "belluto", "vellluto", "vello", "alize velluto",
+        "alize veluto", "terciopelo",
+    ],
+    "KOMFY MINI": [
+        "komfy mini", "komfi mini", "konfy mini", "comfy mini", "komfy",
+        "komfi", "konfy", "comfy",
+    ],
+    "KURUMI": ["kurumi"],
+    "KAIRO": ["kairo"],
+    "TRAPILLO": ["trapillo", "trapillo kraft", "kraft"],
+}
+
+COLOR_ALIASES = {
+    "blanco": ["blanco", "blanca", "hueso", "marfil", "crudo", "white"],
+    "hueso": ["hueso", "marfil", "crudo", "ivory", "crema"],
+    "negro": ["negro", "negra", "black"],
+    "rojo": ["rojo", "roja", "rojo escolar", "escolar"],
+    "rosa": ["rosa", "rosa bebe", "rosa bb", "pink"],
+    "azul": ["azul", "azul cielo", "cielo", "celeste", "turquesa", "marino"],
+    "verde": ["verde", "menta", "pistache", "olivo"],
+    "amarillo": ["amarillo", "canario", "mostaza", "oro"],
+    "cafe": ["cafe", "cafe oscuro", "cafe claro", "chocolate", "camel"],
+    "gris": ["gris", "plata"],
+    "morado": ["morado", "lila", "uva", "lavanda"],
+    "naranja": ["naranja", "mandarina", "coral"],
+    "beige": ["beige", "arena", "piel", "nude", "carne"],
+}
+
+NORMALIZACIONES = [
+    (r"\bbuenas\s+trades\b", "buenas tardes"),
+    (r"\bpwdido\b", "pedido"),
+    (r"\bgamas\b", "gama"),
+    (r"\bganas\s+de\s+colores\b", "gama de colores"),
+    (r"\bvigenete\b", "vigente"),
+    (r"\bcoti+iza\b", "cotiza"),
+    (r"\bkonfy\b|\bkomfi\b|\bcomfy\b", "komfy mini"),
+    (r"\bbelluto\b|\bveluto\b|\bvellluto\b", "velluto"),
+    (r"\bazul\s+sielo\b", "azul cielo"),
+    (r"\brojo\s+escolr\b", "rojo escolar"),
+    (r"\bme\s+surte\b|\bsurteme\b|\bsurteme\b", "quiero pedir"),
+    (r"\bme\s+lo\s+pone\b|\bme\s+lo\s+agrega\b", "agregar al pedido"),
+    (r"\bme\s+lo\s+aparta\b|\bapartame\b", "agregar al pedido"),
+]
+
+QTY_WORDS = {
+    "un": 1, "uno": 1, "una": 1,
+    "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5,
+    "seis": 6, "siete": 7, "ocho": 8, "nueve": 9,
+    "diez": 10, "once": 11, "doce": 12, "quince": 15,
+    "veinte": 20, "treinta": 30,
+}
+
+
+def _sin_acentos(texto):
+    texto = "" if texto is None else str(texto)
+    texto = unicodedata.normalize("NFD", texto)
+    return "".join(c for c in texto if unicodedata.category(c) != "Mn")
+
+
+def _norm(texto):
+    texto = _sin_acentos(texto).lower()
+    texto = texto.replace("\u00d7", "x")
+    texto = re.sub(r"[^\w\s#,$.\-/\n]+", " ", texto, flags=re.UNICODE)
+    texto = re.sub(r"[ \t\r\f\v]+", " ", texto)
+    texto = re.sub(r" *\n+ *", "\n", texto)
+    return texto.strip()
+
+
+def _compact(texto):
+    return re.sub(r"\s+", " ", str(texto or "")).strip()
+
+
+def _ratio(a, b):
+    return SequenceMatcher(None, _norm(a), _norm(b)).ratio()
+
+
+def normalizar_texto_cliente(texto):
+    original = "" if texto is None else str(texto)
+    limpio = _norm(original)
+    correcciones = []
+    for patron, reemplazo in NORMALIZACIONES:
+        nuevo = re.sub(patron, reemplazo, limpio, flags=re.I)
+        if nuevo != limpio:
+            correcciones.append({"patron": patron, "reemplazo": reemplazo})
+            limpio = nuevo
+    # Normaliza pequenas variantes frecuentes sin anunciarselo al cliente.
+    limpio = re.sub(r"\bcodigos?\b|\bc[oó]digos?\b", "codigo", limpio)
+    limpio = re.sub(r"\bpzas?\b|\bpiezas?\b|\bmadejas?\b", "piezas", limpio)
+    limpio = re.sub(r"[ \t\r\f\v]+", " ", limpio)
+    limpio = re.sub(r" *\n+ *", "\n", limpio).strip()
+    return {
+        "original": original,
+        "texto": limpio,
+        "lineas": [ln.strip() for ln in limpio.splitlines() if ln.strip()],
+        "correcciones": correcciones,
+    }
+
+
+def _producto_hilos(productos):
+    hilos = []
+    seen = set()
+    for p in productos or []:
+        h = str(p.get("hilo") or "").strip()
+        if h and _norm(h) not in seen:
+            seen.add(_norm(h))
+            hilos.append(h)
+    return hilos
+
+
+def _hilo_family(hilo):
+    h = _norm(hilo).replace(" ", "")
+    if "komfy" in h or "komfi" in h or "konfy" in h or "comfy" in h:
+        return "KOMFY MINI"
+    if "velluto" in h or "veluto" in h or "belluto" in h or "alize" in h:
+        return "VELLUTO"
+    if "kurumi" in h:
+        return "KURUMI"
+    if "kairo" in h:
+        return "KAIRO"
+    if "trapillo" in h or "kraft" in h:
+        return "TRAPILLO"
+    return str(hilo or "").strip().upper()
+
+
+def _hilo_display(hilo):
+    fam = _hilo_family(hilo)
+    if fam == "VELLUTO":
+        return "Velluto"
+    if fam == "KOMFY MINI":
+        return "Komfy Mini"
+    if fam == "KURUMI":
+        return "Kurumi"
+    if fam == "KAIRO":
+        return "Kairo"
+    if fam == "TRAPILLO":
+        return "Trapillo"
+    return str(hilo or "").strip().title()
+
+
+def detectar_hilos(texto, productos=None):
+    t = _norm(texto)
+    encontrados = []
+    familias = []
+    for fam, aliases in HILO_ALIASES.items():
+        if any(re.search(rf"(?<!\w){re.escape(_norm(a))}(?!\w)", t) for a in aliases):
+            familias.append(fam)
+    hilos_reales = _producto_hilos(productos)
+    for fam in familias:
+        elegido = ""
+        for h in hilos_reales:
+            if _hilo_family(h) == fam:
+                elegido = h
+                break
+        if not elegido:
+            elegido = fam
+        if elegido not in encontrados:
+            encontrados.append(elegido)
+    return encontrados
+
+
+def _detectar_cp(texto, memoria=None):
+    t = _norm(texto)
+    m = re.search(r"\b(\d{5})\b", t)
+    if not m:
+        return ""
+    if re.search(r"\b(cp|codigo postal|postal|envio|paqueteria)\b", t):
+        return m.group(1)
+    estado = str((memoria or {}).get("estado_actual") or (memoria or {}).get("ultima_intencion") or "")
+    if estado in ("esperando_cp", "envio", "pregunta_envio") or (memoria or {}).get("datos_envio_pendientes"):
+        return m.group(1)
+    if re.fullmatch(r"(?:mi\s+)?(?:cp\s*(?:es)?\s*)?\d{5}", t):
+        return m.group(1)
+    return ""
+
+
+def _extraer_total_esperado(texto):
+    t = _norm(texto)
+    patrones = [
+        r"\b(?:son|serian|seria|total|en total)\s+(\d{1,3})\s*(?:piezas|madejas|pzas|pz)?\b",
+        r"\b(\d{1,3})\s*(?:piezas|madejas|pzas|pz)\s+(?:en\s+)?total\b",
+        r"\b(\d{1,3})\s*(?:piezas|madejas|pzas|pz)\b",
+    ]
+    for pat in patrones:
+        m = re.search(pat, t)
+        if m:
+            after = t[m.end():m.end() + 24]
+            if re.match(r"\s*(?:del|de|codigo|cod|tono)\b", after):
+                continue
+            return int(m.group(1))
+    return None
+
+
+def detectar_intencion(normalizado, memoria=None, productos=None):
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    hilos = detectar_hilos(texto, productos)
+    cp = _detectar_cp(texto, memoria)
+    total = _extraer_total_esperado(texto)
+    principal = "duda_general"
+    secundaria = ""
+    estado = ""
+
+    if re.fullmatch(r"(gracias|muchas gracias|ok gracias|perfecto gracias|listo gracias)", texto):
+        principal = "agradecimiento"
+        estado = "conversacion_cerrada"
+    elif re.search(r"\b(comprobante|ya pague|ya pagado|ya quedo el pago|pago|transferencia|deposito|ticket|recibo)\b", texto):
+        principal = "comprobante" if re.search(r"\b(comprobante|ticket|recibo|ya pague|ya quedo)\b", texto) else "pago"
+        estado = "esperando_comprobante"
+    elif cp:
+        principal = "cp_envio"
+        estado = "esperando_datos_envio"
+    elif re.search(r"\b(envio|envios|paqueteria|cuanto sale el envio|costo de envio)\b", texto):
+        principal = "envio"
+        estado = "esperando_cp"
+    elif (
+        re.search(r"\b(gama|carta|catalogo)\b", texto)
+        or re.search(r"\b(colores|tonos)\s+(?:disponibles|tienen|manejan|hay)\b", texto)
+        or re.search(r"\b(?:que\s+)?(?:colores|tonos)\s+(?:tiene|tienen|hay|manejan)\b", texto)
+        or re.search(r"\b(?:tiene|tienen|hay|manejan)\b.*\b(?:colores|tonos)\b", texto)
+    ):
+        # "que colores tiene disponibles" puede ser stock; "manda la gama" es recurso.
+        if re.search(r"\b(manda|mandeme|envia|pasa|pasame|comparte|gama|carta|catalogo)\b", texto):
+            principal = "pide_gama"
+        else:
+            principal = "consulta_stock"
+    elif re.search(r"\b(foto|imagen|muestra|mostrar|ver)\b", texto) and re.search(r"\b\d{1,4}\b", texto):
+        principal = "pide_foto_tono"
+    elif re.search(r"\b(cuanto|precio|cuesta|costo|vale|sale)\b", texto):
+        principal = "pregunta_precio"
+    elif re.search(r"\b(manejan|maneja|tienen|tiene)\b.*\b(abuelita|sinfonia)\b", texto):
+        principal = "producto_no_manejado"
+    elif re.search(r"\b(todo|todos|toda|todas)\s+(?:seria|serian|es|son)?\s*(?:de|en)?\s*(velluto|komfy|kurumi|kairo|trapillo)\b", texto):
+        principal = "confirmacion_contexto"
+        estado = "preparando_cotizacion"
+    elif re.search(r"\b(quita|quitame|corrige|corregir|me equivoque|cambia)\b", texto):
+        principal = "correccion_pedido"
+    elif _parece_lista_o_pedido(texto, memoria):
+        principal = "pedido_lista"
+        estado = "preparando_cotizacion"
+    elif re.search(r"\b(pedido|cotizar|cotiza|hacer pedido|agregar al pedido|quiero pedir|lista)\b", texto):
+        principal = "iniciar_pedido"
+        estado = "esperando_lista_de_colores"
+    elif re.search(r"\b(hola|buenas tardes|buen dia|buenos dias|buenas noches)\b", texto):
+        principal = "saludo"
+
+    if principal == "iniciar_pedido" and total:
+        secundaria = "total_esperado"
+    if principal in ("pide_gama", "consulta_stock") and hilos:
+        secundaria = "hilo_mencionado"
+
+    return {
+        "principal": principal,
+        "secundaria": secundaria,
+        "hilos_mencionados": hilos,
+        "cp": cp,
+        "total_esperado": total,
+        "estado_sugerido": estado,
+    }
+
+
+def _parece_lista_o_pedido(texto, memoria=None):
+    t = _norm(texto)
+    if re.search(r"\b\d{1,3}\s*(?:del|de|codigo|cod|tono)\s*\d{1,4}\b", t):
+        return True
+    if re.search(r"\b\d{1,4}\s*x\s*\d{1,3}\b", t):
+        return True
+    if len(re.findall(r"(?<!\d)\d{1,4}(?!\d)", t)) >= 3 and not _detectar_cp(t):
+        return True
+    if re.search(r"\b(agregar|quiero pedir|dame|deme|ponme|me puede poner|lista)\b", t):
+        return True
+    estado = str((memoria or {}).get("estado_actual") or "")
+    if estado in ("esperando_lista_de_colores", "preparando_cotizacion") and re.search(r"\b\d{1,4}\b", t):
+        return True
+    return False
+
+
+def extraer_contexto_conversacion(normalizado, intencion, memoria=None, productos=None, marca_ui="", hilo_ui=""):
+    memoria = dict(memoria or {})
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    hilos = intencion.get("hilos_mencionados") or detectar_hilos(texto, productos)
+    hilo = ""
+    marca = ""
+    origen = "sin_contexto"
+
+    if hilo_ui and _norm(hilo_ui) not in ("todo", "todos", "toda", "todas", "all"):
+        hilo = hilo_ui
+        origen = "seleccion_manual"
+    elif hilos:
+        hilo = hilos[0]
+        origen = "mensaje_actual"
+    elif memoria.get("hilo_actual"):
+        hilo = memoria.get("hilo_actual")
+        origen = "memoria"
+
+    if marca_ui and _norm(marca_ui) not in ("todo", "todos", "toda", "todas", "all"):
+        marca = marca_ui
+    elif hilo:
+        marca = _marca_para_hilo(productos, hilo) or memoria.get("marca_actual", "")
+    else:
+        marca = memoria.get("marca_actual", "")
+
+    estado = intencion.get("estado_sugerido") or memoria.get("estado_actual") or ""
+    if intencion["principal"] == "iniciar_pedido" and hilo:
+        estado = "esperando_lista_de_colores"
+    if intencion["principal"] == "pedido_lista" and not hilo:
+        estado = "esperando_confirmacion_hilo"
+    if intencion["principal"] == "envio":
+        estado = "esperando_cp"
+    if intencion["principal"] == "cp_envio":
+        estado = "esperando_datos_envio"
+    if intencion["principal"] in ("pago", "comprobante"):
+        estado = "esperando_comprobante"
+
+    total = intencion.get("total_esperado")
+    if total is None:
+        try:
+            total = int(memoria.get("total_esperado") or 0) or None
+        except Exception:
+            total = None
+
+    return {
+        "hilo_actual": hilo,
+        "marca_actual": marca,
+        "origen_contexto": origen,
+        "estado_actual": estado,
+        "total_esperado": total,
+        "cp_actual": intencion.get("cp") or memoria.get("cp_actual") or "",
+        "memoria_previa": memoria,
+    }
+
+
+def _marca_para_hilo(productos, hilo):
+    fam = _hilo_family(hilo)
+    for p in productos or []:
+        if _hilo_family(p.get("hilo")) == fam:
+            return str(p.get("marca") or "").strip()
+    return ""
+
+
+def extraer_productos_y_cantidades(normalizado, intencion, contexto):
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    texto_sin_totales = _quitar_totales_y_cp(texto)
+    items = []
+
+    # 5 del 55, 10 de 60
+    for m in re.finditer(r"(?<!\d)(\d{1,3})\s*(?:piezas?\s*)?(?:del|de|codigo|cod|tono)\s*#?(\d{1,4})(?!\d)", texto_sin_totales):
+        items.append(_item(codigo=m.group(2), cantidad=int(m.group(1)), raw=m.group(0), fuente="cantidad_codigo"))
+
+    # 55 x2
+    for m in re.finditer(r"(?<!\d)(\d{1,4})\s*(?:x|\*)\s*(\d{1,3})(?!\d)", texto_sin_totales):
+        items.append(_item(codigo=m.group(1), cantidad=int(m.group(2)), raw=m.group(0), fuente="codigo_x_cantidad"))
+
+    # Blanco 01 - 2 / 216 canario - 4
+    for linea in normalizado.get("lineas") or [texto_sin_totales]:
+        l = _quitar_intro_lista(linea)
+        m = re.fullmatch(r"(\d{1,4})\s+([a-z0-9 ]{2,})\s*-\s*(\d{1,3})", l)
+        if m:
+            items.append(_item(codigo=m.group(1), cantidad=int(m.group(3)), desc=m.group(2), raw=linea, fuente="codigo_color_cantidad"))
+            continue
+        m = re.fullmatch(r"([a-z0-9 ]{2,})\s+(\d{1,4})\s*-\s*(\d{1,3})", l)
+        if m:
+            items.append(_item(codigo=m.group(2), cantidad=int(m.group(3)), desc=m.group(1), raw=linea, fuente="color_codigo_cantidad"))
+            continue
+        m = re.fullmatch(r"([a-z0-9 ]{2,})\s*-\s*(\d{1,3})", l)
+        if m and not re.search(r"\d", m.group(1)):
+            items.append(_item(cantidad=int(m.group(2)), desc=m.group(1), raw=linea, fuente="color_cantidad"))
+
+    # 3 rojos y 2 negros
+    for m in re.finditer(r"(?<!\d)(\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+([a-z][a-z ]{2,}?)(?=\s+y\s+\d|\s*,|$)", texto_sin_totales):
+        qty = _qty(m.group(1))
+        desc = _limpiar_desc_color(m.group(2))
+        if qty and desc and not re.search(r"\b(pedido|lista|total|piezas)\b", desc):
+            items.append(_item(cantidad=qty, desc=desc, raw=m.group(0), fuente="cantidad_color"))
+
+    # Listas puras de codigos.
+    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto_sin_totales)
+    if nums and _debe_tomar_codigos_sueltos(texto, intencion, contexto, len(items), len(nums)):
+        explicit = {str(it.get("codigo_raw") or it.get("codigo") or "") for it in items}
+        cantidad_lista = 1 if len(nums) > 1 else None
+        for n in nums:
+            if any(re.search(rf"(?<!\d){re.escape(n)}(?!\d)", str(it.get("raw") or "")) for it in items):
+                continue
+            if n not in explicit:
+                items.append(_item(codigo=n, cantidad=cantidad_lista, raw=n, fuente="codigo_suelto"))
+
+    # Color suelto como "azul cielo" o "rojo".
+    if not items and intencion["principal"] in ("pedido_lista", "consulta_stock", "duda_general"):
+        desc = _limpiar_desc_color(texto_sin_totales)
+        if desc and re.search(r"[a-z]", desc) and not detectar_hilos(desc):
+            items.append(_item(desc=desc, cantidad=None, raw=desc, fuente="color_suelto"))
+
+    return {
+        "items": _dedup_items(items),
+        "cp": intencion.get("cp") or "",
+        "total_esperado": intencion.get("total_esperado"),
+        "texto_sin_totales": texto_sin_totales,
+    }
+
+
+def _item(codigo="", cantidad=None, desc="", raw="", fuente=""):
+    codigo_raw = str(codigo or "").strip()
+    codigo_norm = codigo_raw.lstrip("0") or codigo_raw
+    return {
+        "codigo": codigo_norm,
+        "codigo_raw": codigo_raw,
+        "cantidad": cantidad,
+        "desc": _compact(desc),
+        "raw": _compact(raw),
+        "fuente": fuente,
+    }
+
+
+def _qty(token):
+    token = _norm(token)
+    if token.isdigit():
+        return int(token)
+    return QTY_WORDS.get(token)
+
+
+def _quitar_totales_y_cp(texto):
+    t = str(texto or "")
+    t = re.sub(r"\b(?:cp|codigo postal|postal)\s*(?:es)?\s*\d{5}\b", " ", t)
+    t = re.sub(r"\$\s*\d+(?:\.\d+)?", " ", t)
+    t = re.sub(r"\b(?:son|serian|seria|total|en total)\s+\d{1,3}\s*(?:piezas|madejas|pzas|pz)?\b", " ", t)
+    t = re.sub(r"\b\d{1,3}\s*(?:piezas|madejas|pzas|pz)\s+(?:en\s+)?total\b", " ", t)
+    return _compact(t)
+
+
+def _quitar_intro_lista(linea):
+    l = _norm(linea)
+    l = re.sub(r"^.*?\b(?:lista|pedido|poner|agregar|cotizar)\b\s*", "", l)
+    l = re.sub(r"^(?:quiero|dame|deme|ponme|agregame|agrega)\s+", "", l)
+    return _compact(l.strip(" ,.;"))
+
+
+def _limpiar_desc_color(desc):
+    d = _norm(desc)
+    d = re.sub(r"\b(quiero|dame|deme|ponme|agregar|pedido|lista|color|tono|de|del|el|la|los|las|por favor|favor)\b", " ", d)
+    d = re.sub(r"\b(velluto|komfy mini|komfy|kurumi|kairo|trapillo)\b", " ", d)
+    d = re.sub(r"\s+", " ", d).strip()
+    return d
+
+
+def _debe_tomar_codigos_sueltos(texto, intencion, contexto, items_count, nums_count):
+    if intencion["principal"] == "pide_foto_tono":
+        return False
+    if _detectar_cp(texto):
+        return False
+    if nums_count >= 2:
+        return True
+    estado = contexto.get("estado_actual")
+    if estado in ("esperando_lista_de_colores", "preparando_cotizacion") and nums_count == 1:
+        return True
+    if intencion["principal"] == "pedido_lista" and nums_count == 1 and items_count == 0:
+        return True
+    return False
+
+
+def _dedup_items(items):
+    out = []
+    seen = set()
+    for it in items:
+        key = (it.get("codigo_raw") or it.get("codigo") or "", it.get("desc") or "", it.get("cantidad"), it.get("raw") or "")
+        if key not in seen:
+            seen.add(key)
+            out.append(it)
+    return out
+
+
+def resolver_productos_con_almacen(extraccion, productos, contexto):
+    productos = list(productos or [])
+    productos_ctx = _filtrar_contexto(productos, contexto)
+    pedidos = []
+    preguntas = []
+    errores = []
+    sugerencias = []
+    internos = []
+
+    for item in extraccion.get("items") or []:
+        res = _resolver_item(item, productos, productos_ctx, contexto)
+        if res.get("pedido"):
+            pedidos.append(res["pedido"])
+        preguntas.extend(res.get("preguntas") or [])
+        errores.extend(res.get("errores") or [])
+        sugerencias.extend(res.get("sugerencias") or [])
+        internos.extend(res.get("internos") or [])
+
+    pedidos = _merge_pedidos(pedidos)
+    return {
+        "pedidos": pedidos,
+        "preguntas": _uniq(preguntas),
+        "errores": _uniq(errores),
+        "sugerencias": sugerencias,
+        "internos": internos,
+        "productos_contexto": len(productos_ctx),
+    }
+
+
+def _filtrar_contexto(productos, contexto):
+    out = list(productos or [])
+    marca = _norm(contexto.get("marca_actual") or "")
+    hilo = contexto.get("hilo_actual") or ""
+    if marca:
+        out = [p for p in out if _norm(p.get("marca") or "") == marca]
+    if hilo:
+        fam = _hilo_family(hilo)
+        exact = [p for p in out if _norm(p.get("hilo") or "") == _norm(hilo)]
+        out = exact or [p for p in out if _hilo_family(p.get("hilo")) == fam]
+    return out
+
+
+def _code_map(productos):
+    mp = {}
+    for p in productos or []:
+        for key in (p.get("codigo"), p.get("codigo_barras")):
+            raw = str(key or "").strip()
+            if not raw:
+                continue
+            keys = {raw, raw.lstrip("0") or raw}
+            for k in keys:
+                mp.setdefault(k, []).append(p)
+    return mp
+
+
+def _resolver_item(item, productos_all, productos_ctx, contexto):
+    codigo = str(item.get("codigo") or "").strip()
+    codigo_raw = str(item.get("codigo_raw") or codigo).strip()
+    desc = str(item.get("desc") or "").strip()
+    qty = item.get("cantidad")
+    hilo_ctx = contexto.get("hilo_actual") or ""
+    out = {"preguntas": [], "errores": [], "sugerencias": [], "internos": []}
+
+    prod_por_desc = None
+    if desc and hilo_ctx:
+        prod_por_desc, opts_desc = _buscar_por_color(productos_ctx, desc)
+    else:
+        opts_desc = []
+
+    matches = []
+    if codigo:
+        matches = _code_map(productos_ctx).get(codigo_raw) or _code_map(productos_ctx).get(codigo) or []
+        if not matches and not hilo_ctx:
+            matches = _code_map(productos_all).get(codigo_raw) or _code_map(productos_all).get(codigo) or []
+
+    prod = None
+    if matches:
+        normales = [p for p in matches if _no_combo(p)]
+        matches = normales or matches
+        fams = sorted({_hilo_family(p.get("hilo")) for p in matches})
+        if not hilo_ctx and len(fams) > 1:
+            opciones = ", ".join(_hilo_display(f) for f in fams[:4])
+            out["preguntas"].append(f"El codigo {codigo_raw or codigo} aparece en varios hilos. Lo busca en {opciones}?")
+            return out
+        prod_codigo = sorted(matches, key=lambda p: _stock(p), reverse=True)[0]
+        if desc and not _desc_compatible(prod_codigo, desc):
+            if prod_por_desc:
+                prod = prod_por_desc
+                out["internos"].append("color_priorizado_sobre_codigo")
+            else:
+                out["preguntas"].append(f"Para {item.get('raw')}, confirmo el color antes de agregarlo?")
+                return out
+        else:
+            prod = prod_codigo
+    elif desc:
+        if not hilo_ctx:
+            out["preguntas"].append(f"Lo busca en Velluto, Komfy Mini o algun otro hilo?")
+            return out
+        prod, opts_desc = _buscar_por_color(productos_ctx, desc)
+        if not prod and opts_desc:
+            out["sugerencias"].append({"tipo": "color_parecido", "texto": desc, "opciones": opts_desc[:5]})
+            out["preguntas"].append(f"Le muestro opciones parecidas para {desc}?")
+            return out
+        if not prod:
+            out["preguntas"].append(f"No ubique bien {desc}. Me confirma codigo o tono?")
+            return out
+    elif codigo:
+        out["errores"].append(codigo_raw or codigo)
+        out["preguntas"].append("Me confirma ese codigo para revisarlo bien?")
+        return out
+
+    if not prod:
+        return out
+
+    pedido = _producto_a_pedido(prod, qty)
+    if qty is None:
+        out["preguntas"].append(f"Cuantas piezas de {_linea_producto(prod)} le agrego?")
+        pedido["cantidad_pendiente"] = True
+    if pedido.get("es_inventariable", True) and int(pedido.get("stock") or 0) <= 0:
+        out["sugerencias"].append({"tipo": "agotado", "producto": pedido})
+    out["pedido"] = pedido
+    return out
+
+
+def _no_combo(p):
+    color = _norm(p.get("color") or "")
+    return not any(x in color for x in ("combo", "paquete", "surtido"))
+
+
+def _stock(p):
+    try:
+        return int(p.get("stock") or 0)
+    except Exception:
+        return 0
+
+
+def _precio(p):
+    try:
+        return float(p.get("precio_venta") or p.get("precio") or 0)
+    except Exception:
+        return 0.0
+
+
+def _buscar_por_color(productos, desc):
+    descn = _norm(desc)
+    scored = []
+    for p in productos or []:
+        if not _no_combo(p):
+            continue
+        color = _norm(p.get("color") or "")
+        if not color:
+            continue
+        score = _score_color(color, descn)
+        if score > 0:
+            scored.append((score + (_stock(p) > 0), p))
+    scored.sort(key=lambda x: (-x[0], -_stock(x[1]), str(x[1].get("codigo") or "")))
+    if not scored:
+        return None, []
+    opts = [p for _, p in scored[:6]]
+    if len(scored) == 1 or scored[0][0] >= 90 or (len(scored) > 1 and scored[0][0] - scored[1][0] >= 35):
+        return scored[0][1], opts
+    return None, opts
+
+
+def _score_color(color, desc):
+    if desc == color:
+        return 120
+    if desc and desc in color:
+        return 100
+    words = [w for w in desc.split() if len(w) >= 3]
+    if words and all(w in color for w in words):
+        return 95
+    score = 0
+    for canon, aliases in COLOR_ALIASES.items():
+        alias_norm = [_norm(a) for a in aliases]
+        if any(a and a in desc for a in alias_norm):
+            if any(a and a in color for a in alias_norm) or canon in color:
+                score = max(score, 80)
+    if words and any(_ratio(w, color) >= 0.82 for w in words):
+        score = max(score, 55)
+    return score
+
+
+def _desc_compatible(prod, desc):
+    color = _norm((prod or {}).get("color") or "")
+    descn = _norm(desc)
+    if not descn:
+        return True
+    if descn in color or color in descn:
+        return True
+    return _score_color(color, descn) >= 80
+
+
+def _producto_a_pedido(prod, cantidad):
+    return {
+        "producto_id": prod.get("id"),
+        "codigo": prod.get("codigo"),
+        "marca": prod.get("marca") or "",
+        "hilo": prod.get("hilo") or "",
+        "color": prod.get("color") or "",
+        "stock": _stock(prod),
+        "precio_venta": _precio(prod),
+        "cantidad": int(cantidad or 1),
+        "es_inventariable": prod.get("es_inventariable", True),
+    }
+
+
+def _linea_producto(prod_or_pedido):
+    hilo = _hilo_display((prod_or_pedido or {}).get("hilo") or "")
+    codigo = str((prod_or_pedido or {}).get("codigo") or "").strip()
+    color = str((prod_or_pedido or {}).get("color") or "").strip()
+    return " ".join(x for x in (hilo, codigo, color) if x).strip()
+
+
+def _merge_pedidos(pedidos):
+    merged = {}
+    for p in pedidos or []:
+        key = "|".join(str(p.get(k) or "") for k in ("producto_id", "codigo", "hilo", "color"))
+        if key in merged and not p.get("cantidad_pendiente"):
+            merged[key]["cantidad"] = int(merged[key].get("cantidad") or 0) + int(p.get("cantidad") or 1)
+        else:
+            merged[key] = dict(p)
+    return list(merged.values())
+
+
+def _uniq(values):
+    out = []
+    for v in values or []:
+        s = str(v or "").strip()
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
+def calcular_confianza(intencion, contexto, extraccion, resolucion):
+    pedidos = resolucion.get("pedidos") or []
+    preguntas = resolucion.get("preguntas") or []
+    errores = resolucion.get("errores") or []
+    internos = resolucion.get("internos") or []
+    nivel = "alta"
+    accion = "sugerir_respuesta"
+
+    if preguntas or errores:
+        nivel = "baja"
+        accion = "preguntar"
+    elif any(p.get("cantidad_pendiente") for p in pedidos):
+        nivel = "baja"
+        accion = "preguntar_cantidad"
+    elif any(p.get("es_inventariable", True) and int(p.get("stock") or 0) < int(p.get("cantidad") or 1) for p in pedidos):
+        nivel = "media"
+        accion = "revision_stock"
+    elif internos:
+        nivel = "media"
+        accion = "revision_sugerida"
+    elif intencion["principal"] in ("envio", "pago", "comprobante", "cp_envio"):
+        nivel = "media"
+        accion = "responder_revision"
+    elif intencion["principal"] == "iniciar_pedido":
+        nivel = "alta"
+        accion = "esperar_lista"
+    elif intencion["principal"] == "producto_no_manejado":
+        nivel = "media"
+        accion = "responder_revision"
+    elif not pedidos and intencion["principal"] == "duda_general":
+        nivel = "baja"
+        accion = "revision_humana"
+
+    return {"confianza": nivel, "accion_recomendada": accion, "puede_auto_enviar": False}
+
+
+def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, resolucion, confianza, productos=None, recursos=None, envio=None):
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    principal = intencion["principal"]
+    recursos = recursos or {}
+    envio = envio or {}
+
+    if principal == "pide_gama":
+        if recursos.get("respuesta"):
+            return recursos["respuesta"]
+        hilo = _hilo_display(contexto.get("hilo_actual") or "")
+        return f"Claro {EMOJI_OK} le comparto la gama de colores de {hilo or 'ese hilo'}. Si le gusta algun tono, me pasa el codigo y le reviso disponibilidad."
+
+    if principal == "pide_foto_tono":
+        if recursos.get("respuesta"):
+            return recursos["respuesta"]
+        codigo = _primer_codigo(texto)
+        return f"Claro {EMOJI_OK} le reviso la foto del tono {codigo}."
+
+    if principal == "pregunta_precio":
+        return _respuesta_precio(contexto, productos)
+
+    if principal == "consulta_stock":
+        return _respuesta_stock_colores(contexto, productos, texto)
+
+    if principal == "envio":
+        return f"Claro {EMOJI_OK} para decirle el costo exacto de envio necesito su codigo postal."
+
+    if principal == "cp_envio":
+        if envio.get("respuesta"):
+            return envio["respuesta"]
+        cp = extraccion.get("cp") or contexto.get("cp_actual") or ""
+        return f"Perfecto {EMOJI_OK} con el CP {cp} reviso opciones de paqueteria para su pedido."
+
+    if principal in ("pago", "comprobante"):
+        return f"Perfecto {EMOJI_OK} me puede mandar foto del comprobante para revisarlo, por favor."
+
+    if principal == "producto_no_manejado":
+        return _respuesta_producto_no_manejado(texto, productos)
+
+    if principal == "iniciar_pedido" and not resolucion.get("pedidos"):
+        hilo = _hilo_display(contexto.get("hilo_actual") or "")
+        if contexto.get("total_esperado"):
+            return f"Claro {EMOJI_OK} le cotizo el pedido de {hilo or 'ese hilo'}. Mandeme los codigos o colores y se lo preparo."
+        if hilo:
+            return f"Claro {EMOJI_OK} mandeme la lista cuando guste y se la cotizo en {hilo}."
+        return f"Claro {EMOJI_OK} mandeme la lista cuando guste y se la cotizo."
+
+    if resolucion.get("preguntas"):
+        return _respuesta_pregunta_corta(resolucion, contexto)
+
+    if resolucion.get("pedidos"):
+        return _respuesta_pedido(resolucion, contexto)
+
+    if principal == "agradecimiento":
+        return ""
+
+    return f"Claro {EMOJI_OK} digame que hilo, codigo o color busca y con gusto le ayudo."
+
+
+def _primer_codigo(texto):
+    m = re.search(r"\b\d{1,4}\b", str(texto or ""))
+    return m.group(0) if m else ""
+
+
+def _respuesta_precio(contexto, productos):
+    hilo = contexto.get("hilo_actual") or ""
+    if not hilo:
+        return f"Claro {EMOJI_OK} me confirma que hilo o codigo quiere revisar para darle el precio exacto?"
+    ctx = _filtrar_contexto(productos, contexto)
+    precios = [_precio(p) for p in ctx if _precio(p) > 0 and _no_combo(p)]
+    nombre = _hilo_display(hilo)
+    if not precios:
+        return f"Si manejo {nombre} {EMOJI_OK} me indica el codigo o color para revisarle precio exacto?"
+    mn, mx = min(precios), max(precios)
+    precio = f"${mn:,.2f}" if abs(mn - mx) < 0.01 else f"desde ${mn:,.2f}"
+    return f"El {nombre} esta en {precio} por madeja {EMOJI_OK} Busca algun color o codigo en especial?"
+
+
+def _respuesta_stock_colores(contexto, productos, texto):
+    hilo = contexto.get("hilo_actual") or ""
+    if not hilo:
+        return f"Claro {EMOJI_OK} que hilo busca, Velluto, Komfy Mini u otro?"
+    ctx = [p for p in _filtrar_contexto(productos, contexto) if _stock(p) > 0 and _no_combo(p)]
+    nombre = _hilo_display(hilo)
+    if not ctx:
+        return f"Por el momento no me aparece stock disponible de {nombre}. Le reviso alguna alternativa?"
+    lineas = []
+    seen = set()
+    for p in ctx:
+        key = (str(p.get("codigo") or ""), _norm(p.get("color") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        lineas.append(f"- {p.get('codigo')} {p.get('color')}".strip())
+        if len(lineas) >= 24:
+            break
+    if len(ctx) > 24:
+        muestra = ", ".join(ln.replace("- ", "") for ln in lineas[:10])
+        return f"Tengo varios tonos disponibles de {nombre} {EMOJI_OK} Algunos son: {muestra}. Busca algun color en especial o le comparto la carta?"
+    return f"Claro {EMOJI_OK} de {nombre} tengo disponibles estos tonos:\n" + "\n".join(lineas)
+
+
+def _respuesta_producto_no_manejado(texto, productos):
+    alternativas = []
+    for fam in ("KURUMI", "KOMFY MINI", "VELLUTO"):
+        if any(_hilo_family(p.get("hilo")) == fam and _stock(p) > 0 for p in productos or []):
+            alternativas.append(_hilo_display(fam))
+    extra = ", ".join(alternativas[:3]) if alternativas else "otras opciones del catalogo"
+    if "abuelita" in _norm(texto):
+        return f"La Abuelita por el momento no la manejamos {EMOJI_OK} pero puedo ofrecerle alternativas reales como {extra}. Para que proyecto lo ocuparia?"
+    return f"Por el momento no me aparece ese producto en almacen {EMOJI_OK} pero puedo revisarle alternativas reales como {extra}."
+
+
+def _respuesta_pregunta_corta(resolucion, contexto):
+    q = resolucion["preguntas"][0]
+    q = _limpiar_pregunta_publica(q)
+    return f"Solo para agregarselo correcto {EMOJI_OK} {q}"
+
+
+def _limpiar_pregunta_publica(q):
+    q = str(q or "").strip()
+    q = re.sub(r"\b(confianza|parser|advertencia|interno)\b.*", "", q, flags=re.I).strip()
+    q = q.replace("El codigo", "El codigo")
+    if not q.endswith("?"):
+        q += "?"
+    return q
+
+
+def _respuesta_pedido(resolucion, contexto):
+    pedidos = resolucion.get("pedidos") or []
+    ok = []
+    faltantes = []
+    agotados = []
+    for p in pedidos:
+        if p.get("cantidad_pendiente"):
+            faltantes.append(p)
+        elif p.get("es_inventariable", True) and int(p.get("stock") or 0) <= 0:
+            agotados.append(p)
+        elif p.get("es_inventariable", True) and int(p.get("stock") or 0) < int(p.get("cantidad") or 1):
+            agotados.append(p)
+        else:
+            ok.append(p)
+
+    partes = []
+    if ok:
+        total = sum(int(p.get("cantidad") or 1) for p in ok)
+        lineas = [f"* {_linea_producto(p)} x{int(p.get('cantidad') or 1)}" for p in ok]
+        partes.append(f"Claro {EMOJI_OK} le agrego:\n\n" + "\n".join(lineas))
+        partes.append(f"Total: {total} pieza" + ("s." if total != 1 else "."))
+        if contexto.get("total_esperado") and total != int(contexto.get("total_esperado") or 0):
+            partes.append(f"Me quedan {int(contexto.get('total_esperado') or 0) - total} piezas por completar de las que me indico.")
+    for p in faltantes:
+        partes.append(f"Cuantas piezas de {_linea_producto(p)} le agrego?")
+    for p in agotados:
+        partes.append(f"{_linea_producto(p)} por el momento no me aparece disponible {EMOJI_SAD} Le muestro opciones parecidas?")
+    if ok and not faltantes and not agotados:
+        partes.append("Le preparo su cotizacion.")
+    return "\n\n".join(partes).strip()
+
+
+def guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extraccion, resolucion, respuesta):
+    nueva = dict(memoria or {})
+    pedidos = resolucion.get("pedidos") or []
+    items = extraccion.get("items") or []
+    total_esperado = contexto.get("total_esperado")
+    if total_esperado is None:
+        total_esperado = nueva.get("total_esperado") or ""
+    nueva.update({
+        "hilo_actual": contexto.get("hilo_actual") or nueva.get("hilo_actual") or "",
+        "marca_actual": contexto.get("marca_actual") or nueva.get("marca_actual") or "",
+        "intencion_actual": intencion.get("principal") or "",
+        "estado_actual": contexto.get("estado_actual") or "",
+        "ultima_respuesta_enviada": respuesta or "",
+        "fecha_ultima_actividad": datetime.now().isoformat(sep=" ", timespec="seconds"),
+        "cp_actual": extraccion.get("cp") or contexto.get("cp_actual") or nueva.get("cp_actual") or "",
+        "total_esperado": total_esperado,
+        "pedido_en_proceso": json.dumps(pedidos[:60], ensure_ascii=False),
+    })
+    if items and (resolucion.get("preguntas") or resolucion.get("errores") or not pedidos):
+        nueva["ultima_lista_pendiente"] = json.dumps(items[:80], ensure_ascii=False)
+    elif pedidos and not (resolucion.get("preguntas") or resolucion.get("errores")):
+        nueva["ultima_lista_pendiente"] = ""
+    if pedidos:
+        nueva["ultimo_codigo"] = str(pedidos[-1].get("codigo") or "")
+        nueva["ultimo_color"] = str(pedidos[-1].get("color") or "")
+    if resolucion.get("preguntas"):
+        nueva["ultima_pregunta_hecha"] = resolucion["preguntas"][0]
+    if intencion.get("principal") in ("pago", "comprobante"):
+        nueva["pago_pendiente"] = True
+    if intencion.get("principal") == "envio":
+        nueva["datos_envio_pendientes"] = True
+    if pedidos:
+        nueva["cotizacion_activa"] = True
+    return nueva
+
+
+def _cargar_lista_pendiente(memoria):
+    for key in ("ultima_lista_pendiente", "ultima_lista_recibida"):
+        raw = (memoria or {}).get(key)
+        if not raw:
+            continue
+        if isinstance(raw, list):
+            return [dict(x) for x in raw if isinstance(x, dict)]
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            continue
+        if isinstance(obj, list):
+            out = []
+            for it in obj:
+                if not isinstance(it, dict):
+                    continue
+                out.append(_item(
+                    codigo=it.get("codigo_raw") or it.get("codigo") or "",
+                    cantidad=it.get("cantidad"),
+                    desc=it.get("desc") or it.get("color") or "",
+                    raw=it.get("raw") or "",
+                    fuente=it.get("fuente") or "memoria_lista_pendiente",
+                ))
+            if out:
+                return out
+    return []
+
+
+def manejar_buffer_mensajes(mensajes, ahora=None, buffer_seconds=35):
+    ahora = ahora or datetime.now()
+    if isinstance(mensajes, str):
+        mensajes = [{"texto": mensajes, "fecha": ahora}]
+    textos = [str(m.get("texto") or "").strip() for m in mensajes or [] if str(m.get("texto") or "").strip()]
+    combinado = "\n".join(textos).strip()
+    urgente = bool(re.search(r"\b(ya pague|ya quedo|comprobante|me equivoque|corrige|quita)\b", _norm(combinado)))
+    if urgente:
+        return {"accion": "procesar_rapido", "texto": combinado, "espera_segundos": 0}
+    return {"accion": "procesar", "texto": combinado, "espera_segundos": int(buffer_seconds)}
+
+
+def manejar_cierre_diferido(normalizado, memoria=None, minutos=5):
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    if re.fullmatch(r"(gracias|muchas gracias|ok gracias|perfecto gracias|listo gracias)", texto):
+        return {
+            "programar": True,
+            "minutos": int(minutos),
+            "mensaje": f"A sus ordenes {EMOJI_OK} cualquier cosa no dude en escribirme, con gusto le atiendo.",
+        }
+    return {"programar": False}
+
+
+def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
+    callbacks = callbacks or {}
+    texto = payload.get("texto") or ""
+    marca_ui = payload.get("marca") or ""
+    hilo_ui = payload.get("hilo") or ""
+
+    buffer_info = manejar_buffer_mensajes(texto, buffer_seconds=int(payload.get("buffer_seconds") or 35))
+    normalizado = normalizar_texto_cliente(buffer_info["texto"])
+    cierre = manejar_cierre_diferido(normalizado, memoria)
+    if cierre.get("programar"):
+        return {
+            "ok": True,
+            "motor": "v27_motor_conversacional",
+            "normalizado": normalizado,
+            "intencion": {"principal": "agradecimiento"},
+            "contexto": {},
+            "extraccion": {"items": []},
+            "resolucion": {"pedidos": [], "preguntas": [], "errores": [], "sugerencias": [], "internos": []},
+            "confianza": {"confianza": "alta", "accion_recomendada": "cierre_diferido", "puede_auto_enviar": False},
+            "respuesta": "",
+            "cierre_diferido": cierre,
+            "memoria": dict(memoria or {}),
+        }
+
+    intencion = detectar_intencion(normalizado, memoria, productos)
+    contexto = extraer_contexto_conversacion(normalizado, intencion, memoria, productos, marca_ui, hilo_ui)
+    extraccion = extraer_productos_y_cantidades(normalizado, intencion, contexto)
+    if intencion["principal"] == "confirmacion_contexto" and not (extraccion.get("items") or []):
+        pendientes = _cargar_lista_pendiente(memoria)
+        if pendientes:
+            extraccion["items"] = pendientes
+            extraccion["reuso_lista_pendiente"] = True
+
+    # Recurso antes de resolver carrito: gama/foto no debe agregar productos.
+    recursos = {}
+    if callbacks.get("buscar_recurso") and intencion["principal"] in ("pide_gama", "pide_foto_tono"):
+        recursos = callbacks["buscar_recurso"](intencion, normalizado, contexto, extraccion) or {}
+
+    resolucion = resolver_productos_con_almacen(extraccion, productos, contexto)
+    confianza = calcular_confianza(intencion, contexto, extraccion, resolucion)
+
+    envio = {}
+    if callbacks.get("cotizar_envio") and intencion["principal"] == "cp_envio":
+        envio = callbacks["cotizar_envio"](extraccion.get("cp") or contexto.get("cp_actual") or "", contexto) or {}
+
+    respuesta = generar_respuesta_vendedora(
+        normalizado, intencion, contexto, extraccion, resolucion, confianza,
+        productos=productos, recursos=recursos, envio=envio,
+    )
+    memoria_nueva = guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extraccion, resolucion, respuesta)
+
+    return {
+        "ok": True,
+        "motor": "v27_motor_conversacional",
+        "normalizado": normalizado,
+        "intencion": intencion,
+        "contexto": contexto,
+        "extraccion": extraccion,
+        "resolucion": resolucion,
+        "confianza": confianza,
+        "respuesta": respuesta,
+        "cierre_diferido": {"programar": False},
+        "buffer": buffer_info,
+        "memoria": memoria_nueva,
+    }
