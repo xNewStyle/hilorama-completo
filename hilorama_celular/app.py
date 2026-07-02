@@ -10832,3 +10832,504 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
 
 # Mantener endpoint V19; usa estas funciones porque se resolvieron globalmente.
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v19
+
+# -----------------------------------------------------------------------------
+# V22 - Vendedora WhatsApp segura: stock real, memoria rica y revision humana
+# -----------------------------------------------------------------------------
+# Esta capa final mantiene compatibilidad con el simulador actual. Solo ajusta el
+# comportamiento publico del agente para que venda como una persona: consulta
+# almacen, no confirma agotados, pregunta corto y deja acciones para aprobacion.
+
+WA_V22_MAX_COLORES_DETALLE = int(os.environ.get('WA_MAX_COLORES_DETALLE', '24') or '24')
+
+
+def _wa_v22_norm(v):
+    try:
+        return _wa_v21_norm(v or '')
+    except Exception:
+        try:
+            return _v6_norm(v or '')
+        except Exception:
+            return re.sub(r'\s+', ' ', str(v or '').lower()).strip()
+
+
+def _wa_v22_no_es_combo(prod):
+    color = _wa_v22_norm((prod or {}).get('color') or '')
+    return not any(x in color for x in ['combo', 'paquete', 'surtido'])
+
+
+def _wa_v22_stock(prod):
+    try:
+        return int((prod or {}).get('stock') or 0)
+    except Exception:
+        return 0
+
+
+def _wa_v22_disponibles(productos):
+    return [p for p in (productos or []) if _wa_v22_stock(p) > 0 and _wa_v22_no_es_combo(p)]
+
+
+def _wa_v22_precio_texto(productos, fam=None):
+    vals = []
+    for p in productos or []:
+        try:
+            val = float(p.get('precio_venta') or 0)
+        except Exception:
+            val = 0
+        if val > 0:
+            vals.append(val)
+    if not vals:
+        return ''
+    mn, mx = min(vals), max(vals)
+    return f"${mn:,.2f}" if abs(mn - mx) < 0.01 else f"desde ${mn:,.2f}"
+
+
+def _wa_v22_linea_producto(prod, cantidad=None):
+    hilo = str((prod or {}).get('hilo') or '').strip()
+    codigo = str((prod or {}).get('codigo') or '').strip()
+    color = str((prod or {}).get('color') or '').strip()
+    base = ' '.join(x for x in [hilo, codigo, color] if x).strip() or 'producto'
+    if cantidad is None:
+        return base
+    return f"{base} x{int(cantidad or 1)}"
+
+
+def _wa_v22_formato_colores(productos, limite=WA_V22_MAX_COLORES_DETALLE):
+    lineas = []
+    vistos = set()
+    for p in _wa_v22_disponibles(productos):
+        codigo = str(p.get('codigo') or '').strip()
+        color = str(p.get('color') or '').strip()
+        key = (codigo, _wa_v22_norm(color))
+        if not codigo or key in vistos:
+            continue
+        vistos.add(key)
+        lineas.append(f"- {codigo} {color}".strip())
+        if len(lineas) >= limite:
+            break
+    return lineas, len(vistos)
+
+
+def _wa_v22_envio_opciones_texto(cp=''):
+    cp = re.search(r'\b\d{5}\b', str(cp or ''))
+    cp_txt = cp.group(0) if cp else ''
+    candidatos = [
+        Path(APP_DIR) / 'envios_config.json',
+        Path(APP_DIR).parent / 'envios_config.json',
+    ]
+    opciones = []
+    for path in candidatos:
+        try:
+            if not path.exists():
+                continue
+            data = json.loads(path.read_text(encoding='utf-8'))
+            for nombre, cfg in data.items():
+                try:
+                    base = float((cfg or {}).get('base') or 0)
+                except Exception:
+                    base = 0
+                if base > 0:
+                    opciones.append((str(nombre), base))
+            if opciones:
+                break
+        except Exception as exc:
+            print('WARN leer envios_config v22:', exc, flush=True)
+    if opciones:
+        lineas = [f"- {nombre}: desde ${precio:,.0f}" for nombre, precio in opciones[:5]]
+        intro = f"Con el CP {cp_txt} " if cp_txt else ""
+        return intro + "le puedo revisar estas opciones de envio:\n" + "\n".join(lineas) + "\n\nLa opcion final depende del peso y volumen del pedido."
+    if cp_txt:
+        return f"Perfecto, con el CP {cp_txt} reviso las opciones de paqueteria disponibles para su pedido."
+    return "Si me comparte su codigo postal, le reviso las opciones de paqueteria disponibles."
+
+
+_wa_v22_respuesta_consulta_anterior = _v6_respuesta_consulta
+
+
+def _v6_respuesta_consulta(texto, productos, hilos=None, marcas=None):
+    """V22: responder consultas con stock/precio reales y sin inventar disponibilidad."""
+    t = _wa_v22_norm(texto)
+    if not t:
+        return ''
+
+    combo = _v6_public_answer_for_combo(t)
+    if combo:
+        return combo
+
+    if re.search(r'\b(abuelita|abuelitas|la abuelita)\b', t):
+        return (
+            "La Abuelita por el momento no la manejamos 😊 "
+            "pero si tengo alternativas segun su proyecto: Kurumi para amigurumi mas firme/delgado "
+            "o Komfy Mini si busca algo suave tipo chenille. ¿Para que trabajo lo ocuparia?"
+        )
+
+    if re.search(r'\b(envio|envios|envia|envias|mandan|paqueteria|cp|codigo postal)\b', t):
+        cp = re.search(r'\b\d{5}\b', t)
+        if cp:
+            return _wa_v22_envio_opciones_texto(cp.group(0))
+        return "Si 😊 hacemos envios. Para cotizarle bien me comparte su codigo postal, por favor."
+
+    hilos = hilos or _v6_detect_hilos(t, productos)
+    if not hilos:
+        return _wa_v22_respuesta_consulta_anterior(texto, productos, hilos, marcas)
+
+    pregunta_precio = bool(re.search(r'\b(precio|cuanto|cuesta|costo|vale|sale)\b', t))
+    pregunta_colores = bool(re.search(r'\b(color|colores|tono|tonos|disponible|disponibles|carta|catalogo|gama)\b', t))
+    color_groups = _v6_color_groups(t)
+    bloques = []
+
+    for h in hilos[:2]:
+        prods_h = _v6_products_for_hilo(productos, h)
+        disponibles = _wa_v22_disponibles(prods_h)
+        nombre = _v6_hilo_display(h)
+        fam = _v6_hilo_family(h)
+        precio = _wa_v22_precio_texto(prods_h, fam)
+
+        if pregunta_precio:
+            if precio:
+                bloques.append(f"El {nombre} esta en {precio} por madeja 😊 ¿Busca algun color o codigo en especial?")
+            else:
+                bloques.append(f"Si manejo {nombre} 😊 ¿Que color o codigo busca para revisarle precio exacto?")
+            continue
+
+        if color_groups and not re.search(r'\b(carta|catalogo|gama)\b', t):
+            partes = []
+            for g in color_groups[:3]:
+                prod, opts = _v6_resolve_color(disponibles or prods_h, g)
+                if prod and _wa_v22_stock(prod) > 0:
+                    partes.append(f"{prod.get('codigo')} {prod.get('color')}")
+                elif opts:
+                    opts_disp = [o for o in opts if _wa_v22_stock(o) > 0]
+                    if opts_disp:
+                        partes.append(_v6_format_color_options(opts_disp, 4))
+            if partes:
+                bloques.append(f"Si 😊 en {nombre} tengo disponible: " + "; ".join(partes) + ". ¿Cuantas piezas le aparto?")
+            else:
+                bloques.append(f"En {nombre} no me aparece disponible ese tono exacto 😊 ¿quiere que le muestre opciones parecidas?")
+            continue
+
+        if pregunta_colores:
+            lineas, total_mostrado = _wa_v22_formato_colores(prods_h)
+            total_disp = len(_wa_v22_disponibles(prods_h))
+            if not total_disp:
+                bloques.append(f"Por el momento no me aparece stock disponible de {nombre}. ¿Quiere que le sugiera algun hilo parecido?")
+            elif total_disp <= WA_V22_MAX_COLORES_DETALLE:
+                bloques.append(f"Claro 😊 de {nombre} tengo disponibles estos tonos:\n" + "\n".join(lineas))
+            else:
+                muestra = ", ".join([ln.replace("- ", "") for ln in lineas[:10]])
+                bloques.append(
+                    f"Tengo {total_disp} tonos disponibles de {nombre} 😊 "
+                    f"Algunos son: {muestra}. ¿Busca algun color en especial o le comparto la carta?"
+                )
+            continue
+
+        if disponibles:
+            extra = f", esta en {precio}" if precio else ""
+            bloques.append(f"Si 😊 manejamos {nombre}{extra}. ¿Busca algun color o codigo en especial?")
+        else:
+            bloques.append(f"Si manejamos {nombre}, pero ahorita no me aparece stock disponible. ¿Le reviso alguna alternativa?")
+
+    return "\n\n".join(bloques).strip()
+
+
+def _wa_respuesta_consulta_almacen(texto, productos, hilos=None, marcas=None):
+    return _v6_respuesta_consulta(texto, productos, hilos, marcas)
+
+
+def _wa_v22_limpiar_pregunta_cliente(q):
+    q = str(q or '').strip()
+    if not q:
+        return ''
+    q = re.sub(r'\bV\d+:\s*', '', q)
+    q = re.sub(r'\.?\s*Se\s+us[óo]\s+\d+\s+provisionalmente\.?', '', q, flags=re.I)
+    q = re.sub(r'\bconfianza\s+(baja|media|alta)\b', '', q, flags=re.I)
+    q = re.sub(r'\s+', ' ', q).strip()
+    # Suaviza preguntas tecnicas de codigo/color.
+    q = q.replace("veo codigo y color diferentes", "quiero confirmar el tono")
+    q = q.replace("no se uso", "no tome")
+    return q
+
+
+def _formatear_sugerencias_almacen_wa(parsed):
+    sugerencias = parsed.get('sugerencias_almacen') or []
+    if not sugerencias:
+        return ''
+    bloques = []
+    for s in sugerencias[:3]:
+        tipo = s.get('tipo')
+        opciones = s.get('opciones') or []
+        if tipo == 'tonos_por_descripcion':
+            hilo = s.get('hilo') or 'ese hilo'
+            lineas = []
+            for op in opciones[:5]:
+                lineas.append(f"- {op.get('hilo') or hilo} {op.get('codigo')} {op.get('color')}".strip())
+            if lineas:
+                bloques.append('Lo mas parecido que tengo en ' + hilo + ' es:\n' + '\n'.join(lineas))
+        elif tipo == 'hilo_similar':
+            lineas = []
+            for op in opciones[:5]:
+                txt = f"- {op.get('hilo')}"
+                if op.get('ejemplo_codigo'):
+                    txt += f" (ej. {op.get('ejemplo_codigo')} {op.get('ejemplo_color','')})"
+                lineas.append(txt.strip())
+            if lineas:
+                bloques.append('Ese producto exacto no lo veo en mi almacen, pero si tengo opciones parecidas:\n' + '\n'.join(lineas))
+    return '\n\n'.join(bloques).strip()
+
+
+_wa_v22_clasificar_anterior = _clasificar_intencion_wa
+
+
+def _clasificar_intencion_wa(texto, parsed):
+    meta = _wa_v22_clasificar_anterior(texto, parsed)
+    t = _wa_v22_norm(texto)
+
+    if re.search(r'\b(comprobante|pago|pague|pagado|deposito|transferencia|ticket|recibo)\b', t) or re.search(r'\b(ya\s+quedo|ya\s+quedo|ya\s+qued[oó])\b.*\bpago\b', t):
+        meta['intencion'] = 'comprobante_pago'
+        meta['confianza'] = 'media'
+        meta['accion_recomendada'] = 'pedir_comprobante_revision'
+    elif re.search(r'\b(cp|codigo postal)\b', t):
+        meta['intencion'] = 'pregunta_envio'
+        meta['confianza'] = 'media'
+        meta['accion_recomendada'] = 'responder'
+    elif parsed.get('respuesta_preferida') and not parsed.get('pedidos'):
+        meta['confianza'] = 'alta'
+        meta['accion_recomendada'] = 'responder'
+
+    # Seguridad de fase: el agente sugiere/prepara, no envia ni marca acciones solo.
+    meta['puede_auto_enviar'] = False
+    return meta
+
+
+def _wa_v22_partir_stock(pedidos):
+    ok, parciales, agotados = [], [], []
+    for p in pedidos or []:
+        qty = int(p.get('cantidad') or 1)
+        inv = p.get('es_inventariable', True)
+        stock = _wa_v22_stock(p)
+        if inv and stock <= 0:
+            agotados.append(p)
+        elif inv and stock < qty:
+            parciales.append(p)
+        else:
+            ok.append(p)
+    return ok, parciales, agotados
+
+
+def _fallback_respuesta_wa(texto, parsed, meta):
+    if parsed.get('respuesta_preferida'):
+        return str(parsed.get('respuesta_preferida')).strip()
+
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    sug_txt = _formatear_sugerencias_almacen_wa(parsed)
+    intent = (meta or {}).get('intencion')
+    t = _wa_v22_norm(texto)
+
+    if intent == 'comprobante_pago':
+        return 'Perfecto 😊 mandeme la imagen del comprobante y lo dejo para revision antes de marcar el pago.'
+
+    if intent == 'pregunta_envio' and re.search(r'\b\d{5}\b', t):
+        return _wa_v22_envio_opciones_texto(t)
+
+    if re.search(r'\b(abuelita|abuelitas|la abuelita)\b', t) and not pedidos:
+        return _v6_respuesta_consulta(texto, [], [], [])
+
+    provisionales = _codigos_provisionales_desde_preguntas(preguntas)
+    pedidos_confirmados = [
+        p for p in pedidos
+        if (str(p.get('codigo') or '').strip().lstrip('0') or '0') not in provisionales
+    ]
+    ok, parciales, agotados = _wa_v22_partir_stock(pedidos_confirmados)
+
+    if errores:
+        txt = ''
+        if ok:
+            txt += 'Claro 😊 ya tengo claro esto:\n' + '\n'.join('- ' + _wa_v22_linea_producto(p, p.get('cantidad')) for p in ok[:18]) + '\n\n'
+        txt += 'No ubique estos codigos en almacen: ' + ', '.join(map(str, errores[:8])) + '. ¿Me los confirma, por favor?'
+        return txt
+
+    if preguntas:
+        limpias = [_wa_v22_limpiar_pregunta_cliente(q) for q in preguntas if _wa_v22_limpiar_pregunta_cliente(q)]
+        txt = ''
+        if ok:
+            txt += 'Claro 😊 ya tengo claro:\n' + '\n'.join('- ' + _wa_v22_linea_producto(p, p.get('cantidad')) for p in ok[:18]) + '\n\n'
+        if sug_txt:
+            txt += sug_txt + '\n\n'
+        if limpias:
+            txt += 'Solo para no equivocarme, ' + limpias[0]
+        else:
+            txt += 'Solo necesito confirmar un detalle para no agregarle un tono equivocado 😊'
+        return txt
+
+    if sug_txt and not pedidos:
+        return sug_txt + '\n\n¿Le preparo una opcion con alguno de esos tonos?'
+
+    if pedidos:
+        partes = []
+        if ok:
+            total = sum(int(p.get('cantidad') or 1) for p in ok)
+            partes.append('Claro 😊 le agrego:\n' + '\n'.join('- ' + _wa_v22_linea_producto(p, p.get('cantidad')) for p in ok[:18]))
+            partes.append(f"Total confirmado: {total} pieza" + ("s." if total != 1 else "."))
+        for p in parciales:
+            partes.append(
+                f"De {_wa_v22_linea_producto(p)} me aparecen {int(p.get('stock') or 0)} disponibles "
+                f"y pidio {int(p.get('cantidad') or 1)}. ¿Le aparto las disponibles o le muestro otra opcion?"
+            )
+        for p in agotados:
+            partes.append(f"{_wa_v22_linea_producto(p)} me aparece agotado por el momento. ¿Quiere que le busque un tono parecido?")
+        if ok and not parciales and not agotados:
+            partes.append('Le preparo su cotizacion.')
+        return '\n\n'.join(partes).strip()
+
+    if intent == 'pregunta_precio':
+        return 'Claro 😊 ¿me confirma que hilo o codigo quiere revisar? Asi le doy precio exacto desde almacen.'
+    if intent == 'pregunta_envio':
+        return _wa_v22_envio_opciones_texto('')
+    if intent == 'pregunta_stock':
+        return 'Con gusto 😊 digame el hilo, color o codigo y le reviso disponibilidad real en almacen.'
+    if intent == 'sugerir_tonos':
+        return 'Si 😊 mandeme la foto o referencia y le sugiero tonos parecidos del catalogo disponible. No agrego nada hasta que usted confirme.'
+    return 'Claro 😊 digame que hilo, codigo o color necesita y le ayudo a armar su cotizacion.'
+
+
+_wa_v22_memoria_schema_anterior = _wa_memoria_schema
+
+
+def _wa_memoria_schema():
+    _wa_v22_memoria_schema_anterior()
+    try:
+        with DB() as db:
+            for col_sql in [
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultimos_colores_codigos TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS ultima_lista_recibida TEXT",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS fecha_ultima_actividad TIMESTAMP",
+            ]:
+                db.execute(col_sql)
+    except Exception as exc:
+        print('WARN schema memoria WA v22:', exc, flush=True)
+
+
+_wa_v22_memoria_derivar_anterior = _wa_memoria_derivar_datos
+
+
+def _wa_memoria_derivar_datos(texto, parsed, meta, marca_parser, hilo_parser, memoria_previa, productos):
+    datos = _wa_v22_memoria_derivar_anterior(texto, parsed, meta, marca_parser, hilo_parser, memoria_previa, productos)
+    pedidos = parsed.get('pedidos') or []
+    items_lista = parsed.get('items_lista_v17') or []
+
+    ultimos = []
+    for p in pedidos[:20]:
+        ultimos.append({
+            'codigo': p.get('codigo') or '',
+            'color': p.get('color') or '',
+            'hilo': p.get('hilo') or '',
+            'cantidad': p.get('cantidad') or 1,
+        })
+    if not ultimos:
+        for it in items_lista[:20]:
+            ultimos.append({
+                'codigo': it.get('codigo_raw') or it.get('codigo') or '',
+                'color': it.get('desc') or '',
+                'hilo': hilo_parser or '',
+                'cantidad': it.get('cantidad') or 1,
+            })
+
+    if ultimos:
+        datos['ultimos_colores_codigos'] = json.dumps(ultimos, ensure_ascii=False)
+    elif (memoria_previa or {}).get('ultimos_colores_codigos'):
+        datos['ultimos_colores_codigos'] = (memoria_previa or {}).get('ultimos_colores_codigos')
+
+    if items_lista:
+        datos['ultima_lista_recibida'] = json.dumps(items_lista[:60], ensure_ascii=False)
+    elif pedidos and len(pedidos) > 1:
+        datos['ultima_lista_recibida'] = json.dumps(ultimos[:60], ensure_ascii=False)
+    elif (memoria_previa or {}).get('ultima_lista_recibida'):
+        datos['ultima_lista_recibida'] = (memoria_previa or {}).get('ultima_lista_recibida')
+
+    datos['fecha_ultima_actividad'] = now_mexico()
+    return datos
+
+
+_wa_v22_memoria_actualizar_anterior = _wa_memoria_actualizar
+
+
+def _wa_memoria_actualizar(conversacion_id, telefono, cliente_nombre, texto, respuesta, parsed, meta, marca_parser, hilo_parser, memoria_previa, productos):
+    row = _wa_v22_memoria_actualizar_anterior(
+        conversacion_id, telefono, cliente_nombre, texto, respuesta, parsed, meta,
+        marca_parser, hilo_parser, memoria_previa, productos
+    )
+    clave = _wa_memoria_clave(conversacion_id, telefono)
+    if not clave:
+        return row
+    try:
+        datos = _wa_memoria_derivar_datos(texto, parsed, meta, marca_parser, hilo_parser, memoria_previa, productos)
+        with DB() as db:
+            updated = db.execute("""
+                UPDATE whatsapp_contexto_cliente
+                SET ultimos_colores_codigos=%s,
+                    ultima_lista_recibida=%s,
+                    fecha_ultima_actividad=%s,
+                    updated_at=%s
+                WHERE clave=%s
+                RETURNING *
+            """, (
+                datos.get('ultimos_colores_codigos'),
+                datos.get('ultima_lista_recibida'),
+                datos.get('fecha_ultima_actividad'),
+                now_mexico(),
+                clave,
+            )).fetchone()
+        return dict(updated) if updated else row
+    except Exception as exc:
+        print('WARN actualizar memoria WA v22:', exc, flush=True)
+        return row
+
+
+def _wa_v22_sanitizar_respuesta_publica(txt):
+    txt = str(txt or '').strip()
+    if not txt:
+        return txt
+    lineas = []
+    for ln in txt.splitlines():
+        if re.search(r'\b(V\d+|confianza baja|confianza media|codigo no coincide|c[oó]digo no coincide)\b', ln, re.I):
+            continue
+        lineas.append(ln)
+    txt = '\n'.join(lineas).strip()
+    txt = re.sub(r'\s+\n', '\n', txt)
+    return txt
+
+
+_wa_v22_view_anterior = app.view_functions.get('whatsapp_ia_simular')
+
+
+def whatsapp_ia_simular_v22():
+    out = _wa_v22_view_anterior()
+    status = 200
+    response = out
+    if isinstance(out, tuple):
+        response = out[0]
+        if len(out) > 1:
+            status = out[1]
+    try:
+        data = response.get_json() if hasattr(response, 'get_json') else None
+    except Exception:
+        data = None
+    if not isinstance(data, dict):
+        return out
+
+    data['respuesta_sugerida'] = _wa_v22_sanitizar_respuesta_publica(data.get('respuesta_sugerida') or '')
+    data['puede_auto_enviar'] = False
+    intent = data.get('intencion') or ''
+    if intent == 'comprobante_pago':
+        data['accion_recomendada'] = 'pedir_comprobante_revision'
+    elif data.get('pedidos'):
+        data['accion_recomendada'] = 'preparar_carrito_revision'
+    elif data.get('accion_recomendada') in ('agregar_productos', 'crear_cotizacion'):
+        data['accion_recomendada'] = 'responder_revision'
+    data['motor'] = str(data.get('motor') or '') + ':v22_vendedora_segura'
+    return jsonify(json_safe(data)), status
+
+
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v22
