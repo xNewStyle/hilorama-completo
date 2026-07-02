@@ -10520,3 +10520,315 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
 
 # Mantener endpoint V19, pero usando el resolver V20 por sobrescritura global.
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v19
+
+# -----------------------------------------------------------------------------
+# V21 - Agente de ventas: listas más humanas y sin confundir encabezados
+# -----------------------------------------------------------------------------
+# Corrige casos como:
+#   "me puede poner esta lista 550 x2"
+# para que NO tome "me puede poner esta lista" como color.
+# También evita mandar al cliente dudas técnicas tipo "el código corresponde a...".
+
+
+def _wa_v21_norm(v):
+    try:
+        return _wa_memoria_norm(v or '')
+    except Exception:
+        return re.sub(r'\s+', ' ', str(v or '').lower()).strip()
+
+
+def _wa_v21_limpiar_intro(linea):
+    raw = str(linea or '').strip().strip(',.;')
+    if not raw:
+        return ''
+    s = raw.replace('×', 'x').replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s).strip()
+
+    # Quitar texto de cortesía/encabezado ANTES del primer item real.
+    # Se busca el primer patrón claramente comprable dentro de la línea.
+    patrones_item = [
+        r'(\d{1,4}\s*(?:x|por|\*)\s*\d{1,3})',          # 550 x2
+        r'(\d{1,4}\s+[A-Za-zÁÉÍÓÚáéíóúÑñ][^\n]*?\s*-\s*\d{1,3})',  # 216 canario - 4
+        r'([A-Za-zÁÉÍÓÚáéíóúÑñ][A-Za-zÁÉÍÓÚáéíóúÑñ\s]{2,}\s+\d{1,4}\s*-\s*\d{1,3})', # Blanco 01 - 2
+        r'([A-Za-zÁÉÍÓÚáéíóúÑñ][A-Za-zÁÉÍÓÚáéíóúÑñ\s]{2,}\s*-\s*\d{1,3})', # Rojo escolar - 2
+        r'(\d{1,4})\s*$',                                      # 493
+    ]
+    for pat in patrones_item:
+        m = re.search(pat, s, flags=re.I)
+        if m:
+            return m.group(1).strip()
+
+    # Fallback por frases de encabezado conocidas.
+    out = re.sub(
+        r'^.*?\b(?:lista|colores|tonos|codigos|códigos)\b\s*(?:de\s+(?:colores|tonos|codigos|códigos))?\s*(?:por\s*favor|porfavor)?\s*',
+        '', s, flags=re.I
+    ).strip()
+    return out or s
+
+
+def _wa_v21_linea_a_item(linea):
+    raw = str(linea or '').strip().strip(',.;')
+    if not raw:
+        return []
+    limpia = _wa_v21_limpiar_intro(raw)
+    candidatos = []
+    if limpia and limpia != raw:
+        candidatos.append(limpia)
+    candidatos.append(raw)
+
+    for cand in candidatos:
+        try:
+            items = _wa_v17_linea_a_item_original_v21(cand)
+        except NameError:
+            items = []
+        except Exception:
+            items = []
+        if items:
+            for it in items:
+                it['raw'] = raw
+                # Si el desc quedó con texto de encabezado, limpiarlo.
+                descn = _wa_v21_norm(it.get('desc') or '')
+                if descn and re.search(r'\b(me puede|me podria|me podría|poner|lista|agregar|cotizar|pedido)\b', descn):
+                    it['desc'] = ''
+            return items
+
+    # Por seguridad, patrones directos.
+    s = limpia.replace('×', 'x').replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s).strip()
+    if re.fullmatch(r'(?:\d{1,4}\s*[,\s]+){1,}\d{1,4}', s):
+        return [{'codigo': c.lstrip('0') or c, 'codigo_raw': c, 'cantidad': 1, 'desc': '', 'raw': raw} for c in re.findall(r'\d{1,4}', s)]
+    m = re.fullmatch(r'(\d{1,4})\s*(?:x|por|\*)\s*(\d{1,3})', s, flags=re.I)
+    if m:
+        return [{'codigo': (m.group(1).lstrip('0') or m.group(1)), 'codigo_raw': m.group(1), 'cantidad': int(m.group(2)), 'desc': '', 'raw': raw}]
+    m = re.fullmatch(r'(\d{1,4})', s)
+    if m:
+        return [{'codigo': (m.group(1).lstrip('0') or m.group(1)), 'codigo_raw': m.group(1), 'cantidad': 1, 'desc': '', 'raw': raw}]
+    return []
+
+
+# Guardar la función base una sola vez para evitar recursión si Render recarga.
+try:
+    _wa_v17_linea_a_item_original_v21
+except NameError:
+    _wa_v17_linea_a_item_original_v21 = _wa_v17_linea_a_item
+
+
+def _wa_v17_linea_a_item(linea):
+    return _wa_v21_linea_a_item(linea)
+
+
+def _wa_v21_sanitizar_item(it):
+    it = dict(it or {})
+    raw = str(it.get('raw') or '').strip()
+    desc = str(it.get('desc') or '').strip()
+    code_raw = str(it.get('codigo_raw') or it.get('codigo') or '').strip()
+
+    # Caso: "me puede poner esta lista 550 x2" debe quedar código 550, sin descripción.
+    limpio = _wa_v21_limpiar_intro(raw)
+    m = re.fullmatch(r'(\d{1,4})\s*(?:x|por|\*)\s*(\d{1,3})', limpio, flags=re.I)
+    if m:
+        it['codigo'] = m.group(1).lstrip('0') or m.group(1)
+        it['codigo_raw'] = m.group(1)
+        it['cantidad'] = int(m.group(2))
+        it['desc'] = ''
+        return it
+
+    # Caso: encabezado se quedó accidentalmente como color.
+    if desc and re.search(r'\b(me puede|me podria|me podría|poner|lista|agregar|cotizar|pedido)\b', _wa_v21_norm(desc)):
+        it['desc'] = ''
+
+    # Guardar código original con ceros para poder distinguir 01, 08, etc.
+    if code_raw and 'codigo_raw' not in it:
+        it['codigo_raw'] = code_raw
+    return it
+
+
+def _wa_v21_producto_dict(prod, cantidad):
+    return _wa_v17_producto_dict(prod, cantidad)
+
+
+def _wa_v21_producto_label(prod):
+    if not prod:
+        return 'producto'
+    hilo = str(prod.get('hilo') or '').strip()
+    codigo = str(prod.get('codigo') or '').strip()
+    color = str(prod.get('color') or prod.get('nombre') or '').strip()
+    return ' '.join(x for x in [hilo, codigo, color] if x).strip() or 'producto'
+
+
+def _wa_v21_buscar_codigo(productos_ctx, productos_all, code_norm, code_raw=''):
+    codes = []
+    for c in [code_raw, code_norm, str(code_raw).lstrip('0'), str(code_norm).lstrip('0')]:
+        c = str(c or '').strip()
+        if c and c not in codes:
+            codes.append(c)
+    mapa_ctx = _v6_code_map(productos_ctx)
+    mapa_all = _v6_code_map(productos_all)
+    for c in codes:
+        matches = mapa_ctx.get(c) or []
+        if matches:
+            return matches
+    for c in codes:
+        matches = mapa_all.get(c) or []
+        if matches:
+            return matches
+    return []
+
+
+def _wa_v21_buscar_por_desc(productos_ctx, desc):
+    try:
+        return _wa_v20_buscar_por_desc(productos_ctx, desc)
+    except Exception:
+        try:
+            return _wa_resolver_producto_por_color(productos_ctx, desc)
+        except Exception:
+            return None, []
+
+
+def _wa_v17_resolver_items_lista(items, productos, marca_parser='', hilo_parser=''):
+    """V21: resolver como vendedor: prioriza contexto y evita preguntas técnicas."""
+    marca_parser = _wa_v19_clean_selector(marca_parser)
+    hilo_parser = _wa_v19_clean_selector(hilo_parser)
+
+    productos_all = list(productos or [])
+    productos_ctx = list(productos_all)
+    if marca_parser:
+        mn = _wa_v21_norm(marca_parser)
+        productos_ctx = [p for p in productos_ctx if _wa_v21_norm(p.get('marca') or '') == mn]
+    if hilo_parser:
+        productos_ctx = _v6_products_for_hilo(productos_ctx, hilo_parser)
+
+    pedidos = []
+    preguntas = []
+    errores = []
+    advertencias = []
+
+    for it0 in items or []:
+        it = _wa_v21_sanitizar_item(it0)
+        raw = str(it.get('raw') or '').strip()
+        code_raw = str(it.get('codigo_raw') or it.get('codigo') or '').strip()
+        code = str(it.get('codigo') or '').strip().lstrip('0') or str(it.get('codigo') or '').strip()
+        desc = str(it.get('desc') or '').strip()
+        qty = int(it.get('cantidad') or 1)
+        prod = None
+
+        # 1) Si trae descripción y el código es dudoso o contradice, intentar resolver por nombre/color dentro del hilo.
+        prod_desc = None
+        opciones_desc = []
+        if desc and hilo_parser:
+            prod_desc, opciones_desc = _wa_v21_buscar_por_desc(productos_ctx, desc)
+
+        # 2) Buscar por código dentro del contexto primero.
+        matches = []
+        if code:
+            matches = _wa_v21_buscar_codigo(productos_ctx, productos_all if not hilo_parser else productos_ctx, code, code_raw)
+            normales = [p for p in matches if not any(x in _wa_v21_norm(p.get('color') or '') for x in ['combo', 'paquete', 'surtido'])]
+            matches = normales or matches
+
+        if matches:
+            familias = sorted(set(_v6_hilo_family(p.get('hilo') or '') for p in matches))
+            if not hilo_parser and len(familias) > 1:
+                # Si no hay contexto, preguntar simple, pero no técnico.
+                opts = ', '.join(sorted(set(str(p.get('hilo') or '') for p in matches))[:4])
+                preguntas.append(f"¿El código {code_raw or code} lo agrego de {opts}?")
+                continue
+            prod_code = sorted(matches, key=lambda p: int(p.get('stock') or 0), reverse=True)[0]
+
+            if desc and not _wa_v20_desc_compatible_con_producto(prod_code, desc):
+                # Si el nombre/color escrito por la clienta sí existe en el hilo, preferir lo que escribió.
+                if prod_desc:
+                    prod = prod_desc
+                    advertencias.append(f"V21: en '{raw}' se priorizó el color escrito por la clienta sobre el código capturado.")
+                else:
+                    preguntas.append(f"En '{raw}' veo código y color diferentes. ¿Le agrego {code_raw or code} o el tono {desc}?")
+                    continue
+            else:
+                prod = prod_code
+        else:
+            # Sin código ubicado: resolver por descripción si se puede.
+            if desc:
+                if not prod_desc:
+                    prod_desc, opciones_desc = _wa_v21_buscar_por_desc(productos_ctx, desc)
+                if prod_desc:
+                    prod = prod_desc
+                    if code:
+                        advertencias.append(f"V21: en '{raw}' no se usó el código {code_raw or code}; se resolvió por el nombre/color.")
+                elif opciones_desc and len(opciones_desc) == 1:
+                    prod = opciones_desc[0]
+                elif opciones_desc:
+                    opts = ', '.join([f"{p.get('codigo')} {p.get('color')}".strip() for p in opciones_desc[:4]])
+                    preguntas.append(f"Para '{desc}' encontré varias opciones ({opts}). ¿Cuál le agrego?")
+                    continue
+                else:
+                    preguntas.append(f"No ubiqué bien '{raw}'. ¿Me confirma el tono o código?")
+                    if code:
+                        errores.append(code_raw or code)
+                    continue
+            elif code:
+                errores.append(code_raw or code)
+                preguntas.append(f"No ubiqué el código {code_raw or code}. ¿Me confirma si está correcto?")
+                continue
+
+        if prod:
+            pedidos.append(_wa_v21_producto_dict(prod, qty))
+
+    pedidos = _wa_v20_merge_pedidos(pedidos)
+    return pedidos, sorted(set(preguntas)), sorted(set(str(e) for e in errores if e)), sorted(set(advertencias))
+
+
+def _wa_v21_respuesta_lista(parsed):
+    pedidos = parsed.get('pedidos') or []
+    preguntas = parsed.get('preguntas') or []
+    errores = parsed.get('errores') or []
+    if not pedidos and not preguntas:
+        return ''
+    total_pzas = 0
+    lineas = []
+    for p in pedidos:
+        qty = int(p.get('cantidad') or 1)
+        total_pzas += qty
+        hilo = str(p.get('hilo') or '').strip()
+        codigo = str(p.get('codigo') or '').strip()
+        color = str(p.get('color') or '').strip()
+        nombre = ' '.join(x for x in [hilo, codigo, color] if x).strip() or 'producto'
+        lineas.append(f"- {nombre} x{qty}")
+
+    resp = ''
+    if lineas:
+        resp = "Claro 😊 le agrego:\n" + "\n".join(lineas)
+        resp += f"\n\nTotal: {total_pzas} pieza" + ("s" if total_pzas != 1 else "") + "."
+    if preguntas:
+        if resp:
+            resp += "\n\nSolo para no equivocarme, me ayuda a confirmar:\n"
+        else:
+            resp = "Claro 😊 solo para no equivocarme, me ayuda a confirmar:\n"
+        # Convertir preguntas técnicas en texto amable.
+        limpias = []
+        for q in preguntas[:4]:
+            q = str(q).strip()
+            q = re.sub(r'^En \'([^\']+)\'.*?¿', r"En '\1', ¿", q)
+            limpias.append('- ' + q)
+        resp += "\n".join(limpias)
+    elif errores:
+        resp += "\n\nSolo me faltó confirmar estos códigos: " + ", ".join(str(e) for e in errores) + "."
+    else:
+        resp += "\nLe preparo su cotización."
+    return resp
+
+
+_wa_v21_generar_respuesta_anterior = _generar_respuesta_wa_con_openai
+
+
+def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
+    try:
+        modo = str(parsed.get('modo') or '')
+        if ('lista_whatsapp_real' in modo or 'resolver_lista_previa' in modo) and ((parsed.get('pedidos') or []) or (parsed.get('preguntas') or [])):
+            resp = _wa_v21_respuesta_lista(parsed)
+            if resp:
+                return resp, 'reglas_hilorama_v21_agente_ventas_lista_humana'
+    except Exception as exc:
+        print('WARN respuesta lista v21:', exc, flush=True)
+    return _wa_v21_generar_respuesta_anterior(texto, parsed, meta, contexto)
+
+# Mantener endpoint V19; usa estas funciones porque se resolvieron globalmente.
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v19
