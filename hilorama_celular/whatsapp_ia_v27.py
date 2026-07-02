@@ -744,14 +744,19 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_x_cantidad"))
 
     # blanco dos y negro cinco / blanco y negro 2 y 4
+    # V43: también entiende "blanco y negro, 2 y 4, de velluto".
+    # En ese caso 2 y 4 NO son códigos de Velluto, son cantidades de los colores previos.
     colores_simples = r"blanco|negro|rojo|rosa|hueso|camel|beige|arena|cielo|turquesa|lila|amarillo|canario|cafe|gris"
-    m_colores_doble = re.search(rf"\b({colores_simples})\s+y\s+({colores_simples})\s+({qty_pat})\s+y\s+({qty_pat})\b", texto_sin_totales)
+    m_colores_doble = re.search(
+        rf"\b({colores_simples})\s*(?:,)?\s+y\s*({colores_simples})\s*(?:,|\s)+({qty_pat})\s*(?:,)?\s*y\s*({qty_pat})(?=\b|\s*,|\s+de\b|$)",
+        texto_sin_totales,
+    )
     if m_colores_doble:
         q1 = _qty(m_colores_doble.group(3)); q2 = _qty(m_colores_doble.group(4))
         if q1:
-            items.append(_item(cantidad=q1, desc=m_colores_doble.group(1), raw=m_colores_doble.group(0), fuente="color_color_cantidades"))
+            items.append(_item(cantidad=q1, desc=m_colores_doble.group(1), raw=m_colores_doble.group(0), fuente="color_color_cantidades_v43"))
         if q2:
-            items.append(_item(cantidad=q2, desc=m_colores_doble.group(2), raw=m_colores_doble.group(0), fuente="color_color_cantidades"))
+            items.append(_item(cantidad=q2, desc=m_colores_doble.group(2), raw=m_colores_doble.group(0), fuente="color_color_cantidades_v43"))
     else:
         for m in re.finditer(rf"\b({colores_simples})\s+({qty_pat})(?=\s+y\s+|\s*,|\s+de\s+|$)", texto_sin_totales):
             qty = _qty(m.group(2))
