@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hilorama Celular</title>
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <style>
+    :root{
+      --bg:#eef6f8;--card:#fff;--text:#0f172a;--muted:#64748b;--line:#dbe4ea;
+      --blue:#2563eb;--teal:#0f766e;--green:#15803d;--red:#b42318;--orange:#c2410c;--dark:#334155;--soft:#f8fafc;
+      --shadow:0 10px 28px rgba(15,23,42,.10);--radius:22px;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{margin:0;background:linear-gradient(180deg,#e3f3f2 0%,var(--bg) 260px);font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}
+    .app{max-width:980px;margin:auto;padding:10px 12px 100px}.hidden{display:none!important}
+    .topbar{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,#e3f3f2 86%,rgba(227,243,242,0));padding:10px 0 14px}
+    .topline{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}h1{margin:0;font-size:27px;letter-spacing:-.6px}.subtitle{font-size:13px;color:var(--muted);margin-top:3px;word-break:break-word}
+    .iconbtn{padding:11px 13px;border-radius:16px;background:white;color:var(--text);border:1px solid var(--line);box-shadow:0 2px 10px rgba(15,23,42,.08);width:auto}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin:12px 0}.inner{background:#fbfdff;box-shadow:none}
+    h2{font-size:20px;margin:0 0 12px}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.small{font-size:12px;color:var(--muted)}
+    button,input,select,textarea{width:100%;font:inherit;border-radius:15px;padding:12px;border:1px solid var(--line);background:white}textarea{min-height:100px;resize:vertical}
+    button{border:0;background:var(--blue);color:white;font-weight:850;cursor:pointer}button:disabled{opacity:.6}.light{background:#eaf1fb;color:#0f172a}.secondary{background:var(--dark)}.green{background:var(--green)}.teal{background:var(--teal)}.orange{background:#d97706}.red{background:var(--red)}
+    label{display:block;font-size:12px;color:var(--muted);margin:8px 0 5px}.row{display:grid;gap:10px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{background:white;border:1px solid var(--line);border-radius:18px;padding:12px;box-shadow:0 3px 12px rgba(15,23,42,.05)}.metric strong{display:block;font-size:26px}.metric span{font-size:12px;color:var(--muted)}
+    .scroll-list{max-height:58vh;overflow:auto;overscroll-behavior:contain;padding-right:2px}.note,.product,.cart-item,.line,.pack-item{border:1px solid var(--line);border-radius:18px;background:white;padding:13px;margin:9px 0}.note-title,.product{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}.note p{margin:4px 0 0;color:var(--muted);font-size:13px}.badge{display:inline-block;font-size:11px;font-weight:900;border-radius:999px;padding:5px 8px;background:#eef2ff;color:#1e40af}.badge.green{background:#dcfce7;color:#166534}.badge.orange{background:#ffedd5;color:#9a3412}.badge.gray{background:#f1f5f9;color:#334155}
+    .banner{background:#ecfeff;border:1px solid #67e8f9;color:#0f766e;border-radius:15px;padding:12px}.warning{background:#fff7ed!important;border-color:#fed7aa!important;color:#9a3412!important}.danger-text{color:var(--red);font-weight:800}.empty{text-align:center;color:var(--muted);padding:18px}
+    .qtybar{display:grid;grid-template-columns:44px 1fr 44px;gap:6px;align-items:center}.qtybar input{text-align:center;padding:9px}.footer{position:fixed;left:0;right:0;bottom:0;background:rgba(238,246,248,.94);backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:9px 10px;z-index:30}.footer-inner{max-width:980px;margin:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.footer button{padding:12px 6px;border-radius:16px}.active-tab{outline:3px solid rgba(37,99,235,.20)}
+    .toolbar{display:grid;grid-template-columns:1fr;gap:9px}.toolbar .inline{display:grid;grid-template-columns:1fr 1fr;gap:8px}.group-head{position:sticky;top:0;background:#eaf1fb;border:1px solid #cbd5e1;border-radius:14px;padding:9px 11px;margin:12px 0 8px;font-weight:900;z-index:1}.pillrow{display:flex;gap:8px;overflow:auto;padding-bottom:4px}.pill{white-space:nowrap;width:auto;padding:9px 12px;background:#f1f5f9;color:#334155;border:1px solid var(--line);border-radius:999px}.pill.active{background:#0f766e;color:white}
+
+    .create-nav{position:sticky;top:72px;z-index:18;display:flex;gap:8px;overflow-x:auto;padding:8px 2px 10px;margin:0 -2px;background:linear-gradient(180deg,#fbfdff 82%,rgba(251,253,255,0));scrollbar-width:none}.create-nav::-webkit-scrollbar{display:none}.create-nav button{min-width:112px;width:auto;padding:10px 12px;border-radius:999px;background:#eaf1fb;color:#0f172a;border:1px solid var(--line);box-shadow:none}.create-nav button.primary{background:#0f766e;color:white}.create-panel{scroll-margin-top:142px}.compact-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.chips{display:flex;gap:7px;overflow-x:auto;padding:6px 0;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chip{width:auto;white-space:nowrap;padding:8px 10px;border-radius:999px;background:#f1f5f9;color:#334155;border:1px solid var(--line);font-size:12px}.mini-title{font-weight:900;margin:10px 0 4px;color:#334155}details.ai-block{border:1px solid var(--line);background:white;border-radius:16px;padding:10px 12px;margin:9px 0}details.ai-block summary{font-weight:900;cursor:pointer}.parser-result-scroll{max-height:310px;overflow:auto;margin-top:8px;padding-right:2px}.sticky-cart-actions{position:sticky;bottom:78px;background:rgba(251,253,255,.96);backdrop-filter:blur(10px);padding:10px 0 0}.speech-live{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:8px;margin-top:6px;color:#475569;font-size:12px;min-height:34px}
+    #viewCrear{display:block;max-height:none;overflow:visible}.create-workspace{overflow:visible;overscroll-behavior:auto;padding:2px 2px 92px 2px}.create-panel{padding:12px;margin:8px 0}.quick-savebar{position:sticky;bottom:72px;background:rgba(251,253,255,.97);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:18px;padding:9px;display:grid;grid-template-columns:1fr 1fr;gap:8px;z-index:16;box-shadow:0 -8px 22px rgba(15,23,42,.08)}.speech-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}.speech-controls button{min-height:48px}.focus-scroll{scroll-margin-top:12px}
+    .admin-debug{display:none}.admin-on .admin-debug{display:block}.debug-copy{margin-top:8px}.result-mini{display:grid;gap:8px;margin-top:8px}.result-ok{background:#ecfdf5;border:1px solid #86efac;color:#166534;border-radius:15px;padding:12px}.result-warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:15px;padding:12px}.wa-agent-box{border:1px solid #bae6fd;background:#f0f9ff;border-radius:16px;padding:10px;margin:9px 0}.wa-response{width:100%;min-height:118px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;white-space:pre-wrap;color:#0f172a}.wa-meta{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.wa-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.wa-resources{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px}.wa-resource-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:8px}.wa-resource-card{background:#f8fafc;border:1px solid #dbe4ea;border-radius:14px;padding:7px;display:flex;flex-direction:column;gap:6px}.wa-resource-card img{width:100%;height:150px;object-fit:contain;background:white;border-radius:10px;border:1px solid #e2e8f0}.wa-resource-card a{font-size:11px;word-break:break-all;color:#2563eb;text-decoration:none}.wa-resource-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.wa-resource-toolbar button{min-height:42px;padding:9px;font-size:13px}.ia-lib-thumb{margin-top:7px}.ia-lib-thumb img{width:100%;max-height:180px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:white}.input-hint{font-size:12px;color:#64748b;margin:6px 0 0}.image-preview img{display:block;max-width:100%;max-height:52vh;object-fit:contain;border-radius:14px;border:1px solid var(--line);margin:auto}.mobile-label{display:none}.create-step-title{display:flex;align-items:center;gap:8px}.step-dot{min-width:28px;height:28px;border-radius:999px;background:#0f766e;color:white;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:14px}
+    @media(max-width:640px){body{overflow-x:hidden}.app{padding:6px 8px 92px}.topbar{padding:6px 0 8px}.topline{grid-template-columns:1fr 44px}h1{font-size:20px}.subtitle{font-size:11px}.iconbtn{height:42px;padding:8px;border-radius:14px}.card{padding:10px;border-radius:18px;margin:8px 0;box-shadow:0 5px 16px rgba(15,23,42,.07)}.inner{padding:10px;border-radius:16px}.section-title{align-items:flex-start;flex-wrap:wrap;margin-bottom:6px}h2{font-size:17px;margin-bottom:8px}button,input,select,textarea{min-height:46px;border-radius:14px;padding:11px;font-size:15px}label{margin-top:7px}.grid2,.grid3{grid-template-columns:1fr}.compact-actions{grid-template-columns:1fr 1fr}.compact-actions button:first-child{grid-column:1/-1}.metric-grid{grid-template-columns:repeat(3,1fr);gap:6px}.metric{padding:8px;border-radius:14px}.metric strong{font-size:20px}.metric span{font-size:10px}.toolbar .inline{grid-template-columns:1fr;gap:6px}.create-nav{top:52px;margin:0 -10px;padding:7px 10px;background:rgba(251,253,255,.96);backdrop-filter:blur(10px);border-top:1px solid #eef2f7;border-bottom:1px solid #eef2f7}.create-nav button{min-width:auto;flex:0 0 auto;padding:9px 11px;font-size:12px}.create-workspace{padding-bottom:86px}.quick-savebar{bottom:64px;margin:0 -2px}.footer{padding:7px 8px env(safe-area-inset-bottom)}.footer-inner{grid-template-columns:repeat(4,1fr);gap:5px}.footer button{font-size:11px;padding:10px 4px;min-height:44px;border-radius:14px}.scroll-list{max-height:none;overflow:visible}.parser-result-scroll{max-height:none;overflow:visible}.note-title,.product,.cart-item,.pack-item{grid-template-columns:1fr;gap:8px}.note,.product,.cart-item,.line,.pack-item{padding:11px;border-radius:16px;margin:8px 0}.qtybar{grid-template-columns:42px 1fr 42px}.sticky-cart-actions{position:static;grid-template-columns:1fr 1fr}.speech-controls{grid-template-columns:1fr}.image-preview img{max-height:44vh}.wa-resource-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.wa-resource-card img{height:135px}.wa-resource-toolbar{grid-template-columns:1fr}.mobile-label{display:inline}.hide-mobile-soft{display:none!important}}
+
+    .detail-head{display:grid;gap:8px}.detail-total{font-size:24px;font-weight:950}.detail-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.pay-card{background:#f8fafc;border:1px solid var(--line);border-radius:16px;padding:12px;margin:12px 0}.pay-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.edit-mode-strip{display:none;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:16px;padding:10px;margin:8px 0;font-weight:800}.editing-note .edit-mode-strip{display:block}.cart-item{display:grid;grid-template-columns:1fr 92px;gap:10px;align-items:start}.cart-item .red{align-self:center}.stock-badge{display:inline-block;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:900;background:#ecfdf5;color:#166534}.stock-badge.low{background:#fff7ed;color:#9a3412}.stock-tools{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}.stock-tools button{padding:9px 6px;font-size:12px}.voice-dot{display:inline-block;width:9px;height:9px;border-radius:99px;background:#94a3b8;margin-right:5px}.voice-on .voice-dot{background:#16a34a;box-shadow:0 0 0 4px rgba(22,163,74,.14)}
+    @media(max-width:640px){.detail-actions{grid-template-columns:1fr 1fr}.detail-actions .wide{grid-column:1/-1}.pay-grid{grid-template-columns:1fr}.cart-item{grid-template-columns:1fr}.quick-savebar{position:static;margin-top:10px;bottom:auto}.create-workspace{padding-bottom:20px}.create-nav{top:0}.stock-tools{grid-template-columns:repeat(2,1fr)}#viewDetalle .scroll-list{max-height:none!important;overflow:visible!important}.pay-card{padding:10px}.detail-total{font-size:21px}}
+
+    .comprobante-card{background:#f8fafc;border:1px solid var(--line);border-radius:18px;padding:12px;margin:12px 0}.dropzone{border:2px dashed #94a3b8;background:white;border-radius:18px;padding:14px;text-align:center;color:#475569;cursor:pointer;min-height:92px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px}.dropzone.drag{border-color:#0f766e;background:#ecfeff}.dropzone strong{color:#0f172a}.comprobante-preview{margin-top:10px}.comprobante-preview img,.pay-proof img{width:100%;max-height:360px;object-fit:contain;border:1px solid var(--line);border-radius:16px;background:white}.pay-proof{margin-top:10px}.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.48);z-index:100;display:flex;align-items:flex-end;justify-content:center;padding:12px}.modal-card{background:white;border-radius:24px 24px 18px 18px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(15,23,42,.25);width:min(760px,100%);max-height:92vh;overflow:auto;padding:16px}.modal-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px}.modal-head button{width:auto;background:#eaf1fb;color:#0f172a}.client-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.client-form-grid .full{grid-column:1/-1}.missing-list{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:14px;padding:9px;margin:8px 0;font-size:13px}.detail-actions{align-items:stretch}.detail-actions button{min-height:48px}.detalle-products{display:grid;gap:8px}.detalle-products .line{margin:0}.edit-mode-strip{position:relative;z-index:1}
+    @media(max-width:640px){.modal-backdrop{align-items:stretch;padding:0}.modal-card{border-radius:0;max-height:100vh;width:100%;padding:12px 10px 90px}.client-form-grid{grid-template-columns:1fr}.comprobante-preview img,.pay-proof img{max-height:260px}.dropzone{min-height:86px;padding:12px}.detail-actions{grid-template-columns:1fr!important}.detail-actions button{width:100%}.pay-card,.comprobante-card{margin:10px 0;padding:10px;border-radius:16px}#viewDetalle{padding-bottom:90px}.detail-head.banner{position:relative;z-index:0}.detalle-products{gap:7px}}
+
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="topline">
+      <div><h1>Hilorama Celular</h1><div id="status" class="subtitle">Cargando...</div></div>
+      <button class="iconbtn" onclick="loadAll()">⟳</button>
+    </div>
+  </div>
+
+  <section id="loginCard" class="card">
+    <h2>Entrar</h2>
+    <p class="subtitle">Usa tu PIN móvil. Los datos se sincronizan con Render y la PC.</p>
+    <input id="pinInput" type="password" placeholder="PIN">
+    <button class="green" style="margin-top:10px" onclick="savePin()">Entrar</button>
+  </section>
+
+  <main id="mainApp" class="hidden">
+    <section class="card">
+      <div class="metric-grid">
+        <div class="metric"><span>Cotizaciones</span><strong id="mCot">0</strong></div>
+        <div class="metric"><span>Ventas / pagadas</span><strong id="mVen">0</strong></div>
+        <div class="metric"><span>Pendientes sync</span><strong id="mPend">0</strong></div>
+      </div>
+    </section>
+
+    <section id="viewNotas" class="card">
+      <div class="section-title"><h2>Notas</h2><span class="badge gray" id="notasCount">0</span></div>
+      <div class="toolbar"><div class="inline"><select id="estadoFiltro" onchange="loadNotas()"><option value="TODOS">Todas</option><option value="COTIZACION">Cotizaciones</option><option value="VENTA_PENDIENTE">Pendientes</option><option value="PAGADA">Pagadas</option></select><input id="buscarNota" placeholder="Buscar cliente, folio, pedido"></div></div>
+      <div id="notasList" class="scroll-list"></div>
+    </section>
+
+    <section id="viewDetalle" class="card hidden"><h2>Detalle de nota</h2><div id="detalleBox"></div></section>
+
+    <section id="viewCrear" class="card hidden">
+      <div class="section-title"><h2 id="crearTitulo">Nueva cotización</h2><span id="editBadge" class="badge orange hidden">Editando</span></div>
+      <div id="editBanner" class="banner warning hidden"></div><div class="edit-mode-strip">Modo edición: se reemplaza la nota actual, no se enciman productos. Revisa carrito y guarda.</div>
+      <div class="create-nav">
+        <button class="primary" onclick="crearScroll('crearClienteSec')">Cliente</button>
+        <button onclick="crearScroll('crearPedidoSec')">Pedido/envío</button>
+        <button onclick="crearScroll('crearIASec')">IA WhatsApp</button>
+        <button onclick="crearScroll('crearManualSec')">Manual</button>
+        <button onclick="crearScroll('crearCarritoSec')">Carrito</button>
+      </div>
+      <div id="crearWorkspace" class="create-workspace">
+      <div id="crearClienteSec" class="card inner create-panel"><h2>1. Cliente</h2><input id="buscarCliente" placeholder="Buscar cliente o teléfono"><div id="clientesList" class="scroll-list" style="max-height:220px"></div><div id="clienteSeleccionado" class="banner hidden"></div><div class="grid2"><input id="nuevoClienteNombre" placeholder="Nombre nuevo"><input id="nuevoClienteTel" placeholder="Teléfono"></div><button class="light" style="margin-top:8px" onclick="crearClienteRapido()">Crear cliente rápido</button></div>
+      <div id="crearPedidoSec" class="card inner create-panel"><h2>2. Pedido y envío</h2><div class="grid2"><div><label>Pedido</label><select id="pedidoSelect"></select></div><div><label>Paquetería</label><select id="envioSelect"></select></div></div><label>Precio de envío cobrado al cliente</label><input id="envioPrecio" type="number" step="0.01" value="0"></div>
+      <div id="crearIASec" class="card inner create-panel"><div class="section-title"><h2>3. IA / WhatsApp</h2><span class="badge green">Rápido</span></div>
+        <div class="chips">
+          <button class="chip" onclick="usarEjemploPedido('del 55 dame 2, 3 56 y un 310')">Ejemplo mixto</button>
+          <button class="chip" onclick="usarEjemploPedido('dame 1 de cada uno')">1 de cada uno</button>
+          <button class="chip" onclick="usarEjemploPedido('surtido bonito')">Surtido bonito</button>
+          <button class="chip" onclick="usarEjemploPedido('combínamelos con beige')">Combinar</button>
+        </div>
+        <div class="grid2"><div><label>Marca contexto</label><select id="marcaCtx"><option value="">Todas</option></select></div><div><label>Hilo contexto</label><select id="hiloCtx"><option value="">Todos</option></select></div></div>
+        <textarea id="pedidoTexto" placeholder="Pega aquí el mensaje de WhatsApp. Ejemplo: del 55 dame 2, 3 56 y un 310"></textarea>
+        <div class="compact-actions" style="margin-top:8px">
+          <button class="teal" onclick="interpretarPedido()">Interpretar</button>
+          <button class="green" onclick="addAllParsed()">Agregar</button>
+          <button class="light" type="button" onclick="limpiarPedidoTexto()">Limpiar</button>
+        </div>
+        <details class="ai-block" open><summary>🤖 Simulador WhatsApp IA real</summary>
+          <div class="small" style="margin-top:6px">Aquí probamos el mismo cerebro que después recibirá mensajes desde WhatsApp Cloud API. Por ahora no envía nada: solo sugiere respuesta y productos.</div>
+          <div class="grid2" style="margin-top:8px"><button class="secondary" type="button" onclick="simularWhatsAppIA()">Probar agente Hilorama</button><button class="light" type="button" onclick="copiarRespuestaWA()">Copiar respuesta</button></div><div class="grid2" style="margin-top:8px"><button class="light" type="button" onclick="nuevaConversacionWA()">Nueva conversación / limpiar memoria</button><button class="light" type="button" onclick="verMemoriaWA()">Ver memoria</button></div><div id="waMemoriaBox" class="small hidden" style="margin-top:8px"></div>
+          <div id="whatsappIAResult" class="wa-agent-box hidden"></div>
+          <details class="ai-block" style="margin-top:8px"><summary>🧠 Aprendizaje humano</summary>
+            <div class="small" style="margin-top:6px">Cuando la IA no resuelva bien, contesta tú manualmente y guarda esa respuesta. La próxima vez el agente la tomará como referencia.</div>
+            <label>Respuesta humana correcta</label>
+            <textarea id="waRespuestaHumana" placeholder="Pega aquí la respuesta correcta que sí le mandarías a la clienta"></textarea>
+            <label>Tags / palabras clave opcionales</label>
+            <input id="waAprendizajeTags" placeholder="ej. abuelita, sustituto, kurumi, envio, cp">
+            <div class="grid2" style="margin-top:8px"><button class="green" type="button" onclick="guardarAprendizajeIA()">Guardar aprendizaje</button><button class="light" type="button" onclick="marcarPendienteHumano()">Mandar a humano</button></div>
+            <div id="waAprendizajeStatus" class="small" style="margin-top:8px"></div>
+          </details>
+        </details>
+        <details class="ai-block"><summary>📚 Biblioteca IA / Recursos para clientes</summary>
+          <div class="small" style="margin-top:6px">Aquí guardas cartas de colores, catálogos, respuestas de envío, datos de pago, productos similares y aprendizajes humanos. Para gamas con varias imágenes usa el mismo <b>grupo</b> y activa <b>enviar junto</b>.</div>
+          <div class="grid2" style="margin-top:8px"><input id="iaRecursoNombre" placeholder="Nombre: Carta Velluto / Envíos / Datos pago"><select id="iaRecursoCategoria"><option value="respuesta">Respuesta</option><option value="carta_colores">Carta de colores</option><option value="foto_tono">Foto tono individual</option><option value="catalogo">Catálogo</option><option value="envio">Envío</option><option value="pago">Pago</option><option value="producto_similar">Producto similar</option><option value="aprendizaje_humano">Aprendizaje humano</option></select></div>
+          <div class="grid2"><input id="iaRecursoMarca" placeholder="Marca opcional, ej. ALIZE"><input id="iaRecursoHilo" placeholder="Hilo opcional, ej. VELLUTO"></div>
+          <div class="grid2"><input id="iaRecursoGrupo" placeholder="Grupo opcional, ej. gama_velluto"><input id="iaRecursoOrden" type="number" placeholder="Orden dentro del grupo, ej. 1"></div>
+          <label class="checkline" style="display:flex;align-items:center;gap:8px;margin-top:8px"><input id="iaRecursoEnviarJunto" type="checkbox"> Enviar junto con todos los recursos del mismo grupo</label>
+          <label>Palabras clave / triggers</label><textarea id="iaRecursoTriggers" placeholder="velluto, colores velluto, carta velluto, alize velluto"></textarea>
+          <label>Respuesta que debe usar la IA</label><textarea id="iaRecursoRespuesta" placeholder="Sí 😊 tenemos Alize Velluto disponible. Le comparto la carta de colores..."></textarea>
+          <label>Link de imagen, catálogo o Canva/Drive opcional</label><input id="iaRecursoUrl" placeholder="/static/recursos_ia/Velluto Carta de Colores/004.png o https://...">
+          <div class="grid2" style="margin-top:8px"><button class="green" type="button" onclick="crearRecursoIA()">Guardar recurso</button><button class="light" type="button" onclick="cargarRecursosIA()">Ver biblioteca</button></div>
+          <button class="secondary" style="margin-top:8px;width:100%" type="button" onclick="importarRecursosStaticIA()">Importar recursos físicos de static/recursos_ia</button>
+          <div class="small" style="margin-top:6px">Ejemplo: las 4 imágenes de Velluto quedan en grupo <b>gama_velluto</b>, orden 1-4 y enviar junto activado.</div>
+          <div id="iaRecursosList" class="small" style="margin-top:8px"></div>
+        </details>
+        <details class="ai-block"><summary>🎤 Voz y audios</summary>
+          <div class="speech-controls" style="margin-top:8px"><button class="secondary" id="btnStartDictado" type="button" onclick="startDictadoPedido()">🎙️ Iniciar dictado preciso</button><button class="red" id="btnStopDictado" type="button" onclick="stopDictadoPedido()">✅ Terminar dictado</button></div>
+          <div id="pedidoDictadoStatus" class="speech-live"><span class="voice-dot"></span>Dictado: detenido. Graba todo el pedido; la transcripción final se hace cuando presionas Terminar.</div>
+          <div class="small" style="margin-top:6px">Modo preciso: usa el micrófono con reducción de ruido del celular y transcribe el audio completo al terminar. Habla cerca del teléfono y evita música/TV de fondo.</div>
+          <label>Audio de WhatsApp</label><input id="pedidoAudio" type="file" accept="audio/*">
+          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="transcribirAudioSubido()">Transcribir audio</button><button class="light" onclick="limpiarAudioSubido()">Limpiar audio</button></div>
+          <div id="pedidoAudioStatus" class="small" style="margin-top:8px">Audio: sin transcribir.</div>
+        </details>
+        <details class="ai-block"><summary>🖼 Imagen de referencia</summary>
+          <label style="margin-top:10px">Imagen</label><input id="pedidoImagen" type="file" accept="image/*" onchange="onPedidoImagenChange(event)"><label style="margin-top:8px">Imagen original sin editar (opcional, mejora muchísimo)</label><input id="pedidoImagenOriginal" type="file" accept="image/*">
+          <div class="small">Para fotos alteradas: “de ese 2”, “arriba derecha”, “tachado no”.</div>
+          <textarea id="pedidoImagenTexto" placeholder="Comentario sobre la foto: de ese 2 por favor / el de arriba a la derecha / el tachado no"></textarea>
+          <div id="pedidoImagenPreview" class="hidden" style="margin-top:8px"></div>
+          <div class="grid2" style="margin-top:8px"><button class="secondary" onclick="analizarImagenReferencia(true)">Analizar imagen con IA precisa</button><button class="light" onclick="limpiarAnalisisImagen()">Limpiar análisis</button></div>
+          <div id="pedidoImagenAnalisis" class="small" style="margin-top:8px"></div><details id="mapaVisualDebugWrap" class="ai-block admin-debug" style="margin-top:8px"><summary>🔒 Admin · diagnóstico técnico</summary><div class="small" style="margin-top:6px">Solo aparece en modo admin. Para activarlo usa <b>?admin=1</b> en la URL.</div><div id="mapaVisualDebug" class="small" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;max-height:360px;overflow:auto">Aquí aparecerá el diagnóstico después de analizar.</div><button class="light debug-copy" type="button" onclick="copiarMapaVisual()">Copiar mapa para ChatGPT</button></details>
+        </details>
+        <details class="ai-block"><summary>👤 Historial de cliente opcional</summary>
+          <div class="grid2"><div><label>Cliente</label><input id="parserCliente" placeholder="Ayuda para 'los mismos de ayer'"></div><div><label>Teléfono</label><input id="parserTelefono" placeholder="Ayuda para historial"></div></div>
+        </details>
+        <div id="parserResult" class="parser-result-scroll"></div>
+      </div>
+      <div id="crearManualSec" class="card inner create-panel"><h2>4. Buscar producto manual</h2><div class="grid2"><div><label>Marca</label><select id="marcaManual"><option value="">Todas</option></select></div><div><label>Hilo</label><select id="hiloManual"><option value="">Todos</option></select></div></div><input id="buscarProducto" placeholder="Código, color o tono"><div id="productosList" class="scroll-list" style="max-height:360px"></div></div>
+      <div id="crearCarritoSec" class="card inner create-panel"><div class="section-title"><h2>Carrito</h2><strong id="cartTotal">$0.00</strong></div><div id="cartList"></div><div class="grid2 sticky-cart-actions" style="margin-top:10px"><button class="light" onclick="limpiarCarrito()">Vaciar</button><button id="guardarCotBtn" class="green" onclick="guardarCotizacion()">Guardar cotización</button></div></div>
+      </div>
+      <div class="quick-savebar"><button class="secondary" onclick="crearScroll('crearIASec')">IA / productos</button><button class="green" onclick="guardarCotizacion()">Guardar cotización</button></div>
+    </section>
+
+    <section id="viewAlmacen" class="card hidden">
+      <div class="section-title"><h2>Almacén móvil</h2><span class="badge gray">Render ↔ PC</span></div>
+      <div class="toolbar"><div class="grid2"><div><label>Marca</label><select id="marcaAlmacen"><option value="">Todas</option></select></div><div><label>Hilo</label><select id="hiloAlmacen"><option value="">Todos</option></select></div></div><input id="buscarAlmacen" placeholder="Código, color, marca, hilo"></div>
+      <p class="subtitle">Filtra por marca e hilo para que no se revuelvan listas grandes.</p>
+      <div id="almacenList" class="scroll-list"></div>
+      <details class="ai-block" style="margin-top:10px"><summary>Historial de movimientos</summary><div id="movimientosAlmacen" class="small" style="margin-top:8px">Cargando...</div></details>
+    </section>
+
+    <section id="viewEmpacador" class="card hidden"><h2>Empacador móvil</h2><input id="buscarEmpacador" placeholder="Folio, cliente, pedido"><div id="empacadorList" class="scroll-list"></div></section>
+  </main>
+</div>
+<div class="footer"><div class="footer-inner"><button id="tabNotas" onclick="showView('notas')">Notas</button><button id="tabCrear" class="green" onclick="startCrearNueva()">Crear</button><button id="tabAlmacen" class="secondary" onclick="showView('almacen')">Almacén</button><button id="tabEmpacador" class="orange" onclick="showView('empacador')">Empacar</button></div></div>
+<script>
+const $=id=>document.getElementById(id);
+let state={pin:localStorage.getItem('hilorama_mobile_pin')||'',notas:[],cliente:null,cart:[],productos:[],almacen:[],movimientos:[],empacador:[],pending:JSON.parse(localStorage.getItem('hilorama_pending')||'[]'),editing:null,currentView:'notas',viewStack:[],saving:false,currentDetail:null,parserPedidos:[],pedidoImagenActiva:false,pedidoImagenAnalizada:'',speechRec:null,speechOn:false,speechKeepAlive:false,speechManualStop:false,speechSeen:[],speechInterim:'',voiceMode:'idle',voiceRecorder:null,voiceStream:null,voiceChunks:[],voiceStartedAt:0,voiceTimer:null,audioTranscript:'',whatsappIARespuesta:'',whatsappIARespuestaRaw:'',whatsappIARecursos:[],whatsappConversacionId:null};
+function isAdminDebug(){const q=new URLSearchParams(location.search);if(q.get('admin')==='1'){localStorage.setItem('hilorama_admin_debug','1');return true}if(q.get('admin')==='0'){localStorage.removeItem('hilorama_admin_debug');return false}return localStorage.getItem('hilorama_admin_debug')==='1'}
+function applyAdminDebugMode(){document.documentElement.classList.toggle('admin-on',isAdminDebug())}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}function money(v){return new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(v||0))}
+function setStatus(t){$('status').textContent=t}function savePin(){state.pin=$('pinInput').value.trim();localStorage.setItem('hilorama_mobile_pin',state.pin);startApp()}function headers(){return {'Content-Type':'application/json','X-Mobile-Pin':state.pin}}
+async function apiFetch(url,opt={}){const res=await fetch(url,{...opt,headers:{...headers(),...(opt.headers||{})},cache:'no-store'});let data;try{data=await res.clone().json()}catch{let txt='';try{txt=await res.text()}catch{}data={ok:false,error:'Respuesta no válida del servidor. '+(txt?txt.slice(0,220):'Sin detalle')}}if(!res.ok||data.ok===false){const err=new Error(data.error||`Error HTTP ${res.status}`);err.data=data;err.status=res.status;throw err}return data}
+async function startApp(){if(!state.pin)return;$('loginCard').classList.add('hidden');$('mainApp').classList.remove('hidden');showView('notas',false);await loadAll()}
+function showView(name,push=true){if(push&&state.currentView!==name){state.viewStack.push(state.currentView);history.pushState({view:name},'',`#${name}`)}state.currentView=name;document.documentElement.classList.toggle('editing-note',!!state.editing);['Notas','Detalle','Crear','Almacen','Empacador'].forEach(v=>$('view'+v).classList.add('hidden'));const el=$('view'+cap(name));if(el)el.classList.remove('hidden');['Notas','Crear','Almacen','Empacador'].forEach(t=>{const b=$('tab'+t);if(b)b.classList.remove('active-tab')});const tab=$('tab'+cap(name));if(tab)tab.classList.add('active-tab');if(name==='empacador')loadEmpacador();if(name==='almacen')loadAlmacen()}
+window.addEventListener('popstate',()=>{const prev=state.viewStack.pop()||'notas';showView(prev,false)});
+function crearScroll(id){const el=$(id);if(!el)return;el.scrollIntoView({behavior:'smooth',block:'start'});document.querySelectorAll('.create-nav button').forEach(b=>b.classList.remove('primary'));const btn=[...document.querySelectorAll('.create-nav button')].find(b=>String(b.getAttribute('onclick')||'').includes(id));if(btn)btn.classList.add('primary')}
+function startCrearNueva(){if(state.editing){if(!confirm('Estás editando una cotización. ¿Quieres salir de la edición y crear una nueva?'))return;cancelarEdicion()}showView('crear');setTimeout(()=>crearScroll('crearClienteSec'),80)}
+function usarEjemploPedido(txt){const e=$('pedidoTexto');e.value=(e.value?e.value+'\n':'')+txt;crearScroll('crearIASec')}
+
+async function loadAll(){try{setStatus('Sincronizando...');await Promise.all([loadResumen(),loadCatalogos(),loadNotas(),loadPedidos(),loadEnvios()]);setStatus(`Sincronizado · ${state.notas.length} notas cargadas`);updatePendingStatus();syncPending()}catch(e){setStatus('Error: '+e.message)}}
+async function loadResumen(){const r=await apiFetch('/api/resumen');$('mCot').textContent=r.COTIZACION||0;$('mVen').textContent=(r.VENTA_PENDIENTE||0)+(r.PAGADA||0)}
+async function loadCatalogos(){const marcas=await apiFetch('/api/catalogo/marcas');['marcaCtx','marcaManual','marcaAlmacen'].forEach(id=>{const old=$(id).value;$(id).innerHTML='<option value="">Todas</option>'+marcas.map(m=>`<option>${escapeHtml(m)}</option>`).join('');$(id).value=old});await Promise.all([loadHilos('marcaCtx','hiloCtx'),loadHilos('marcaManual','hiloManual'),loadHilos('marcaAlmacen','hiloAlmacen')])}
+async function loadHilos(marcaId,hiloId){const marca=$(marcaId).value;const old=$(hiloId).value;const hilos=await apiFetch('/api/catalogo/hilos?marca='+encodeURIComponent(marca));$(hiloId).innerHTML='<option value="">Todos</option>'+hilos.map(h=>`<option>${escapeHtml(h)}</option>`).join('');$(hiloId).value=old}
+['marcaCtx','marcaManual','marcaAlmacen'].forEach(id=>{document.addEventListener('change',e=>{if(e.target&&e.target.id===id){if(id==='marcaCtx')loadHilos('marcaCtx','hiloCtx');if(id==='marcaManual')loadHilos('marcaManual','hiloManual');if(id==='marcaAlmacen')loadHilos('marcaAlmacen','hiloAlmacen').then(loadAlmacen)}})});
+async function loadPedidos(){const p=await apiFetch('/api/pedidos');$('pedidoSelect').innerHTML=p.map(x=>`<option value="${escapeAttr(x.numero)}">Pedido ${escapeHtml(x.numero)}${x.activo?' · activo':''}</option>`).join('')||'<option value="">Sin pedido</option>'}
+async function loadEnvios(){const e=await apiFetch('/api/envios');$('envioSelect').innerHTML=e.map(x=>`<option value="${escapeAttr(x.paqueteria)}">${escapeHtml(x.paqueteria)}</option>`).join('');}
+function syncParserCliente(){const c=state.cliente||{};if($('parserCliente'))$('parserCliente').value=c.nombre||$('nuevoClienteNombre').value||'';if($('parserTelefono'))$('parserTelefono').value=c.telefono||$('nuevoClienteTel').value||''}
+function limpiarPedidoTexto(){if($('pedidoTexto'))$('pedidoTexto').value='';if($('pedidoImagenTexto'))$('pedidoImagenTexto').value='';if($('parserResult'))$('parserResult').innerHTML='';state.parserPedidos=[];state.pedidoImagenActiva=false;state.pedidoImagenAnalizada='';state.audioTranscript='';if($('pedidoImagen'))$('pedidoImagen').value='';if($('pedidoImagenPreview')){$('pedidoImagenPreview').innerHTML='';$('pedidoImagenPreview').classList.add('hidden')}if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML='';if($('pedidoAudio'))$('pedidoAudio').value='';if($('pedidoAudioStatus'))$('pedidoAudioStatus').textContent='Audio: sin transcribir.';if($('pedidoDictadoStatus'))$('pedidoDictadoStatus').innerHTML='<span class="voice-dot"></span>Dictado: detenido.';if($('whatsappIAResult')){$('whatsappIAResult').innerHTML='';$('whatsappIAResult').classList.add('hidden')}state.whatsappIARespuesta='';state.whatsappIARespuestaRaw='';state.whatsappIARecursos=[];state.whatsappConversacionId=null}
+function onPedidoImagenChange(ev){const f=ev.target.files&&ev.target.files[0];const box=$('pedidoImagenPreview');if(!f){state.pedidoImagenActiva=false;box.innerHTML='';box.classList.add('hidden');return}state.pedidoImagenActiva=true;const url=URL.createObjectURL(f);box.classList.remove('hidden');box.innerHTML=`<div class="banner image-preview"><strong>Imagen cargada:</strong> ${escapeHtml(f.name)}<div style="margin-top:8px"><img src="${url}" alt="Imagen cargada"></div></div>`}
+function _normalizaDictadoTexto(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9ñ\s]/g,'').replace(/\s+/g,' ').trim()}
+function _appendDictadoTexto(txt){txt=String(txt||'').replace(/\s+/g,' ').trim();if(!txt)return;const norm=_normalizaDictadoTexto(txt);if(!norm)return;if(!state.speechSeen)state.speechSeen=[];if(state.speechSeen.includes(norm))return;const last=state.speechSeen[state.speechSeen.length-1]||'';if(last&&(last===norm||last.includes(norm)||norm.includes(last)))return;state.speechSeen.push(norm);if(state.speechSeen.length>120)state.speechSeen=state.speechSeen.slice(-120);const e=$('pedidoTexto');const actual=e.value.trim();e.value=(actual?actual+' ':'')+txt;e.value=e.value.replace(/\s+/g,' ').trim();e.dispatchEvent(new Event('input',{bubbles:true}))}
+function _setDictadoStatus(txt,on=false){const el=$('pedidoDictadoStatus');if(!el)return;el.classList.toggle('voice-on',!!on);el.innerHTML='<span class="voice-dot"></span>'+escapeHtml(txt)}
+function _voiceMime(){if(!window.MediaRecorder)return '';const opts=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm','audio/mp4'];return opts.find(x=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(x))||''}
+function _voiceExt(mime){mime=String(mime||'').toLowerCase();if(mime.includes('mp4'))return 'm4a';if(mime.includes('ogg'))return 'ogg';if(mime.includes('wav'))return 'wav';return 'webm'}
+function _voiceStopTracks(){try{if(state.voiceStream){state.voiceStream.getTracks().forEach(t=>{try{t.stop()}catch(_){}})}}catch(_){ }state.voiceStream=null}
+function _voiceSetButtons(recording=false,busy=false){const a=$('btnStartDictado'),b=$('btnStopDictado');if(a){a.disabled=recording||busy;a.textContent=busy?'⏳ Transcribiendo...':'🎙️ Iniciar dictado preciso'}if(b){b.disabled=(!recording&& !busy);b.textContent=recording?'✅ Terminar dictado':'✅ Terminar dictado'}}
+function _voiceStartTimer(){clearInterval(state.voiceTimer);state.voiceTimer=setInterval(()=>{if(state.voiceMode==='recording'){const sec=Math.max(0,Math.round((Date.now()-state.voiceStartedAt)/1000));_setDictadoStatus('Grabando audio completo con reducción de ruido… '+sec+'s. Presiona Terminar cuando acabes.',true)}},1000)}
+function _voiceStopTimer(){clearInterval(state.voiceTimer);state.voiceTimer=null}
+async function _transcribirBlobDictado(blob,mime){
+  if(!blob||blob.size<800){_setDictadoStatus('No detecté audio suficiente. Acerca el celular y vuelve a intentar.',false);return}
+  state.voiceMode='uploading';_voiceSetButtons(false,true);_voiceStopTimer();
+  const secs=Math.max(1,Math.round((Date.now()-(state.voiceStartedAt||Date.now()))/1000));
+  _setDictadoStatus('Procesando dictado de '+secs+'s… espera un momento.',true);
+  try{
+    const filename='dictado_hilorama_'+Date.now()+'.'+_voiceExt(mime);
+    const file=new File([blob],filename,{type:mime||blob.type||'audio/webm'});
+    const audio_base64=await fileToDataUrl(file);
+    const marca=$('marcaCtx')?$('marcaCtx').value:'';
+    const hilo=$('hiloCtx')?$('hiloCtx').value:'';
+    const prompt='Pedido de mercería Hilorama en español de México. Puede contener códigos de colores y cantidades: Velluto, Komfy Mini, Karina, Alize, tonos, números, piezas, madejas, dame, surtido. Transcribe literal, conservando números como dígitos cuando sean códigos o cantidades.';
+    const r=await apiFetch('/api/transcribir-audio',{method:'POST',body:JSON.stringify({audio_base64,filename,prompt,marca,hilo,source:'dictado_preciso'})});
+    const txt=(r.transcript||'').trim();
+    if(!txt){_setDictadoStatus('No pude obtener texto del dictado. Intenta hablar más cerca del micrófono.',false);return}
+    _appendDictadoTexto(txt);
+    _setDictadoStatus('Dictado transcrito: '+txt.slice(0,160)+(txt.length>160?'…':''),false);
+  }catch(e){
+    _setDictadoStatus('Error al transcribir dictado: '+(e.message||e)+'. Revisa OPENAI_API_KEY o intenta con audio de WhatsApp.',false);
+  }finally{
+    state.voiceMode='idle';state.voiceChunks=[];_voiceSetButtons(false,false);_voiceStopTracks();
+  }
+}
+async function startDictadoPedido(){
+  if(state.voiceMode==='recording'||state.voiceMode==='uploading'){_setDictadoStatus('Ya hay un dictado activo. Presiona Terminar dictado.',true);return}
+  state.speechSeen=state.speechSeen||[];state.voiceChunks=[];state.voiceStartedAt=Date.now();
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder){
+    try{
+      const constraints={audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,sampleRate:16000,sampleSize:16}};
+      const stream=await navigator.mediaDevices.getUserMedia(constraints);
+      const mime=_voiceMime();
+      const rec=mime?new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000}):new MediaRecorder(stream);
+      state.voiceStream=stream;state.voiceRecorder=rec;state.voiceMode='recording';
+      rec.ondataavailable=(ev)=>{if(ev.data&&ev.data.size>0)state.voiceChunks.push(ev.data)};
+      rec.onerror=()=>{_setDictadoStatus('El grabador tuvo un error. Intenta de nuevo o sube audio de WhatsApp.',false);_voiceSetButtons(false,false);_voiceStopTimer();_voiceStopTracks();state.voiceMode='idle'};
+      rec.onstop=()=>{const finalMime=rec.mimeType||mime||'audio/webm';const blob=new Blob(state.voiceChunks,{type:finalMime});_voiceStopTracks();_transcribirBlobDictado(blob,finalMime)};
+      rec.start(1000);
+      _voiceSetButtons(true,false);_voiceStartTimer();
+      _setDictadoStatus('Grabando con reducción de ruido… habla todo el pedido y presiona Terminar cuando acabes.',true);
+      return;
+    }catch(e){
+      _voiceStopTracks();
+      _setDictadoStatus('No pude abrir el micrófono con grabación precisa. Intento dictado básico del navegador…',true);
+      setTimeout(()=>startDictadoBasicoPedido(),250);
+      return;
+    }
+  }
+  startDictadoBasicoPedido();
+}
+function stopDictadoPedido(){
+  if(state.voiceMode==='recording'&&state.voiceRecorder){
+    _setDictadoStatus('Terminando grabación… ahora voy a transcribir el audio completo.',true);_voiceSetButtons(false,true);_voiceStopTimer();
+    try{state.voiceRecorder.stop()}catch(e){_voiceStopTracks();state.voiceMode='idle';_setDictadoStatus('No pude cerrar la grabación. Intenta de nuevo.',false);_voiceSetButtons(false,false)}
+    return;
+  }
+  if(state.voiceMode==='uploading'){_setDictadoStatus('Ya estoy transcribiendo. Espera a que termine.',true);return}
+  stopDictadoBasicoPedido();
+}
+function toggleDictadoPedido(){if(state.voiceMode==='recording'||state.speechOn)stopDictadoPedido();else startDictadoPedido()}
+function _crearReconocedorDictado(){
+  const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!Speech)return null;
+  const rec=new Speech();
+  rec.lang='es-MX';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=3;
+  rec.onstart=()=>{state.speechOn=true;_setDictadoStatus('Dictado básico activo… habla el pedido y presiona Terminar.',true)};
+  rec.onresult=(ev)=>{let finalTxt='';let interim='';for(let i=ev.resultIndex;i<ev.results.length;i++){const alt=ev.results[i][0];const part=(alt&&alt.transcript)||'';if(ev.results[i].isFinal)finalTxt+=part+' ';else interim+=part+' '}finalTxt=finalTxt.trim();interim=interim.trim();if(finalTxt){_appendDictadoTexto(finalTxt);state.speechInterim='';_setDictadoStatus('Agregado: '+finalTxt+' · Sigue hablando o presiona Terminar.',true)}else if(interim){state.speechInterim=interim;_setDictadoStatus('Escuchando: '+interim,true)}};
+  rec.onerror=(ev)=>{const err=ev.error||'desconocido';if(err==='no-speech'&&state.speechKeepAlive&&!state.speechManualStop){_setDictadoStatus('Sigo escuchando… habla cuando quieras o presiona Terminar.',true);return}state.speechOn=false;_setDictadoStatus('Error de dictado básico: '+err+'. Usa dictado preciso o sube audio de WhatsApp.',false)};
+  rec.onend=()=>{state.speechOn=false;if(state.speechKeepAlive&&!state.speechManualStop){setTimeout(()=>{if(state.speechKeepAlive&&!state.speechOn){try{state.speechRec=_crearReconocedorDictado();state.speechRec.start()}catch(e){_setDictadoStatus('El navegador pausó el dictado básico. Presiona Iniciar para continuar.',false)}}},350);return}_setDictadoStatus('Dictado terminado. Revisa el texto y presiona Interpretar.',false)};
+  return rec;
+}
+function startDictadoBasicoPedido(){const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Speech){alert('Tu navegador no soporta dictado. Usa audio de WhatsApp.');return}if(state.speechOn||state.speechKeepAlive){_setDictadoStatus('Dictado activo. Presiona Terminar dictado cuando acabes.',true);return}state.speechManualStop=false;state.speechKeepAlive=true;state.speechSeen=state.speechSeen||[];state.speechInterim='';try{state.speechRec=_crearReconocedorDictado();state.speechRec.start();_voiceSetButtons(true,false)}catch(e){state.speechKeepAlive=false;state.speechOn=false;_setDictadoStatus('No pude iniciar dictado. Cierra y vuelve a abrir la app.',false);_voiceSetButtons(false,false)}}
+function stopDictadoBasicoPedido(){state.speechManualStop=true;state.speechKeepAlive=false;const rec=state.speechRec;if(rec){try{rec.stop()}catch(e){try{rec.abort()}catch(_){}}}state.speechOn=false;_voiceSetButtons(false,false);_setDictadoStatus('Dictado terminado. Revisa el texto y presiona Interpretar.',false)}
+function abrirPdfNota(id){window.open('/nota-pdf/'+encodeURIComponent(id),'_blank')}
+async function fileToDataUrl(file){return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(new Error('No pude leer el archivo'));r.readAsDataURL(file)})}
+function limpiarAnalisisImagen(){state.pedidoImagenAnalizada='';if($('pedidoImagenAnalisis'))$('pedidoImagenAnalisis').innerHTML=''}
+function limpiarAudioSubido(){state.audioTranscript='';if($('pedidoAudio'))$('pedidoAudio').value='';if($('pedidoAudioStatus'))$('pedidoAudioStatus').textContent='Audio: sin transcribir.'}
+
+function formatMapaVisual(r){
+  const lines=[];
+  lines.push('=== MAPA VISUAL DETECTADO ===');
+  lines.push('motor: '+((r.vision_notes||[]).join(' / ')||'sin motor'));
+  lines.push('contexto: '+JSON.stringify(r.contexto||{}));
+  lines.push('add_codes: '+JSON.stringify(r.add_codes||[]));
+  lines.push('exclude_codes: '+JSON.stringify(r.exclude_codes||[]));
+  lines.push('quantities: '+JSON.stringify(r.quantities||{}));
+  lines.push('no_encontrados: '+JSON.stringify(r.no_encontrados||[]));
+  lines.push('advertencias: '+JSON.stringify(r.advertencias||[]));
+  if(r.visual_items&&r.visual_items.length){
+    lines.push('');
+    lines.push('--- visual_items ---');
+    r.visual_items.forEach((x,i)=>{
+      lines.push(`${i+1}. code=${x.code||''} row=${x.row||''} col=${x.col||''} label=${x.label_text||''} color=${x.visual_color||''} mark=${x.mark||''} type=${x.mark_type||''} conf=${x.confidence||''} reason=${x.reason||''}`);
+    });
+  }else{
+    lines.push('');
+    lines.push('visual_items: VACÍO');
+  }
+  if(r.grid_debug){
+    lines.push('');
+    lines.push('--- grid_debug ---');
+    lines.push(JSON.stringify(r.grid_debug,null,2).slice(0,9000));
+  }
+  if(r.cell_result){
+    lines.push('');
+    lines.push('--- cell_result ---');
+    lines.push(JSON.stringify(r.cell_result,null,2).slice(0,9000));
+  }
+  if(r.phase_result){
+    lines.push('');
+    lines.push('--- phase_result ---');
+    lines.push(JSON.stringify(r.phase_result,null,2).slice(0,9000));
+  }
+  return lines.join('\n');
+}
+function copiarMapaVisual(){
+  const txt=($('mapaVisualDebug')&&$('mapaVisualDebug').textContent)||'';
+  if(!txt.trim())return alert('Todavía no hay mapa visual.');
+  navigator.clipboard.writeText(txt).then(()=>alert('Mapa copiado. Pégamelo en ChatGPT.'),()=>alert('No pude copiar. Selecciona el texto y cópialo manualmente.'));
+}
+
+async function analizarImagenReferencia(preciso=false){
+  const f=$('pedidoImagen').files&&$('pedidoImagen').files[0];
+  if(!f)return alert('Primero selecciona una imagen.');
+  $('pedidoImagenAnalisis').innerHTML='Analizando con IA precisa...';
+  try{
+    const image_base64=await imageFileToCompressedDataUrl(f,1400,.9);
+    const originalFile=$('pedidoImagenOriginal')&&$('pedidoImagenOriginal').files&&$('pedidoImagenOriginal').files[0];
+    const original_image_base64=originalFile?await imageFileToCompressedDataUrl(originalFile,1400,.9):'';
+    const comentario=$('pedidoImagenTexto').value.trim();
+    const r=await apiFetch('/api/analizar-imagen-referencia',{method:'POST',body:JSON.stringify({
+      image_base64,
+      original_image_base64,
+      comentario,
+      marca:$('marcaCtx').value,
+      hilo:$('hiloCtx').value,
+      modo:'preciso',
+      prefer_local:false,
+      force_ia:true,
+      contexto:($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos')
+    })});
+    if($('mapaVisualDebug')){$('mapaVisualDebug').textContent=formatMapaVisual(r);}
+    state.pedidoImagenAnalizada=r.suggested_text||'';
+    const extras=[];
+    if(r.add_codes&&r.add_codes.length)extras.push('agregar: '+r.add_codes.join(', '));
+    if(r.exclude_codes&&r.exclude_codes.length)extras.push('excluir: '+r.exclude_codes.join(', '));
+    if(r.summary&&r.summary.numbers&&r.summary.numbers.length)extras.push('números: '+r.summary.numbers.join(', '));
+    if(r.summary&&r.summary.positions&&r.summary.positions.length)extras.push('posiciones: '+r.summary.positions.join(', '));
+    if(r.summary&&r.summary.marks&&r.summary.marks.length)extras.push('marcas: '+r.summary.marks.join(', '));
+    if(r.pedidos&&r.pedidos.length){
+      state.parserPedidos=r.pedidos;
+      addAllParsed(true);
+      renderCart();
+      const addTxt=(r.add_codes&&r.add_codes.length)?`<div><b>Agregados:</b> ${escapeHtml(r.add_codes.join(', '))}</div>`:'';
+      const excTxt=(r.exclude_codes&&r.exclude_codes.length)?`<div><b>No agregados/tachados:</b> ${escapeHtml(r.exclude_codes.join(', '))}</div>`:'';
+      $('pedidoImagenAnalisis').innerHTML=`<div class="result-mini"><div class="result-ok"><b>Listo:</b> la imagen se interpretó y se agregaron ${r.pedidos.length} producto(s) al carrito.<br><span class="small">Contexto: ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}</span>${addTxt}${excTxt}<div class="input-hint">Revisa el carrito antes de guardar. El diagnóstico completo queda oculto para admin.</div></div></div>`;
+      crearScroll('crearCarritoSec');
+    }else{
+      $('pedidoImagenAnalisis').innerHTML=`<div class="result-warn"><b>Analicé la imagen, pero no pude convertirla automáticamente a productos.</b><br>${escapeHtml(extras.join(' · ')||'Sin hallazgos claros')}<br><span class="small">Sugerencia:</span> <b>${escapeHtml(r.suggested_text||'')}</b></div>`;
+      if(!$('pedidoImagenTexto').value.trim()&&r.suggested_text){$('pedidoImagenTexto').value=r.suggested_text}
+    }
+  }catch(e){$('pedidoImagenAnalisis').innerHTML=`<div class="result-warn"><b>No pude analizar la imagen.</b><br>${escapeHtml(e.message)}<br>Si vuelve a pasar, entra con ?admin=1 y copia el diagnóstico.</div>`;if($('mapaVisualDebug')){$('mapaVisualDebug').textContent='ERROR AL ANALIZAR:\n'+e.message}}
+}
+async function transcribirAudioSubido(){const f=$('pedidoAudio').files&&$('pedidoAudio').files[0];if(!f)return alert('Primero selecciona un audio.');$('pedidoAudioStatus').textContent='Transcribiendo audio con modo preciso...';try{const audio_base64=await fileToDataUrl(f);const prompt='Pedido de mercería Hilorama en español de México. Puede contener códigos y cantidades de hilos/estambres; conserva números como dígitos.';const r=await apiFetch('/api/transcribir-audio',{method:'POST',body:JSON.stringify({audio_base64,filename:f.name,prompt,source:'audio_whatsapp'})});state.audioTranscript=r.transcript||'';$('pedidoAudioStatus').textContent='Audio transcrito.';const base=$('pedidoTexto').value.trim();$('pedidoTexto').value=(base+' '+state.audioTranscript).replace(/\s+/g,' ').trim();$('pedidoTexto').dispatchEvent(new Event('input',{bubbles:true}))}catch(e){$('pedidoAudioStatus').textContent='Error al transcribir: '+e.message}}
+
+
+async function loadNotas(){const params=new URLSearchParams({estado:$('estadoFiltro').value,q:$('buscarNota').value.trim(),limit:'150'});try{state.notas=await apiFetch('/api/notas?'+params);$('notasCount').textContent=state.notas.length;renderNotas()}catch(e){$('notasList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}}
+$('buscarNota').oninput=debounce(loadNotas,350);
+function estadoBadge(estado){if(estado==='PAGADA')return 'green'; if(estado==='VENTA_PENDIENTE')return 'orange'; return 'gray'}
+function renderNotas(){if(!state.notas.length){$('notasList').innerHTML='<div class="empty">No hay notas.</div>';return}$('notasList').innerHTML=state.notas.map(n=>`<div class="note" onclick="verDetalle('${escapeAttr(n.id)}')"><div class="note-title"><div><strong>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre||'')}</strong><p>Pedido ${escapeHtml(n.pedido||'-')} · ${escapeHtml(n.fecha||'')}</p><p>${n.items_count||0} productos · ${n.piezas_total||0} piezas · ${money(n.total||0)}</p></div><span class="badge ${estadoBadge(n.estado)}">${escapeHtml(n.estado||'')}</span></div></div>`).join('')}
+async function verDetalle(id){try{const n=await apiFetch('/api/notas/'+encodeURIComponent(id));state.currentDetail=n;state.pagoComprobante='';renderDetalle(n);showView('detalle')}catch(e){alert(e.message)}}
+function comprobantePreviewHtml(src){if(!src)return '<div class="small">Sin comprobante cargado.</div>';if(String(src).startsWith('data:image'))return `<div class="pay-proof"><img src="${src}" alt="Comprobante de pago"></div>`;return `<div class="banner"><b>Comprobante guardado:</b><br><span class="small">${escapeHtml(src)}</span></div>`}
+function renderPagoBox(n,pagada){const comprobanteActual=n.comprobante||'';const preview=comprobantePreviewHtml(comprobanteActual);if(pagada){return `<div class="comprobante-card"><b>Pago registrado</b><div class="small">${escapeHtml(n.metodo_pago||'Sin método')} · ${money(n.monto_pagado||n.total||0)}${n.referencia_pago?` · Ref: ${escapeHtml(n.referencia_pago)}`:''}${n.fecha_pago?` · ${escapeHtml(n.fecha_pago)}`:''}</div>${preview}<details class="ai-block"><summary>Cambiar comprobante</summary>${renderUploadComprobante(n.id,true)}</details></div>`}return `<div class="pay-card"><b>Comprobante de pago</b><div class="small">Como en la PC: arrastra o toca para subir la captura del pago; después confirma.</div>${renderUploadComprobante(n.id,false)}<div class="pay-grid"><div><label>Método de pago</label><select id="detalleMetodoPago"><option>Transferencia</option><option>Depósito</option><option>Mercado Pago</option><option>Tarjeta</option><option>Efectivo</option><option>Otro</option></select></div><div><label>Monto pagado</label><input id="detalleMontoPago" type="number" step="0.01" value="${Number(n.total||0)}"></div></div><label>Referencia / nota opcional</label><input id="detalleReferenciaPago" placeholder="Últimos dígitos, folio o comentario"><button class="teal" style="margin-top:8px" onclick="marcarPagada('${escapeAttr(n.id)}')">Confirmar pago con comprobante</button><div class="small" style="margin-top:6px">Si el cliente está incompleto, primero te pedirá sus datos y luego continuará.</div></div>`}
+function renderUploadComprobante(id,soloGuardar){return `<div id="pagoDrop" class="dropzone" onclick="document.getElementById('pagoFile').click()"><strong>📎 Arrastra aquí el comprobante</strong><span>o toca para elegir imagen</span><span class="small">JPG, PNG o captura de WhatsApp</span></div><input id="pagoFile" class="hidden" type="file" accept="image/*" onchange="setPagoComprobanteFromFile(this.files[0])"><div id="pagoPreview" class="comprobante-preview"></div>${soloGuardar?`<button class="secondary" style="margin-top:8px" onclick="guardarSoloComprobante('${escapeAttr(id)}')">Guardar comprobante</button>`:''}`}
+function renderDetalle(n){
+  const envio=n.envio||{};
+  const productos=(n.items||[]).map(i=>`<div class="line"><strong>${escapeHtml(i.codigo)} · ${escapeHtml(i.color||'')}</strong><div class="small">${escapeHtml(i.marca||'')} / ${escapeHtml(i.hilo||'')} · <b>${i.cantidad}</b> x ${money(i.precio)} · Stock ${i.stock}</div></div>`).join('')||'<div class="empty">Sin productos.</div>';
+  const pagada=n.estado==='PAGADA';
+  const payInfo=renderPagoBox(n,pagada);
+  $('detalleBox').innerHTML=`<div class="detail-head banner"><div><strong>${escapeHtml(n.id)}</strong> · ${escapeHtml(n.estado||'')}</div><div class="detail-total">${money(n.total||0)}</div><div>Cliente: ${escapeHtml(n.cliente_nombre_real||n.cliente_nombre||'')} · Pedido ${escapeHtml(n.pedido||'-')}</div></div><p class="subtitle">Tel: ${escapeHtml(n.telefono||'')} · Envío: ${escapeHtml(envio.paqueteria||envio.tipo||n.paqueteria||'-')} ${envio.precio?money(envio.precio):''}</p><button class="light" style="margin-bottom:8px" onclick="abrirEditorClienteDesdeDetalle()">Editar datos del cliente</button>${payInfo}<h2>Productos</h2><div class="detalle-products">${productos}</div><div class="detail-actions">${n.estado==='COTIZACION'?`<button class="green wide" onclick="editarActual()">Editar nota</button><button class="orange" onclick="convertirVenta('${escapeAttr(n.id)}')">Convertir a venta</button>`:''}<button class="secondary" onclick="cambiarEnvio('${escapeAttr(n.id)}')">Envío</button><button class="light" onclick="abrirPdfNota('${escapeAttr(n.id)}')">PDF exacto PC</button>${!pagada?`<button class="teal" onclick="crearScrollPagoDetalle()">Pago</button>`:''}</div>`;
+  setTimeout(initPagoDrop,30);
+}
+function abrirEditorClienteDesdeDetalle(){const n=state.currentDetail;if(!n)return;abrirEditorCliente({id:n.cliente_id,nombre:n.cliente_nombre_real||n.cliente_nombre||'',telefono:n.telefono||'',direccion:n.direccion||{}},async(c)=>{if(c&&c.nombre){state.currentDetail.cliente_nombre=c.nombre;state.currentDetail.cliente_nombre_real=c.nombre;state.notas=(state.notas||[]).map(x=>x.cliente_id===c.id?{...x,cliente_nombre:c.nombre,telefono:c.telefono||x.telefono}:x)}await Promise.all([verDetalle(n.id),loadNotas()])})}
+function crearScrollPagoDetalle(){const el=document.querySelector('.pay-card,.comprobante-card');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})}
+function initPagoDrop(){const dz=$('pagoDrop');if(!dz)return;['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag')}));['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag')}));dz.addEventListener('drop',e=>{const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f)setPagoComprobanteFromFile(f)})}
+async function imageFileToCompressedDataUrl(file,maxSide=1400,quality=.82){if(!file)return'';const data=await fileToDataUrl(file);return await new Promise(resolve=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(Math.max(w,h)>maxSide){const sc=maxSide/Math.max(w,h);w=Math.max(1,Math.round(w*sc));h=Math.max(1,Math.round(h*sc))}const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,w,h);resolve(canvas.toDataURL('image/jpeg',quality))};img.onerror=()=>resolve(data);img.src=data})}
+async function setPagoComprobanteFromFile(file){if(!file)return;if(!/^image\//.test(file.type||''))return alert('El comprobante debe ser imagen.');const box=$('pagoPreview');if(box)box.innerHTML='<div class="empty">Preparando comprobante...</div>';state.pagoComprobante=await imageFileToCompressedDataUrl(file);if(box)box.innerHTML=`<img src="${state.pagoComprobante}" alt="Comprobante seleccionado"><div class="small">Comprobante listo. Ahora confirma el pago.</div>`}
+async function guardarSoloComprobante(id){if(!state.pagoComprobante)return alert('Primero sube o arrastra el comprobante.');try{setStatus('Guardando comprobante...');await apiFetch('/api/notas/'+encodeURIComponent(id)+'/comprobante',{method:'POST',body:JSON.stringify({comprobante_base64:state.pagoComprobante})});alert('Comprobante actualizado.');await verDetalle(id)}catch(e){alert(e.message)}finally{setStatus('Sincronizado')}}
+function editarActual(){const n=state.currentDetail;if(!n||n.estado!=='COTIZACION')return alert('Solo puedes editar cotizaciones.');state.editing=n.id;document.documentElement.classList.add('editing-note');state.cliente={id:n.cliente_id,nombre:n.cliente_nombre_real||n.cliente_nombre,telefono:n.telefono||'',direccion:n.direccion||{}};state.cart=consolidarItems((n.items||[]).map(i=>({producto_id:i.producto_id,id:i.producto_id,codigo:i.codigo,marca:i.marca,hilo:i.hilo,color:i.color,cantidad:Number(i.cantidad||0),precio:Number(i.precio||0),stock:Number(i.stock||0)})));$('clienteSeleccionado').classList.remove('hidden');$('clienteSeleccionado').innerHTML=`Cliente: <strong>${escapeHtml(state.cliente.nombre)}</strong> · <button class="light" style="width:auto;padding:6px 10px;margin-left:6px" onclick="abrirEditorCliente(state.cliente,(c)=>{state.cliente=c;selectCliente(c)})">Completar/editar</button>`;$('crearTitulo').textContent='Editar '+n.id;$('editBadge').classList.remove('hidden');$('editBanner').classList.remove('hidden');$('editBanner').textContent='Editando '+n.id+'. Guarda al final; no se recarga todo mientras editas.';$('pedidoSelect').value=n.pedido||'';const ev=n.envio||{};$('envioSelect').value=ev.paqueteria||ev.tipo||n.paqueteria||'Sin envio';$('envioPrecio').value=ev.precio||0;renderCart();showView('crear');setTimeout(()=>crearScroll('crearCarritoSec'),120)}
+function cancelarEdicion(limpiar=true){state.editing=null;document.documentElement.classList.remove('editing-note');$('crearTitulo').textContent='Nueva cotización';$('editBadge').classList.add('hidden');$('editBanner').classList.add('hidden');if(limpiar){state.cart=[];state.cliente=null;$('clienteSeleccionado').classList.add('hidden');$('clienteSeleccionado').innerHTML='';renderCart()}}
+async function convertirVenta(id){if(!confirm('Convertir a venta pendiente y descontar stock exacto del almacén?'))return;try{setStatus('Convirtiendo y descontando almacén...');await apiFetch('/api/notas/'+encodeURIComponent(id)+'/convertir',{method:'POST'});alert('Convertida a venta y almacén actualizado.');await Promise.all([loadResumen(),loadNotas()]);showView('notas')}catch(e){if(await manejarClienteIncompleto(e,()=>convertirVenta(id)))return;alert(e.message)}finally{setStatus('Sincronizado')}}
+async function marcarPagada(id){const metodo=$('detalleMetodoPago')?$('detalleMetodoPago').value:'Transferencia';const monto=$('detalleMontoPago')?Number($('detalleMontoPago').value||0):0;const referencia=$('detalleReferenciaPago')?$('detalleReferenciaPago').value.trim():'';if(!state.pagoComprobante&&metodo!=='Efectivo'&&!(state.currentDetail&&state.currentDetail.comprobante))return alert('Primero sube o arrastra la imagen del comprobante.');if(!confirm('Confirmar pago de '+money(monto||state.currentDetail?.total||0)+'?'))return;try{setStatus('Registrando pago...');await apiFetch('/api/notas/'+encodeURIComponent(id)+'/pagar',{method:'POST',body:JSON.stringify({metodo_pago:metodo,monto_pagado:monto,referencia_pago:referencia,comprobante_base64:state.pagoComprobante||''})});alert('Pago registrado.');state.pagoComprobante='';await Promise.all([loadResumen(),loadNotas()]);await verDetalle(id)}catch(e){if(await manejarClienteIncompleto(e,()=>marcarPagada(id)))return;alert(e.message)}finally{setStatus('Sincronizado')}}
+async function manejarClienteIncompleto(e,retryFn){const d=e&&e.data;if(!d||d.code!=='CLIENTE_INCOMPLETO')return false;await abrirEditorCliente(d.cliente||{},async()=>{if(typeof retryFn==='function')await retryFn()},{faltantes:d.faltantes||[]});return true}
+function asegurarModalCliente(){if($('clienteModal'))return;document.body.insertAdjacentHTML('beforeend',`<div id="clienteModal" class="modal-backdrop hidden"><div class="modal-card"><div class="modal-head"><div><h2>Completar datos del cliente</h2><div class="small">Necesario para continuar venta/pago, igual que en la PC.</div></div><button onclick="cerrarModalCliente()">Cerrar</button></div><div id="clienteFaltantes" class="missing-list hidden"></div><div class="client-form-grid"><div class="full"><label>Nombre completo</label><input id="cliNombre"></div><div><label>Teléfono</label><input id="cliTelefono" inputmode="numeric" maxlength="10"></div><div><label>Código postal</label><input id="cliCP" inputmode="numeric" maxlength="5" oninput="buscarCPClienteDebounced()"></div><div class="full"><label>Calle</label><input id="cliCalle"></div><div><label>No. exterior</label><input id="cliExt"></div><div><label>No. interior</label><input id="cliInt"></div><div><label>Estado</label><input id="cliEstado"></div><div><label>Municipio / alcaldía</label><input id="cliMunicipio"></div><div class="full"><label>Colonia</label><input id="cliColonia" list="coloniasCP"><datalist id="coloniasCP"></datalist></div><div class="full"><label>Referencia</label><input id="cliReferencia" maxlength="100" placeholder="Entre calles, color de casa, etc."></div></div><div class="grid2" style="margin-top:12px"><button class="light" onclick="cerrarModalCliente()">Cancelar</button><button class="green" onclick="guardarClienteModal()">Guardar y continuar</button></div></div></div>`)}
+function cerrarModalCliente(){const m=$('clienteModal');if(m)m.classList.add('hidden');state.clienteModalCallback=null;state.clienteModalId=null}
+async function abrirEditorCliente(cliente,onSaved,opts={}){asegurarModalCliente();cliente=cliente||{};const d=cliente.direccion||{};state.clienteModalId=cliente.cliente_id||cliente.id;state.clienteModalCallback=onSaved;$('cliNombre').value=cliente.nombre||cliente.cliente_nombre||cliente.cliente_nombre_real||'';$('cliTelefono').value=(cliente.telefono||'').replace(/\D/g,'').slice(0,10);$('cliCalle').value=d.calle||'';$('cliExt').value=d.numero_ext||'';$('cliInt').value=d.numero_int||'';$('cliCP').value=d.codigo_postal||'';$('cliEstado').value=d.estado||'';$('cliMunicipio').value=d.municipio||'';$('cliColonia').value=d.colonia||'';$('cliReferencia').value=d.referencia||'';const falt=opts.faltantes||[];$('clienteFaltantes').classList.toggle('hidden',!falt.length);$('clienteFaltantes').innerHTML=falt.length?'<b>Falta:</b> '+escapeHtml(falt.join(', ')):'';$('clienteModal').classList.remove('hidden');setTimeout(()=>$('cliNombre').focus(),80)}
+async function guardarClienteModal(){const id=state.clienteModalId;if(!id)return alert('No tengo ID del cliente.');const direccion={calle:$('cliCalle').value.trim(),numero_ext:$('cliExt').value.trim(),numero_int:$('cliInt').value.trim(),colonia:$('cliColonia').value.trim(),codigo_postal:$('cliCP').value.trim(),estado:$('cliEstado').value.trim(),municipio:$('cliMunicipio').value.trim(),referencia:$('cliReferencia').value.trim()};try{const r=await apiFetch('/api/clientes/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({nombre:$('cliNombre').value.trim(),telefono:$('cliTelefono').value.trim(),direccion,validar:true})});const cb=state.clienteModalCallback;cerrarModalCliente();if(cb)await cb(r.cliente);else alert('Cliente actualizado.')}catch(e){const falt=e.data&&e.data.faltantes;if(falt&&falt.length){$('clienteFaltantes').classList.remove('hidden');$('clienteFaltantes').innerHTML='<b>Falta:</b> '+escapeHtml(falt.join(', '))}else alert(e.message)}}
+let _cpTimer=null;function buscarCPClienteDebounced(){clearTimeout(_cpTimer);_cpTimer=setTimeout(buscarCPCliente,400)}
+async function buscarCPCliente(){const cp=$('cliCP')&&$('cliCP').value.trim();if(!/^\d{5}$/.test(cp||''))return;try{const r=await apiFetch('/api/cp/'+cp);$('cliEstado').value=r.estado||'';$('cliMunicipio').value=r.municipio||'';const dl=$('coloniasCP');dl.innerHTML=(r.colonias||[]).map(c=>`<option value="${escapeAttr(c)}"></option>`).join('');if((r.colonias||[]).length&&!$('cliColonia').value)$('cliColonia').value=r.colonias[0]}catch(e){}}
+$('buscarCliente').oninput=debounce(async()=>{const q=$('buscarCliente').value.trim();if(!q){$('clientesList').innerHTML='';return}try{const rows=await apiFetch('/api/clientes?q='+encodeURIComponent(q));$('clientesList').innerHTML=rows.map(c=>`<div class="line" onclick='selectCliente(${JSON.stringify(c).replaceAll("'","&#039;")})'><strong>${escapeHtml(c.nombre)}</strong><div class="small">${escapeHtml(c.telefono||'')}</div></div>`).join('')||'<div class="empty">No encontré clientes.</div>'}catch(e){$('clientesList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}},350);
+function selectCliente(c){state.cliente=c;$('clienteSeleccionado').classList.remove('hidden');syncParserCliente();$('clienteSeleccionado').innerHTML=`Cliente seleccionado: <strong>${escapeHtml(c.nombre)}</strong> · ${escapeHtml(c.telefono||'')}`;$('clientesList').innerHTML='';$('buscarCliente').value=''}
+async function crearClienteRapido(){const nombre=$('nuevoClienteNombre').value.trim();if(!nombre)return alert('Escribe nombre');try{const c=await apiFetch('/api/clientes',{method:'POST',body:JSON.stringify({nombre,telefono:$('nuevoClienteTel').value.trim()})});selectCliente(c.cliente||c);$('nuevoClienteNombre').value='';$('nuevoClienteTel').value=''}catch(e){alert(e.message)}}
+async function interpretarPedido(){
+  const texto=$('pedidoTexto').value.trim();
+  const textoImg=$('pedidoImagenTexto').value.trim();
+  const textoVision=String(state.pedidoImagenAnalizada||'').trim();
+  const textoAudio=String(state.audioTranscript||'').trim();
+  if(!texto&&!textoImg&&!textoVision&&!textoAudio)return alert('Pega el pedido primero.');
+  syncParserCliente();
+  $('parserResult').innerHTML='<div class="empty">Interpretando...</div>';
+  try{
+    const r=await apiFetch('/api/parser-whatsapp',{method:'POST',body:JSON.stringify({texto:[texto,textoAudio].filter(Boolean).join(' '),marca:$('marcaCtx').value,hilo:$('hiloCtx').value,cliente_nombre:$('parserCliente').value,telefono:$('parserTelefono').value,imagen_referencia:!!state.pedidoImagenActiva,texto_imagen:[textoImg,textoVision].filter(Boolean).join(' ')})});
+    state.parserPedidos=r.pedidos||[];
+    const textoTodo=[texto,textoImg,textoVision,textoAudio].filter(Boolean).join(' ').toLowerCase();
+    const debeAutoAgregar=(r.modo==='gama'||r.modo_especial==='uno_de_cada')&&(/1\s+de\s+cada|uno\s+de\s+cada|una\s+de\s+cada|cada\s+uno|c\/u/.test(textoTodo));
+    if(debeAutoAgregar&&state.parserPedidos.length){addAllParsed(true)}
+    let tituloModo='';
+    if(r.modo_especial==='historial')tituloModo=' · Historial';
+    if(r.modo_especial==='uno_de_cada')tituloModo=' · Uno de cada';
+    if(r.modo_especial==='surtidos')tituloModo=' · Surtido';
+    if(r.modo_especial==='surtido_bonito')tituloModo=' · Surtido bonito';
+    if(r.modo_especial==='mas_vendido')tituloModo=' · Más vendido';
+    if(r.modo_especial==='parecidos')tituloModo=' · Tonos parecidos';
+    if(r.modo_especial==='combinar')tituloModo=' · Combinación sugerida';
+    let html=`<div class="result-mini"><div class="result-ok"><b>Detecté ${state.parserPedidos.length} producto(s)</b>${tituloModo}.<br><span class="small">Contexto: ${escapeHtml(($('marcaCtx').value||'Todas')+' / '+($('hiloCtx').value||'Todos'))}</span></div></div>`;
+    if(debeAutoAgregar)html+=`<div class="banner" style="margin-top:8px">Se agregó automáticamente al carrito porque pediste 1 de cada uno.</div>`;
+    if(r.preguntas&&r.preguntas.length)html+=`<details class="ai-block" open><summary>❓ Confirmar antes de agregar</summary><div class="small" style="margin-top:8px">${escapeHtml(r.preguntas.join(' · '))}</div></details>`;
+    if(r.advertencias&&r.advertencias.length)html+=`<details class="ai-block"><summary>⚠️ Ver advertencias</summary><div class="small" style="margin-top:8px">${escapeHtml(r.advertencias.join(' · '))}</div></details>`;
+    if(r.errores&&r.errores.length)html+=`<details class="ai-block"><summary>❓ No reconocidos</summary><div class="small" style="margin-top:8px">${escapeHtml(r.errores.join(', '))}</div></details>`;
+    if(r.referencia_visual)html+=`<details class="ai-block admin-debug"><summary>🔒 Admin · referencia visual</summary><pre class="small" style="white-space:pre-wrap">${escapeHtml(JSON.stringify(r.referencia_visual,null,2))}</pre></details>`;
+    html+=state.parserPedidos.map((p,idx)=>`<div class="product"><div><strong>${escapeHtml(p.codigo)} · ${escapeHtml(p.color||'')}</strong><div class="small">${escapeHtml(p.marca)} / ${escapeHtml(p.hilo)} · Cantidad ${p.cantidad} · Stock ${p.stock} · ${money(p.precio_venta)}</div></div><button class="light" onclick="addParsed(${idx})">Agregar</button></div>`).join('')||'<div class="empty">No detecté productos válidos.</div>';
+    if(state.parserPedidos.length)html+=`<button class="green" style="margin-top:10px" onclick="addAllParsed()">Agregar todos al carrito</button>`;
+    $('parserResult').innerHTML=html;
+    applyAdminDebugMode();
+  }catch(e){$('parserResult').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}
+}
+
+function waResourceSrc(url){
+  url=String(url||'').trim();
+  if(!url)return '';
+  if(url.startsWith('/static/'))return encodeURI(url);
+  return url;
+}
+function extractWAResourceUrls(txt){
+  txt=String(txt||'');
+  const urls=[];
+  const re=/(\/static\/[^\n\r]+?\.(?:png|jpe?g|webp|gif|jfif)|https?:\/\/[^\n\r\s]+?\.(?:png|jpe?g|webp|gif|jfif)(?:\?[^\n\r\s]*)?)/gi;
+  let m;
+  while((m=re.exec(txt))!==null){
+    let u=(m[1]||'').trim().replace(/[),.;]+$/,'');
+    if(u&&!urls.includes(u))urls.push(u);
+  }
+  return urls;
+}
+function cleanWAResponseText(txt){
+  txt=String(txt||'');
+  txt=txt.replace(/\n{1,2}📎[\s\S]*$/,'');
+  txt=txt.split(/\n/).filter(line=>!/(\/static\/|https?:\/\/.*\.(png|jpe?g|webp|gif|jfif))/i.test(line)).join('\n');
+  return txt.trim();
+}
+function renderWAResources(urls){
+  urls=(urls||[]).filter(Boolean);
+  if(!urls.length)return '';
+  const cards=urls.map((u,i)=>{
+    const src=waResourceSrc(u);
+    return `<div class="wa-resource-card"><img src="${escapeAttr(src)}" alt="Recurso ${i+1}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.innerHTML='No se pudo cargar la imagen:<br>'+this.nextElementSibling.innerHTML"><a href="${escapeAttr(src)}" target="_blank" rel="noopener">${i+1}. ${escapeHtml(u)}</a></div>`;
+  }).join('');
+  return `<div class="wa-resources"><b>📎 Recursos para enviar</b><div class="small">Estas son las imágenes que acompañan la respuesta. En WhatsApp real se enviarían como archivos; por ahora puedes abrirlas o copiar sus rutas.</div><div class="wa-resource-grid">${cards}</div><div class="wa-resource-toolbar"><button class="light" type="button" onclick="copiarRecursosWA()">Copiar rutas</button><button class="light" type="button" onclick="abrirRecursosWA()">Abrir imágenes</button></div></div>`;
+}
+function copiarRecursosWA(){
+  const txt=(state.whatsappIARecursos||[]).join('\n');
+  if(!txt)return alert('No hay recursos para copiar.');
+  if(navigator.clipboard)navigator.clipboard.writeText(txt).then(()=>alert('Rutas copiadas.'),()=>alert(txt));
+  else alert(txt);
+}
+function abrirRecursosWA(){
+  const urls=state.whatsappIARecursos||[];
+  if(!urls.length)return alert('No hay recursos para abrir.');
+  urls.forEach((u,idx)=>setTimeout(()=>window.open(waResourceSrc(u),'_blank'),idx*250));
+}
+function renderSmallImagePreview(url){
+  url=String(url||'').trim();
+  if(!url)return '';
+  if(!/(\/static\/|https?:\/\/).+\.(png|jpe?g|webp|gif|jfif)(\?|$)/i.test(url))return '';
+  const src=waResourceSrc(url);
+  return `<div class="ia-lib-thumb"><img src="${escapeAttr(src)}" alt="Recurso IA" loading="lazy" onerror="this.style.display='none'"></div>`;
+}
+
+
+function renderMemoriaWA(mem){
+  const box=$('waMemoriaBox');
+  if(!box)return;
+  if(!mem||(!mem.hilo_actual&&!mem.hilo&&!mem.marca_actual&&!mem.marca)){
+    box.classList.add('hidden');
+    box.innerHTML='';
+    return;
+  }
+  const marca=mem.marca_actual||mem.marca||'';
+  const hilo=mem.hilo_actual||mem.hilo||'';
+  const origen=mem.origen?` · origen: ${escapeHtml(mem.origen)}`:'';
+  const intencion=mem.ultima_intencion?` · intención: ${escapeHtml(mem.ultima_intencion)}`:'';
+  const codigo=mem.ultimo_codigo?` · último código: ${escapeHtml(mem.ultimo_codigo)}`:'';
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="result-ok"><b>Memoria de conversación:</b> ${escapeHtml([marca,hilo].filter(Boolean).join(' / ')||'activa')}${origen}${intencion}${codigo}<br><span class="small">Si la clienta escribe algo corto como “rojo 56”, se usará este contexto.</span></div>`;
+}
+async function verMemoriaWA(){
+  const box=$('waMemoriaBox');
+  if(!state.whatsappConversacionId){
+    if(box){box.classList.remove('hidden');box.innerHTML='<div class="result-warn">Aún no hay conversación activa. Primero prueba un mensaje.</div>';}
+    return;
+  }
+  try{
+    const r=await apiFetch('/api/whatsapp-ia/memoria?'+new URLSearchParams({conversacion_id:state.whatsappConversacionId,telefono:($('parserTelefono')?.value||'')}));
+    renderMemoriaWA(r.memoria||null);
+  }catch(e){if(box){box.classList.remove('hidden');box.innerHTML=`<div class="result-warn">${escapeHtml(e.message)}</div>`;}}
+}
+async function nuevaConversacionWA(){
+  const old=state.whatsappConversacionId;
+  if(old){
+    try{await apiFetch('/api/whatsapp-ia/memoria/reset',{method:'POST',body:JSON.stringify({conversacion_id:old,telefono:($('parserTelefono')?.value||'')})});}catch(e){}
+  }
+  state.whatsappConversacionId=null;
+  state.whatsappNuevaConversacion=true;
+  state.whatsappIARecursos=[];
+  state.whatsappIARespuesta='';
+  state.whatsappIARespuestaRaw='';
+  renderMemoriaWA(null);
+  const box=$('whatsappIAResult');
+  if(box){box.classList.remove('hidden');box.innerHTML='<div class="empty">Nueva conversación lista. La próxima prueba empezará sin memoria anterior.</div>';}
+}
+
+async function simularWhatsAppIA(){
+  const texto=$('pedidoTexto').value.trim();
+  const textoAudio=state.audioTranscript||'';
+  const textoImg=$('pedidoImagenTexto').value.trim();
+  const textoVision=state.pedidoImagenAnalizada||'';
+  const textoTotal=[texto,textoAudio,textoImg,textoVision].filter(Boolean).join(' ').trim();
+  if(!textoTotal)return alert('Pega un mensaje de clienta, transcribe audio o agrega comentario de imagen.');
+  const box=$('whatsappIAResult');
+  box.classList.remove('hidden');
+  box.innerHTML='<div class="empty">Analizando con agente Hilorama...</div>';
+  try{
+    const r=await apiFetch('/api/whatsapp-ia/simular',{method:'POST',body:JSON.stringify({
+      texto:[texto,textoAudio].filter(Boolean).join(' '),
+      marca:$('marcaCtx').value,
+      hilo:$('hiloCtx').value,
+      cliente_nombre:$('parserCliente').value||($('nuevoClienteNombre')&&$('nuevoClienteNombre').value)||'',
+      telefono:$('parserTelefono').value||($('nuevoClienteTel')&&$('nuevoClienteTel').value)||'',
+      texto_imagen:[textoImg,textoVision].filter(Boolean).join(' '),
+      imagen_referencia:!!state.pedidoImagenActiva,
+      conversacion_id:state.whatsappConversacionId,
+      nueva_conversacion:!!state.whatsappNuevaConversacion
+    })});
+    state.whatsappNuevaConversacion=false;
+    state.whatsappConversacionId=r.conversacion_id||state.whatsappConversacionId;
+    renderMemoriaWA(r.memoria_actual||r.memoria_usada||null);
+    if(r.cierre_programado){
+      state.whatsappIARespuestaRaw=r.respuesta_diferida||'';
+      state.whatsappIARecursos=[];
+      state.whatsappIARespuesta=r.respuesta_diferida||'';
+      state.parserPedidos=[];
+      const due=r.programado_para?`<div class="small">Programado para: ${escapeHtml(String(r.programado_para))}</div>`:'';
+      box.innerHTML=`<div class="wa-meta"><span class="badge green">cierre diferido</span><span class="badge gray">${escapeHtml(r.cierre_minutos||5)} min</span><span class="badge gray">${escapeHtml(r.motor||'')}</span></div><div class="result-ok"><b>No responder de inmediato.</b><br>Si la clienta no escribe nada más en ${escapeHtml(r.cierre_minutos||5)} minutos, enviar este cierre:</div><label>Mensaje de cierre programado</label><div id="waRespuestaTexto" class="wa-response">${escapeHtml(state.whatsappIARespuesta)}</div>${due}<div class="wa-actions"><button class="green" type="button" onclick="copiarRespuestaWA()">Copiar cierre</button></div>`;
+      return;
+    }
+    state.whatsappIARespuestaRaw=r.respuesta_sugerida||'';
+    state.whatsappIARecursos=extractWAResourceUrls(state.whatsappIARespuestaRaw);
+    state.whatsappIARespuesta=cleanWAResponseText(state.whatsappIARespuestaRaw);
+    state.parserPedidos=r.pedidos||[];
+    const badges=`<div class="wa-meta"><span class="badge gray">${escapeHtml(r.intencion||'')}</span><span class="badge ${r.confianza==='alta'?'green':(r.confianza==='baja'?'orange':'gray')}">Confianza ${escapeHtml(r.confianza||'-')}</span><span class="badge gray">${escapeHtml(r.accion_recomendada||'')}</span><span class="badge gray">${escapeHtml(r.motor||'')}</span></div>`;
+    const dudas=(r.preguntas&&r.preguntas.length)?`<div class="result-warn"><b>Dudas:</b><br>${r.preguntas.map(escapeHtml).join('<br>')}</div>`:'';
+    const errs=(r.errores&&r.errores.length)?`<div class="result-warn"><b>Revisar códigos:</b> ${escapeHtml(r.errores.join(', '))}</div>`:'';
+    const warns=(r.advertencias&&r.advertencias.length)?`<details class="ai-block"><summary>Advertencias</summary><div class="small">${r.advertencias.map(escapeHtml).join('<br>')}</div></details>`:'';
+    const productos=(r.pedidos||[]).map((p,idx)=>`<div class="product"><div><strong>${escapeHtml(p.codigo)} · ${escapeHtml(p.color||'')}</strong><div class="small">${escapeHtml(p.marca||'')} / ${escapeHtml(p.hilo||'')} · Cantidad ${escapeHtml(p.cantidad||1)} · Stock ${escapeHtml(p.stock??'')}</div></div><button class="light" onclick="addParsed(${idx})">Agregar</button></div>`).join('')||'<div class="empty">No detecté productos para carrito.</div>';
+    const puede=r.puede_auto_enviar?'<div class="result-ok"><b>Seguro para automático después:</b> sí, pero en esta fase solo se copia/aprueba manual.</div>':'<div class="result-warn"><b>Modo revisión:</b> conviene aprobar o corregir antes de responder.</div>';
+    const recursosHtml=renderWAResources(state.whatsappIARecursos);
+    box.innerHTML=`${badges}<label>Respuesta sugerida para WhatsApp</label><div id="waRespuestaTexto" class="wa-response">${escapeHtml(state.whatsappIARespuesta)}</div>${recursosHtml}<div class="wa-actions"><button class="green" type="button" onclick="copiarRespuestaWA()">Copiar respuesta</button><button class="secondary" type="button" onclick="addAllParsed()">Agregar productos</button></div>${puede}${dudas}${errs}${warns}<div class="mini-title">Productos detectados</div>${productos}`;
+  }catch(e){box.innerHTML=`<div class="result-warn"><b>No pude simular el agente.</b><br>${escapeHtml(e.message)}</div>`}
+}
+function copiarRespuestaWA(){
+  const txt=state.whatsappIARespuesta||($('waRespuestaTexto')&&$('waRespuestaTexto').textContent)||'';
+  if(!txt.trim())return alert('Todavía no hay respuesta sugerida.');
+  if(navigator.clipboard){navigator.clipboard.writeText(txt).then(()=>alert('Respuesta copiada.'),()=>alert(txt));}
+  else alert(txt);
+}
+
+async function guardarAprendizajeIA(){
+  const msg=($('pedidoTexto')&&$('pedidoTexto').value||'').trim();
+  const resp=($('waRespuestaHumana')&&$('waRespuestaHumana').value||'').trim();
+  const tags=($('waAprendizajeTags')&&$('waAprendizajeTags').value||'').trim();
+  const st=$('waAprendizajeStatus');
+  if(!msg)return alert('Primero pega el mensaje de la clienta.');
+  if(!resp)return alert('Escribe la respuesta humana correcta.');
+  try{
+    if(st)st.textContent='Guardando aprendizaje...';
+    const r=await apiFetch('/api/whatsapp-ia/guardar-aprendizaje',{method:'POST',body:JSON.stringify({
+      mensaje_cliente:msg,
+      respuesta_humana:resp,
+      respuesta_ia:state.whatsappIARespuesta||'',
+      tags,
+      contexto:{marca:$('marcaCtx')?.value||'',hilo:$('hiloCtx')?.value||'',conversacion_id:state.whatsappConversacionId||null}
+    })});
+    if(st)st.textContent='Aprendizaje guardado. La IA lo usará en casos parecidos. ID '+(r.recurso&&r.recurso.id?r.recurso.id:'');
+    if($('waRespuestaHumana'))$('waRespuestaHumana').value='';
+    await cargarRecursosIA(false);
+  }catch(e){if(st)st.textContent='Error: '+e.message;else alert(e.message)}
+}
+async function marcarPendienteHumano(){
+  const msg=($('pedidoTexto')&&$('pedidoTexto').value||'').trim();
+  const st=$('waAprendizajeStatus');
+  if(!msg)return alert('Primero pega el mensaje de la clienta.');
+  try{
+    const r=await apiFetch('/api/whatsapp-ia/pendiente-humano',{method:'POST',body:JSON.stringify({
+      mensaje_cliente:msg,
+      respuesta_ia:state.whatsappIARespuesta||'',
+      motivo:'La IA no resolvió bien o requiere respuesta humana',
+      contexto:{marca:$('marcaCtx')?.value||'',hilo:$('hiloCtx')?.value||'',conversacion_id:state.whatsappConversacionId||null}
+    })});
+    if(st)st.textContent='Pendiente humano guardado. ID '+(r.pendiente&&r.pendiente.id?r.pendiente.id:'');
+  }catch(e){if(st)st.textContent='Error: '+e.message;else alert(e.message)}
+}
+async function crearRecursoIA(){
+  const nombre=($('iaRecursoNombre')&&$('iaRecursoNombre').value||'').trim();
+  const categoria=($('iaRecursoCategoria')&&$('iaRecursoCategoria').value||'respuesta').trim();
+  const marca=($('iaRecursoMarca')&&$('iaRecursoMarca').value||'').trim();
+  const hilo=($('iaRecursoHilo')&&$('iaRecursoHilo').value||'').trim();
+  const triggers=($('iaRecursoTriggers')&&$('iaRecursoTriggers').value||'').trim();
+  const respuesta=($('iaRecursoRespuesta')&&$('iaRecursoRespuesta').value||'').trim();
+  const archivo_url=($('iaRecursoUrl')&&$('iaRecursoUrl').value||'').trim();
+  const grupo=($('iaRecursoGrupo')&&$('iaRecursoGrupo').value||'').trim();
+  const orden=Number(($('iaRecursoOrden')&&$('iaRecursoOrden').value)||0);
+  const enviar_junto=!!($('iaRecursoEnviarJunto')&&$('iaRecursoEnviarJunto').checked);
+  if(!respuesta&&!archivo_url)return alert('Agrega una respuesta o un link de recurso.');
+  try{
+    await apiFetch('/api/ia/recursos',{method:'POST',body:JSON.stringify({nombre,categoria,marca,hilo,triggers,respuesta,archivo_url,grupo,orden,enviar_junto,prioridad:80})});
+    ['iaRecursoNombre','iaRecursoMarca','iaRecursoHilo','iaRecursoGrupo','iaRecursoOrden','iaRecursoTriggers','iaRecursoRespuesta','iaRecursoUrl'].forEach(id=>{if($(id))$(id).value=''});
+    if($('iaRecursoEnviarJunto'))$('iaRecursoEnviarJunto').checked=false;
+    await cargarRecursosIA();
+    alert('Recurso guardado en Biblioteca IA.');
+  }catch(e){alert(e.message)}
+}
+async function importarRecursosStaticIA(){
+  const box=$('iaRecursosList');
+  try{
+    if(box)box.innerHTML='Importando recursos físicos...';
+    const r=await apiFetch('/api/ia/recursos/importar-static',{method:'POST',body:JSON.stringify({})});
+    alert(`Importación lista. Gama Velluto: ${r.gama_velluto||0} imágenes. Tonos Velluto: ${r.tonos_velluto||0}.`);
+    await cargarRecursosIA(false);
+  }catch(e){alert('No pude importar recursos físicos: '+e.message)}
+}
+async function cargarRecursosIA(showAlert=true){
+  const box=$('iaRecursosList'); if(!box)return;
+  try{
+    box.innerHTML='Cargando biblioteca...';
+    const r=await apiFetch('/api/ia/recursos?limit=80');
+    box.innerHTML=(r||[]).map(x=>`<div class="line"><b>${escapeHtml(x.nombre||'Recurso')}</b> <span class="badge gray">${escapeHtml(x.categoria||'')}</span> ${x.activo?'<span class="badge green">activo</span>':'<span class="badge orange">inactivo</span>'} ${x.enviar_junto?'<span class="badge teal">grupo</span>':''}<div>${escapeHtml((x.respuesta||'').slice(0,180))}${(x.respuesta||'').length>180?'...':''}</div>${x.archivo_url?`<div class="small">📎 ${escapeHtml(x.archivo_url)}</div>${renderSmallImagePreview(x.archivo_url)}`:''}<div class="small">Grupo: ${escapeHtml(x.grupo||'—')} · Orden: ${escapeHtml(String(x.orden??0))} · Enviar junto: ${x.enviar_junto?'sí':'no'}</div><div class="small">Tags: ${escapeHtml(x.triggers||'')}</div></div>`).join('')||'<div class="empty">No hay recursos todavía.</div>';
+  }catch(e){box.innerHTML='<span class="danger-text">'+escapeHtml(e.message)+'</span>'}
+}
+function addParsed(idx){addToCart(state.parserPedidos[idx],Number(state.parserPedidos[idx].cantidad||1),true)}function addAllParsed(silent=false){(state.parserPedidos||[]).forEach(p=>addToCart(p,Number(p.cantidad||1),false));renderCart();if(!silent)alert('Agregado al carrito. Revisa cantidades.')}
+async function buscarProductos(){const q=$('buscarProducto').value.trim();const params=new URLSearchParams({q,marca:$('marcaManual').value,hilo:$('hiloManual').value,limit:'80'});if(!q&&!$('marcaManual').value&&!$('hiloManual').value){$('productosList').innerHTML='';return}try{state.productos=await apiFetch('/api/productos?'+params);$('productosList').innerHTML=state.productos.map((p,idx)=>`<div class="product"><div><strong>${escapeHtml(p.codigo||'')} · ${escapeHtml(p.color||'')}</strong><div class="small">${escapeHtml(p.marca||'')} / ${escapeHtml(p.hilo||'')} · Stock: ${p.stock} · ${money(p.precio_venta)}</div><div class="qtybar" style="margin-top:8px"><button class="light" onclick="changeSearchQty(${idx},-1)">−</button><input id="qty_${idx}" type="number" value="1" min="1"><button class="light" onclick="changeSearchQty(${idx},1)">+</button></div></div><button class="light" onclick="agregarProductoIdx(${idx})">Agregar</button></div>`).join('')||'<div class="empty">No encontré productos.</div>'}catch(e){$('productosList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}}
+$('buscarProducto').oninput=debounce(buscarProductos,350);$('marcaManual').onchange=()=>loadHilos('marcaManual','hiloManual').then(buscarProductos);$('hiloManual').onchange=buscarProductos;
+function changeSearchQty(idx,delta){const el=$('qty_'+idx);el.value=Math.max(1,Number(el.value||1)+delta)}function agregarProductoIdx(idx){addToCart(state.productos[idx],Number($('qty_'+idx)?.value||1),true)}
+function itemKey(i){return [String(i.codigo||'').trim(),String(i.marca||'').trim().toUpperCase(),String(i.hilo||'').trim().toUpperCase(),String(i.color||'').trim().toUpperCase()].join('|')}
+function addToCart(p,qty=1,rerender=true){if(!p||qty<=0)return;const pid=p.producto_id||p.id||null;const item={producto_id:pid,id:pid,codigo:p.codigo,marca:p.marca,hilo:p.hilo,color:p.color,cantidad:Number(qty),precio:Number(p.precio_venta??p.precio??0),stock:Number(p.stock||0)};const key=itemKey(item);const ex=state.cart.find(i=>itemKey(i)===key);if(ex){ex.cantidad+=Number(qty);ex.precio=Number(p.precio_venta??p.precio??ex.precio??0);ex.stock=Number(p.stock??ex.stock??0);ex.producto_id=ex.producto_id||pid}else state.cart.push(item);state.cart=consolidarItems(state.cart);if(rerender)renderCart()}
+function consolidarItems(items){const m=new Map();for(const i of items||[]){const key=itemKey(i);if(!String(i.codigo||'').trim()&&!i.producto_id)continue;if(!m.has(key))m.set(key,{...i,producto_id:i.producto_id||i.id||null,cantidad:0,precio:Number(i.precio||0)});const obj=m.get(key);obj.cantidad+=Number(i.cantidad||0);if(i.precio!==undefined)obj.precio=Number(i.precio||0);obj.producto_id=obj.producto_id||i.producto_id||i.id||null}return Array.from(m.values()).filter(i=>i.cantidad>0)}
+function renderCart(){state.cart=consolidarItems(state.cart);if(!state.cart.length){$('cartList').innerHTML='<div class="empty">Carrito vacío.</div>';$('cartTotal').textContent=money(0);return}let total=Number($('envioPrecio').value||0);$('cartList').innerHTML=state.cart.map((i,idx)=>{const sub=i.cantidad*i.precio;total+=sub;return `<div class="cart-item"><div><strong>${escapeHtml(i.codigo)} · ${escapeHtml(i.color||'')}</strong><div class="small">${escapeHtml(i.marca||'')} / ${escapeHtml(i.hilo||'')} · Stock ${i.stock}</div><div class="qtybar" style="margin-top:8px"><button class="light" onclick="changeCartQty(${idx},-1)">−</button><input value="${i.cantidad}" type="number" min="1" onchange="setCartQty(${idx},this.value)"><button class="light" onclick="changeCartQty(${idx},1)">+</button></div><div class="small">Precio <input style="width:110px;padding:8px;margin-top:5px" type="number" step="0.01" value="${i.precio}" onchange="setCartPrice(${idx},this.value)"> · Subtotal ${money(sub)}</div></div><button class="red" onclick="removeCart(${idx})">Quitar</button></div>`}).join('');$('cartTotal').textContent=money(total)}
+function changeCartQty(idx,d){state.cart[idx].cantidad=Math.max(1,Number(state.cart[idx].cantidad||1)+d);renderCart()}function setCartQty(idx,v){state.cart[idx].cantidad=Math.max(1,Number(v||1));renderCart()}function setCartPrice(idx,v){state.cart[idx].precio=Math.max(0,Number(v||0));renderCart()}function removeCart(idx){state.cart.splice(idx,1);renderCart()}function limpiarCarrito(){if(confirm('Vaciar carrito?')){state.cart=[];renderCart()}}$('envioPrecio').oninput=renderCart;
+async function guardarCotizacion(){if(state.saving)return;if(!state.cliente)return alert('Selecciona o crea cliente.');state.cart=consolidarItems(state.cart);if(!state.cart.length)return alert('Agrega productos.');const paq=$('envioSelect').value;const precio=Number($('envioPrecio').value||0);const payload={cliente_id:state.cliente.id,pedido:$('pedidoSelect').value||null,envio:{paqueteria:paq,precio},items:state.cart.map(i=>({producto_id:i.producto_id||i.id||null,codigo:i.codigo,marca:i.marca,hilo:i.hilo,color:i.color,cantidad:Number(i.cantidad),precio:Number(i.precio)}))};const editando=state.editing;state.saving=true;$('guardarCotBtn').disabled=true;$('guardarCotBtn').textContent='Guardando...';try{let r;if(editando){r=await apiFetch('/api/notas/'+encodeURIComponent(editando),{method:'PUT',body:JSON.stringify(payload)});alert(`Cotización actualizada: ${editando}\nTotal: ${money(r.total)}`)}else{r=await apiFetch('/api/cotizaciones',{method:'POST',body:JSON.stringify(payload)});alert(`Cotización creada: ${r.nota_id}\nTotal: ${money(r.total)}`)}cancelarEdicion();showView('notas');await Promise.all([loadResumen(),loadNotas()])}catch(e){if(!navigator.onLine||String(e.message).includes('Failed to fetch')){state.pending.push({url:editando?'/api/notas/'+editando:'/api/cotizaciones',method:editando?'PUT':'POST',payload,created_at:new Date().toISOString()});updatePendingStatus();alert('Sin conexión. Quedó pendiente.')}else alert(e.message)}finally{state.saving=false;$('guardarCotBtn').disabled=false;$('guardarCotBtn').textContent='Guardar cotización'}}
+async function syncPending(){updatePendingStatus();if(!navigator.onLine||!state.pending.length)return;const left=[];for(const p of state.pending){try{await apiFetch(p.url,{method:p.method||'POST',body:JSON.stringify(p.payload)})}catch(e){left.push(p)}}state.pending=left;updatePendingStatus();if(!left.length)await loadNotas()}function updatePendingStatus(){localStorage.setItem('hilorama_pending',JSON.stringify(state.pending));$('mPend').textContent=state.pending.length}
+async function loadAlmacen(){const q=$('buscarAlmacen').value.trim();const params=new URLSearchParams({q,marca:$('marcaAlmacen').value,hilo:$('hiloAlmacen').value,limit:'160'});try{state.almacen=await apiFetch('/api/productos?'+params);renderAlmacen();loadMovimientosAlmacen()}catch(e){$('almacenList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}}
+$('buscarAlmacen').oninput=debounce(loadAlmacen,250);$('marcaAlmacen').onchange=()=>loadHilos('marcaAlmacen','hiloAlmacen').then(loadAlmacen);$('hiloAlmacen').onchange=loadAlmacen;
+function renderAlmacen(){if(!state.almacen.length){$('almacenList').innerHTML='<div class="empty">No hay productos. Busca por código/color o elige marca e hilo.</div>';return}let html='';let grupo='';state.almacen.forEach((p,idx)=>{const g=`${p.marca||'-'} / ${p.hilo||'-'}`;const stock=Number(p.stock||0);if(g!==grupo){grupo=g;html+=`<div class="group-head">${escapeHtml(g)}</div>`}html+=`<div class="line"><strong>${escapeHtml(p.codigo)} · ${escapeHtml(p.color||'')}</strong><div class="small">${escapeHtml(p.tipo_producto||'INVENTARIO')} · ${money(p.precio_venta)} · ${escapeHtml(p.estado||'')}</div><div style="margin-top:6px"><span class="stock-badge ${stock<50?'low':''}">Stock ${stock}</span></div><div class="stock-tools"><button class="light" onclick="ajustarStockRapido(${idx},-1)">−1</button><button class="light" onclick="ajustarStockRapido(${idx},1)">+1</button><button class="secondary" onclick="editarStock(${idx})">Stock</button><button class="light" onclick="editarColor(${idx})">Color</button></div></div>`});$('almacenList').innerHTML=html}
+async function editarColor(idx){const p=state.almacen[idx];const color=prompt('Nuevo nombre/color:',p.color||'');if(color===null)return;try{await apiFetch('/api/productos/id/'+p.id,{method:'PATCH',body:JSON.stringify({color})});await loadAlmacen()}catch(e){alert(e.message)}}
+async function editarStock(idx){const p=state.almacen[idx];const stock=prompt('Nuevo stock exacto:',p.stock||0);if(stock===null)return;try{await apiFetch('/api/productos/id/'+p.id,{method:'PATCH',body:JSON.stringify({stock:Number(stock)})});await loadAlmacen()}catch(e){alert(e.message)}}
+async function ajustarStockRapido(idx,delta){const p=state.almacen[idx];const nuevo=Math.max(0,Number(p.stock||0)+Number(delta||0));try{state.almacen[idx].stock=nuevo;renderAlmacen();await apiFetch('/api/productos/id/'+p.id,{method:'PATCH',body:JSON.stringify({stock:nuevo})});loadMovimientosAlmacen()}catch(e){alert(e.message);loadAlmacen()}}
+async function loadMovimientosAlmacen(){const box=$('movimientosAlmacen');if(!box)return;try{const q=$('buscarAlmacen').value.trim();state.movimientos=await apiFetch('/api/almacen/movimientos?'+new URLSearchParams({q,limit:'30'}));box.innerHTML=(state.movimientos||[]).map(m=>`<div class="line"><b>${escapeHtml(m.tipo||'')}</b> · ${escapeHtml(m.codigo||'')} ${escapeHtml(m.color||'')}<br>Stock ${escapeHtml(m.stock_anterior??'')} → ${escapeHtml(m.stock_nuevo??'')} · ${escapeHtml(m.fecha||'')}<br>${escapeHtml(m.nota_id||'')} ${escapeHtml(m.motivo||'')}</div>`).join('')||'<div class="empty">Sin movimientos recientes.</div>'}catch(e){box.innerHTML='<span class="danger-text">No pude cargar historial: '+escapeHtml(e.message)+'</span>'}}
+$('buscarEmpacador').oninput=debounce(loadEmpacador,500);async function loadEmpacador(){const q=$('buscarEmpacador').value.trim();try{state.empacador=await apiFetch('/api/empacador/notas?'+new URLSearchParams({q,pendientes:'0'}));$('empacadorList').innerHTML=state.empacador.map(n=>`<div class="note"><div class="note-title"><div><strong>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre||'')}</strong><p>Pedido ${escapeHtml(n.pedido||'-')} · ${escapeHtml(n.estado||'')}</p><p>Progreso ${n.piezas_empacadas||0}/${n.piezas_total||0}</p></div><button class="light" onclick="verEmpaque('${escapeAttr(n.id)}')">Abrir</button></div></div>`).join('')||'<div class="empty">No hay notas.</div>'}catch(e){$('empacadorList').innerHTML=`<p class="danger-text">${escapeHtml(e.message)}</p>`}}
+async function verEmpaque(id){try{const n=await apiFetch('/api/notas/'+encodeURIComponent(id));$('empacadorList').innerHTML=`<h2>${escapeHtml(n.id)} · ${escapeHtml(n.cliente_nombre||'')}</h2>${(n.items||[]).map(i=>`<div class="pack-item"><div><strong>${escapeHtml(i.codigo)} · ${escapeHtml(i.color||'')}</strong><div class="small">Necesita ${i.cantidad} · Empacado ${i.empacadas||0}</div></div><button class="green" onclick="setEmpacado('${escapeAttr(n.id)}',${i.id},${i.cantidad})">Completar</button></div>`).join('')}`;showView('empacador')}catch(e){alert(e.message)}}async function setEmpacado(nota,item,cantidad){const emp=Number(prompt('Cantidad empacada:',cantidad)||0);try{await apiFetch('/api/empacador/notas/'+encodeURIComponent(nota)+'/item',{method:'POST',body:JSON.stringify({item_id:item,empacadas:emp})});await verEmpaque(nota)}catch(e){alert(e.message)}}
+function debounce(fn,ms){let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms)}}function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}function escapeAttr(v){return String(v??'').replace(/[\\'"<>]/g,'')}
+window.addEventListener('online',()=>{setStatus('Conexión recuperada. Sincronizando...');syncPending();loadAll()});window.addEventListener('offline',()=>setStatus('Sin conexión. Lo que guardes quedará pendiente.'));
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=4').catch(console.log))}
+applyAdminDebugMode();renderCart();updatePendingStatus();if(state.pin){$('pinInput').value=state.pin;startApp()}else setStatus('Ingresa tu PIN para sincronizar.');
+</script>
+</body>
+</html>
