@@ -102,7 +102,13 @@ NORMALIZACIONES = [
     (r"\bcotisar\b|\bcotisarme\b|\bcotizame\b|\bcot[íi]zame\b", "cotiza"),
     (r"\bporfavro\b|\bporfa\b", "por favor"),
     (r"\bkonfy\b|\bkomfi\b|\bcomfy\b", "komfy mini"),
-    (r"\bbelluto\b|\bveluto\b|\bvellluto\b", "velluto"),
+    (r"\bbelluto\b|\bveluto\b|\bvellluto\b|\bvellutto\b|\bbeluto\b", "velluto"),
+    (r"\bsinco\b|\bcinko\b|\bcincoo\b", "cinco"),
+    (r"\btrez\b|\btresz\b", "tres"),
+    (r"\bcuantro\b", "cuatro"),
+    (r"\bocupo+\b", "ocupo"),
+    (r"\bkiero\b|\bkiiero\b", "quiero"),
+    (r"\bcotisas\b", "cotiza"),
     (r"\bazul\s+sielo\b", "azul cielo"),
     (r"\brojo\s+escolr\b", "rojo escolar"),
     (r"\bme\s+surte\b|\bsurteme\b|\bsurteme\b", "quiero pedir"),
@@ -114,7 +120,8 @@ QTY_WORDS = {
     "un": 1, "uno": 1, "una": 1,
     "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5,
     "seis": 6, "siete": 7, "ocho": 8, "nueve": 9,
-    "diez": 10, "once": 11, "doce": 12, "quince": 15,
+    "diez": 10, "once": 11, "doce": 12, "trece": 13,
+    "catorce": 14, "quince": 15,
     "veinte": 20, "treinta": 30,
 }
 
@@ -529,7 +536,7 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         principal = "pregunta_precio"
     elif re.search(r"\b(manejan|maneja|tienen|tiene)\b.*\b(abuelita|sinfonia)\b", texto):
         principal = "producto_no_manejado"
-    elif re.search(r"\b(?:perdon\s+)?(?:todo|todos|toda|todas)\s+(?:eso\s+)?(?:seria|serian|es|son)?\s*(?:de|en)?\s*(velluto|komfy|kurumi|kairo|trapillo|kotton milk|baby best)\b", texto):
+    elif re.search(r"\b(?:perdon\s+)?(?:todo|todos|toda|todas)\s+(?:eso\s+)?(?:seria|serian|es|son)?\s*(?:de|en)?\s*(velluto|komfy|kurumi|kairo|trapillo|kotton milk|baby best)\b", texto) and len(re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)) < 2:
         principal = "confirmacion_contexto"
         estado = "preparando_cotizacion"
     elif re.search(r"\b(quita|quite|quitar|quitame|quítame|corrige|corregir|me equivoque|cambia)\b", texto):
@@ -566,9 +573,12 @@ def _parece_lista_o_pedido(texto, memoria=None):
     # "ocupo del 4.5 y del 5" son medidas, no códigos de hilos.
     if _consulta_seguimiento_accesorio(t, memoria) and re.search(r"\b(?:del|de)\s*\d+(?:\.\d+)?\b|\b\d+(?:\.\d+)?\s*mm\b", t):
         return False
-    if re.search(r"\b\d{1,3}\s*(?:del|de|codigo|cod|tono)\s*\d{1,4}\b", t):
+    qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
+    if re.search(rf"\b(?:{qty_pat})\s*(?:del|de|d|codigo|cod|tono)\s*\d{{1,4}}\b", t):
         return True
-    if re.search(r"\b\d{1,4}\s*x\s*\d{1,3}\b", t):
+    if re.search(rf"\b\d{{1,4}}\s*x\s*(?:{qty_pat})\b", t):
+        return True
+    if re.search(rf"\b(?:blanco|negro|rojo|rosa|hueso|camel|beige|arena|cielo|turquesa|lila|amarillo|canario|cafe|gris)\s+(?:{qty_pat})\b", t):
         return True
     if len(re.findall(r"(?<!\d)\d{1,4}(?!\d)", t)) >= 3 and not _detectar_cp(t):
         return True
@@ -712,16 +722,62 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             "texto_sin_totales": texto_sin_totales,
         }
 
-    # 5 del 55, 10 de 60, dos del 55, cinco del 60
-    qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta"
-    for m in re.finditer(rf"(?<!\w)({qty_pat})\s*(?:piezas?\s*)?(?:del|de|codigo|cod|tono)\s*#?(\d{{1,4}})(?!\d)", texto_sin_totales):
+    # 5 del 55, 10 de 60, dos del 55, cinco del 60.
+    # V42: entiende abreviaturas y mala escritura ya normalizada:
+    # "4 d 60", "sinco del 60", "55 x dos", "429 x uno".
+    qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
+    for m in re.finditer(rf"(?<!\w)({qty_pat})\s*(?:piezas?\s*)?(?:del|de|d|codigo|cod|tono)\s*#?(\d{{1,4}})(?!\d)", texto_sin_totales):
         qty = _qty(m.group(1))
         if qty:
             items.append(_item(codigo=m.group(2), cantidad=qty, raw=m.group(0), fuente="cantidad_codigo"))
 
-    # 55 x2
-    for m in re.finditer(r"(?<!\d)(\d{1,4})\s*(?:x|\*)\s*(\d{1,3})(?!\d)", texto_sin_totales):
-        items.append(_item(codigo=m.group(1), cantidad=int(m.group(2)), raw=m.group(0), fuente="codigo_x_cantidad"))
+    # el 55 son dos / 60 es cinco
+    for m in re.finditer(rf"(?<!\d)(\d{{1,4}})\s*(?:son|es|serian|seria)\s*({qty_pat})(?!\w)", texto_sin_totales):
+        qty = _qty(m.group(2))
+        if qty:
+            items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_cantidad_texto"))
+
+    # 55 x2 / 55 x dos / 55 * 3
+    for m in re.finditer(rf"(?<!\d)(\d{{1,4}})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
+        qty = _qty(m.group(2))
+        if qty:
+            items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_x_cantidad"))
+
+    # blanco dos y negro cinco / blanco y negro 2 y 4
+    colores_simples = r"blanco|negro|rojo|rosa|hueso|camel|beige|arena|cielo|turquesa|lila|amarillo|canario|cafe|gris"
+    m_colores_doble = re.search(rf"\b({colores_simples})\s+y\s+({colores_simples})\s+({qty_pat})\s+y\s+({qty_pat})\b", texto_sin_totales)
+    if m_colores_doble:
+        q1 = _qty(m_colores_doble.group(3)); q2 = _qty(m_colores_doble.group(4))
+        if q1:
+            items.append(_item(cantidad=q1, desc=m_colores_doble.group(1), raw=m_colores_doble.group(0), fuente="color_color_cantidades"))
+        if q2:
+            items.append(_item(cantidad=q2, desc=m_colores_doble.group(2), raw=m_colores_doble.group(0), fuente="color_color_cantidades"))
+    else:
+        for m in re.finditer(rf"\b({colores_simples})\s+({qty_pat})(?=\s+y\s+|\s*,|\s+de\s+|$)", texto_sin_totales):
+            qty = _qty(m.group(2))
+            if qty:
+                items.append(_item(cantidad=qty, desc=m.group(1), raw=m.group(0), fuente="color_cantidad_texto"))
+
+    # Pares raros de WhatsApp:
+    # "55 2 60 5 429 1" = codigo/cantidad
+    # "2 55 3 60 1 429" = cantidad/codigo
+    if not re.search(r"\b(?:del|de|d|codigo|cod|tono)\b|(?:x|\*)", texto_sin_totales):
+        nums_pair = re.findall(r"(?<!\d)(\d{1,4})(?!\d)", texto_sin_totales)
+        if len(nums_pair) >= 4 and len(nums_pair) % 2 == 0:
+            pairs = list(zip(nums_pair[0::2], nums_pair[1::2]))
+            def _is_qty_num(x):
+                try:
+                    return 1 <= int(x) <= 30
+                except Exception:
+                    return False
+            score_code_qty = sum(1 for a,b in pairs if _codigo_probable(a) and _is_qty_num(b))
+            score_qty_code = sum(1 for a,b in pairs if _is_qty_num(a) and _codigo_probable(b))
+            if score_code_qty >= max(2, score_qty_code + 1):
+                for cod, qtys in pairs:
+                    items.append(_item(codigo=cod, cantidad=int(qtys), raw=f"{cod} {qtys}", fuente="codigo_cantidad_pares"))
+            elif score_qty_code >= max(2, score_code_qty + 1):
+                for qtys, cod in pairs:
+                    items.append(_item(codigo=cod, cantidad=int(qtys), raw=f"{qtys} {cod}", fuente="cantidad_codigo_pares"))
 
     # Blanco 01 - 2 / 216 canario - 4
     for linea in normalizado.get("lineas") or [texto_sin_totales]:
@@ -752,19 +808,31 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             continue
         qty = _qty(m.group(1))
         desc = _limpiar_desc_color(m.group(2))
-        if qty and desc and not re.search(r"\b(pedido|pedio|pregunta|lista|total|piezas)\b", desc):
+        if qty and desc and not desc.startswith(("x ", "y ", "son ", "es ", "todo", "todos", "toda", "todas")) and not re.search(r"\b(pedido|pedio|pregunta|lista|total|piezas)\b", desc):
             items.append(_item(cantidad=qty, desc=desc, raw=m.group(0), fuente="cantidad_color"))
 
-    # V39: lista de códigos con cantidad global: "55, 60, 429 todos x2".
+    # V39/V42: lista de códigos con cantidad global: "55, 60, 429 todos x2".
+    # También entiende "todos dos" y, si viene después de una lista, aplica a la cotización previa.
     texto_para_nums = texto_sin_totales
-    m_global = re.search(r"\b(?:todos|todas|todo|cada\s+uno|c/u|c\s+u)\s*(?:x|por|de)?\s*(\d{1,3})\b", texto_sin_totales)
+    m_global = re.search(rf"\b(?:todos|todas|todo|cada\s+uno|c/u|c\s+u)\s*(?:x|por|de)?\s*({qty_pat})\b", texto_sin_totales)
     if m_global:
-        qty_global = int(m_global.group(1))
+        qty_global = _qty(m_global.group(1))
         prefijo = texto_sin_totales[:m_global.start()]
         nums_global = re.findall(r"(?<!\d)\d{1,4}(?!\d)", prefijo)
-        for n in nums_global:
-            if n and not any((it.get("codigo_raw") or it.get("codigo")) == n for it in items):
-                items.append(_item(codigo=n, cantidad=qty_global, raw=f"{n} x{qty_global}", fuente="codigo_cantidad_global"))
+        if qty_global:
+            if nums_global:
+                for n in nums_global:
+                    if n and not any((it.get("codigo_raw") or it.get("codigo")) == n for it in items):
+                        items.append(_item(codigo=n, cantidad=qty_global, raw=f"{n} x{qty_global}", fuente="codigo_cantidad_global"))
+            else:
+                # Seguimiento típico:
+                # Cliente: 55 / 60 / 429
+                # Cliente: todos x2
+                pedidos_previos = _cargar_pedido_en_proceso((contexto or {}).get("memoria_previa") or {})
+                for pprev in pedidos_previos:
+                    cod_prev = str(pprev.get("codigo") or "").strip()
+                    if cod_prev and not any((it.get("codigo_raw") or it.get("codigo")) == cod_prev for it in items):
+                        items.append(_item(codigo=cod_prev, cantidad=qty_global, raw=f"{cod_prev} x{qty_global}", fuente="memoria_todos_cantidad"))
         texto_para_nums = texto_sin_totales[:m_global.start()] + " " + texto_sin_totales[m_global.end():]
 
     # Listas puras de codigos.
@@ -772,11 +840,18 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     if nums and _debe_tomar_codigos_sueltos(texto, intencion, contexto, len(items), len(nums)):
         explicit = {str(it.get("codigo_raw") or it.get("codigo") or "") for it in items}
         cantidad_lista = 1 if len(nums) > 1 else None
+        vistos_nums = set()
         for n in nums:
+            if n in vistos_nums:
+                continue
+            vistos_nums.add(n)
             if any(re.search(rf"(?<!\d){re.escape(n)}(?!\d)", str(it.get("raw") or "")) for it in items):
                 continue
             if n not in explicit:
-                items.append(_item(codigo=n, cantidad=cantidad_lista, raw=n, fuente="codigo_suelto"))
+                repeticiones = nums.count(n)
+                qty_n = repeticiones if repeticiones > 1 else cantidad_lista
+                raw_n = f"{n} x{qty_n}" if repeticiones > 1 else n
+                items.append(_item(codigo=n, cantidad=qty_n, raw=raw_n, fuente="codigo_suelto"))
 
     # Color suelto como "azul cielo" o "rojo".
     # V37: no convertir preguntas generales/recomendaciones en productos inventados
@@ -788,6 +863,8 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
         else:
             desc = _limpiar_desc_color(texto_sin_totales)
         if intencion["principal"] == "consulta_stock" and not _hay_color_en_texto(desc):
+            desc = ""
+        if desc and re.fullmatch(r"(?:todo|todos|toda|todas)\s*(?:x|por|de)?\s*(?:\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)", _norm(desc)):
             desc = ""
         if desc and intencion["principal"] == "pedido_lista" and not _hay_color_en_texto(desc) and not detectar_hilos(desc) and not re.search(r"\b(relleno|gancho|ojo|ojos|aguja|trapillo|kraft)\b", _norm(desc)):
             desc = ""
@@ -870,6 +947,18 @@ def _debe_tomar_codigos_sueltos(texto, intencion, contexto, items_count, nums_co
     if intencion["principal"] == "pedido_lista" and nums_count == 1 and items_count == 0:
         return True
     return False
+
+
+def _codigo_probable(codigo):
+    c = str(codigo or "").strip().lstrip("0") or str(codigo or "").strip()
+    if not c:
+        return False
+    if c in VELLUTO_CODE_COLORS:
+        return True
+    if c.zfill(2) in KOMFY_MINI_CODE_COLORS:
+        return True
+    # En Hilorama los códigos reales suelen ser de 2 a 4 dígitos.
+    return c.isdigit() and len(c) >= 2
 
 
 def _dedup_items(items):

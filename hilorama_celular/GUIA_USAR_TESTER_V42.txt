@@ -1,0 +1,24 @@
+Hilorama WhatsApp IA V42 - fix para tester dificil V41
+
+Esta version corrige los 14 fallos encontrados en los primeros 30 casos V41.
+
+Mejoras principales:
+- Entiende cantidades mal escritas: sinco -> cinco, trez -> tres, kiero -> quiero.
+- Entiende cantidades en palabra: dos del 55, cinco del 60, 55 x dos, 429 x uno.
+- Entiende abreviaturas: 4 d 60 y 2 d 55.
+- Entiende listas raras: 55 2 60 5 429 1 y 2 55 3 60 1 429.
+- Entiende seguimiento de lista previa: todos x2 / todos dos.
+- Entiende colores con cantidades: blanco dos y negro cinco, blanco y negro 2 y 4.
+- Evita convertir “todos x2” en producto inventado.
+
+Para probar en Render:
+python hilorama_celular/tools/whatsapp_ia_human_tester_v42.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 30 --sleep 0.3
+
+Si esos 30 pasan bien, prueba mas:
+python hilorama_celular/tools/whatsapp_ia_human_tester_v42.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 80 --sleep 0.3
+
+Y despues todo:
+python hilorama_celular/tools/whatsapp_ia_human_tester_v42.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 150 --sleep 0.3
+
+Los reportes quedan en:
+wa_tester_reports
