@@ -7104,7 +7104,7 @@ def _v6_respuesta_consulta(texto, productos, hilos=None, marcas=None):
                     elif opts:
                         partes.append(_v6_format_color_options(opts, 3))
                 if partes:
-                    bloques.append(f"Sí 😊 en {nombre} tengo opciones para esos tonos: " + '; '.join(partes) + ". ¿Cuántas piezas le aparto?")
+                    bloques.append(f"Sí 😊 en {nombre} tengo opciones para esos tonos: " + '; '.join(partes) + ". ¿Cuántas piezas le agrego a su cotización?")
                 else:
                     bloques.append(f"Sí manejamos {nombre} 😊 ¿Me indica qué tono o código busca?")
             elif any(x in t for x in ['color', 'colores', 'disponib', 'carta', 'catalogo', 'catálogo']):
@@ -8073,6 +8073,266 @@ def whatsapp_ia_guardar_aprendizaje():
 # recurso de Biblioteca IA para reutilizarla después.
 # Seguridad: NO usa internet para precios, stock, pagos, comprobantes, datos
 # personales ni envíos internos. Esas respuestas deben salir de almacén/reglas.
+
+IA_DECISION_RESPUESTA_PROVISIONAL = "Claro \U0001f60a déjeme revisarlo y le confirmo para darle la mejor opción."
+
+
+def _ia_decisiones_schema():
+    _wa_v7_schema()
+    try:
+        with DB() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS ia_decisiones_pendientes (
+                    id SERIAL PRIMARY KEY,
+                    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    telefono_cliente TEXT,
+                    nombre_cliente TEXT,
+                    mensaje_cliente TEXT,
+                    contexto_conversacion TEXT,
+                    tipo_decision TEXT,
+                    resumen_para_admin TEXT,
+                    opciones_sugeridas TEXT,
+                    estado TEXT DEFAULT 'pendiente',
+                    respuesta_admin TEXT,
+                    respuesta_final_cliente TEXT,
+                    fecha_respuesta TIMESTAMP,
+                    creado_por TEXT DEFAULT 'whatsapp_ia',
+                    prioridad TEXT DEFAULT 'media'
+                )
+            """)
+            for col in [
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS telefono_cliente TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS nombre_cliente TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS mensaje_cliente TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS contexto_conversacion TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS tipo_decision TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS resumen_para_admin TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS opciones_sugeridas TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'pendiente'",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS respuesta_admin TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS respuesta_final_cliente TEXT",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS fecha_respuesta TIMESTAMP",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS creado_por TEXT DEFAULT 'whatsapp_ia'",
+                "ALTER TABLE ia_decisiones_pendientes ADD COLUMN IF NOT EXISTS prioridad TEXT DEFAULT 'media'",
+            ]:
+                db.execute(col)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_ia_decisiones_estado_fecha ON ia_decisiones_pendientes(estado, fecha_creacion DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_ia_decisiones_tel_estado ON ia_decisiones_pendientes(telefono_cliente, estado)")
+    except Exception as exc:
+        print('WARN schema decisiones IA:', exc, flush=True)
+
+
+def _ia_decision_row_to_dict(row):
+    out = dict(row or {})
+    for key in ('opciones_sugeridas', 'contexto_conversacion'):
+        raw = out.get(key)
+        if isinstance(raw, str):
+            try:
+                out[key] = json.loads(raw) if raw else ([] if key == 'opciones_sugeridas' else {})
+            except Exception:
+                out[key] = raw
+    return out
+
+
+def _ia_decision_notificar_admin(row):
+    enabled = str(os.environ.get('IA_ADMIN_NOTIFY_ENABLED', '')).strip().lower() in ('1', 'true', 'yes', 'si', 'sí', 'on')
+    method = (os.environ.get('IA_ADMIN_NOTIFY_METHOD') or 'pwa').strip().lower()
+    phone = (os.environ.get('IA_ADMIN_PHONE') or '').strip()
+    return {
+        'enabled': enabled,
+        'method': method,
+        'admin_phone_configured': bool(phone),
+        'status': 'contador_pwa' if method == 'pwa' else 'pendiente_configuracion',
+        'decision_id': (row or {}).get('id'),
+    }
+
+
+def _ia_decision_crear(data):
+    _ia_decisiones_schema()
+    mensaje = (data.get('mensaje_cliente') or data.get('mensaje') or '').strip()
+    if not mensaje:
+        raise ValueError('Falta mensaje_cliente.')
+    telefono = re.sub(r'\D+', '', str(data.get('telefono_cliente') or data.get('telefono') or ''))
+    nombre = (data.get('nombre_cliente') or data.get('cliente_nombre') or '').strip()
+    tipo = (data.get('tipo_decision') or 'revision_humana').strip()
+    resumen = (data.get('resumen_para_admin') or 'La IA necesita revision humana antes de responder.').strip()
+    prioridad = (data.get('prioridad') or 'media').strip().lower()
+    if prioridad not in ('baja', 'media', 'alta'):
+        prioridad = 'media'
+    opciones = data.get('opciones_sugeridas') or []
+    if isinstance(opciones, str):
+        opciones = [x.strip() for x in opciones.splitlines() if x.strip()] or [opciones]
+    contexto = data.get('contexto_conversacion') or data.get('contexto') or {}
+    with DB() as db:
+        existente = None
+        if telefono:
+            existente = db.execute("""
+                SELECT * FROM ia_decisiones_pendientes
+                WHERE estado='pendiente' AND telefono_cliente=%s AND tipo_decision=%s AND mensaje_cliente=%s
+                ORDER BY fecha_creacion DESC
+                LIMIT 1
+            """, (telefono, tipo, mensaje)).fetchone()
+        if existente:
+            row = dict(existente)
+        else:
+            row = db.execute("""
+                INSERT INTO ia_decisiones_pendientes
+                    (fecha_creacion, telefono_cliente, nombre_cliente, mensaje_cliente, contexto_conversacion,
+                     tipo_decision, resumen_para_admin, opciones_sugeridas, estado, respuesta_final_cliente,
+                     creado_por, prioridad)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING *
+            """, (
+                now_mexico(),
+                telefono,
+                nombre,
+                mensaje,
+                json.dumps(json_safe(contexto), ensure_ascii=False),
+                tipo,
+                resumen,
+                json.dumps(opciones, ensure_ascii=False),
+                'pendiente',
+                data.get('respuesta_final_cliente') or IA_DECISION_RESPUESTA_PROVISIONAL,
+                data.get('creado_por') or 'whatsapp_ia',
+                prioridad,
+            )).fetchone()
+            row = dict(row)
+    return _ia_decision_row_to_dict(row), _ia_decision_notificar_admin(row)
+
+
+def _ia_decision_generar_respuesta(row, accion, data):
+    final = (data.get('respuesta_final_cliente') or data.get('respuesta_cliente') or '').strip()
+    admin = (data.get('respuesta_admin') or data.get('respuesta_manual') or '').strip()
+    if final:
+        return final
+    if accion in ('responder_manual', 'manual', 'respondida_manual') and admin:
+        return admin
+    if accion in ('rechazar', 'rechazada'):
+        return "Claro \U0001f60a ya lo revise y por ahora no podria manejar esa opcion. Si gusta, le preparo su cotizacion con las condiciones actuales."
+    if accion in ('aprobar', 'aprobada') and admin:
+        return admin
+    return IA_DECISION_RESPUESTA_PROVISIONAL
+
+
+def _ia_decision_guardar_aprendizaje(row, respuesta_final):
+    if not respuesta_final:
+        return None
+    try:
+        mensaje = (row or {}).get('mensaje_cliente') or ''
+        contexto = (row or {}).get('contexto_conversacion') or {}
+        if isinstance(contexto, str):
+            try:
+                contexto = json.loads(contexto)
+            except Exception:
+                contexto = {}
+        ctx = contexto.get('contexto') if isinstance(contexto, dict) else {}
+        toks = _wa_v7_tokens(mensaje)
+        triggers = ', '.join(list(dict.fromkeys(toks))[:12])
+        with DB() as db:
+            recurso = db.execute("""
+                INSERT INTO ia_recursos
+                    (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,TRUE,%s,%s)
+                RETURNING *
+            """, (
+                'Aprendizaje decision IA: ' + str((row or {}).get('tipo_decision') or '')[:40],
+                'aprendizaje_humano',
+                (ctx or {}).get('marca_actual') or '',
+                (ctx or {}).get('hilo_actual') or '',
+                triggers,
+                mensaje,
+                respuesta_final,
+                '',
+                'Guardado desde ia_decisiones_pendientes.',
+                96,
+                now_mexico(),
+                now_mexico(),
+            )).fetchone()
+        return dict(recurso) if recurso else None
+    except Exception as exc:
+        print('WARN aprendizaje decision IA:', exc, flush=True)
+        return None
+
+
+@app.route('/api/ia/decisiones-pendientes', methods=['POST'])
+def ia_decisiones_pendientes_crear():
+    data = request.get_json(force=True) or {}
+    try:
+        row, notificacion = _ia_decision_crear(data)
+        return jsonify(json_safe({'ok': True, 'decision': row, 'notificacion': notificacion}))
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+
+
+@app.route('/api/ia/decisiones-pendientes', methods=['GET'])
+def ia_decisiones_pendientes_listar():
+    _ia_decisiones_schema()
+    estado = (request.args.get('estado') or 'pendiente').strip().lower()
+    limit = min(int(request.args.get('limit') or 80), 300)
+    params = []
+    where = '1=1'
+    if estado and estado != 'todos':
+        where += ' AND estado=%s'
+        params.append(estado)
+    params.append(limit)
+    with DB() as db:
+        rows = db.execute(f"""
+            SELECT * FROM ia_decisiones_pendientes
+            WHERE {where}
+            ORDER BY
+                CASE prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
+                fecha_creacion DESC
+            LIMIT %s
+        """, tuple(params)).fetchall()
+    decisiones = [_ia_decision_row_to_dict(r) for r in rows]
+    return jsonify(json_safe({'ok': True, 'decisiones': decisiones, 'count': len(decisiones)}))
+
+
+@app.route('/api/ia/decisiones-pendientes/<int:decision_id>/resolver', methods=['POST'])
+def ia_decisiones_pendientes_resolver(decision_id):
+    _ia_decisiones_schema()
+    data = request.get_json(force=True) or {}
+    accion = (data.get('accion') or data.get('estado') or 'respondida_manual').strip().lower()
+    estados = {
+        'aprobar': 'aprobada',
+        'aprobada': 'aprobada',
+        'rechazar': 'rechazada',
+        'rechazada': 'rechazada',
+        'manual': 'respondida_manual',
+        'responder_manual': 'respondida_manual',
+        'respondida_manual': 'respondida_manual',
+        'cancelar': 'cancelada',
+        'cancelada': 'cancelada',
+    }
+    estado = estados.get(accion, 'respondida_manual')
+    with DB() as db:
+        row = db.execute("SELECT * FROM ia_decisiones_pendientes WHERE id=%s LIMIT 1", (decision_id,)).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'error': 'Decision no encontrada.'}), 404
+        row = dict(row)
+        respuesta_final = _ia_decision_generar_respuesta(row, accion, data)
+        respuesta_admin = (data.get('respuesta_admin') or data.get('respuesta_manual') or '').strip()
+        updated = db.execute("""
+            UPDATE ia_decisiones_pendientes
+            SET estado=%s,
+                respuesta_admin=%s,
+                respuesta_final_cliente=%s,
+                fecha_respuesta=%s
+            WHERE id=%s
+            RETURNING *
+        """, (estado, respuesta_admin, respuesta_final, now_mexico(), decision_id)).fetchone()
+    aprendizaje = None
+    if estado in ('aprobada', 'respondida_manual') and data.get('guardar_aprendizaje', True):
+        aprendizaje = _ia_decision_guardar_aprendizaje(_ia_decision_row_to_dict(updated), respuesta_final)
+    return jsonify(json_safe({
+        'ok': True,
+        'decision': _ia_decision_row_to_dict(updated),
+        'respuesta_final_cliente': respuesta_final,
+        'aprendizaje': aprendizaje,
+        'auto_enviado': False,
+    }))
+
 
 def _wa_v13_schema():
     _wa_v7_schema()
@@ -11008,7 +11268,7 @@ def _v6_respuesta_consulta(texto, productos, hilos=None, marcas=None):
                     if opts_disp:
                         partes.append(_v6_format_color_options(opts_disp, 4))
             if partes:
-                bloques.append(f"Si 😊 en {nombre} tengo disponible: " + "; ".join(partes) + ". ¿Cuantas piezas le aparto?")
+                bloques.append(f"Si 😊 en {nombre} tengo disponible: " + "; ".join(partes) + ". ¿Cuantas piezas le agrego a su cotización?")
             else:
                 bloques.append(f"En {nombre} no me aparece disponible ese tono exacto 😊 ¿quiere que le muestre opciones parecidas?")
             continue
@@ -11180,7 +11440,7 @@ def _fallback_respuesta_wa(texto, parsed, meta):
         for p in parciales:
             partes.append(
                 f"De {_wa_v22_linea_producto(p)} me aparecen {int(p.get('stock') or 0)} disponibles "
-                f"y pidio {int(p.get('cantidad') or 1)}. ¿Le aparto las disponibles o le muestro otra opcion?"
+                f"y pidio {int(p.get('cantidad') or 1)}. ¿Le agrego a la lista las disponibles o le muestro otra opcion?"
             )
         for p in agotados:
             partes.append(f"{_wa_v22_linea_producto(p)} me aparece agotado por el momento. ¿Quiere que le busque un tono parecido?")
@@ -12506,6 +12766,10 @@ def _wa_v27_cotizar_envio(cp, contexto):
                     "No me aparece una tarifa automatica segura en este momento."
                 ),
                 'cotizacion': cot,
+                'requiere_humano': True,
+                'tipo_decision': 'envio_sin_tarifa_segura',
+                'resumen_para_admin': f'Envia.com no regreso una tarifa segura para el CP {cp}. Revisar envio manualmente.',
+                'opciones_sugeridas': ['Revisar tarifa manual', 'Pedir datos de envio', 'Responder manualmente'],
             }
     except Exception as exc:
         print('WARN cotizar envio WA v27:', exc, flush=True)
@@ -12516,7 +12780,11 @@ def _wa_v27_cotizar_envio(cp, contexto):
             'respuesta': (
                 f"Con el CP {cp} necesito revisar el envio manualmente \U0001f60a "
                 "No me aparece una tarifa automatica segura en este momento."
-            )
+            ),
+            'requiere_humano': True,
+            'tipo_decision': 'envio_sin_tarifa_segura',
+            'resumen_para_admin': f'No fue posible cotizar envio de forma segura para el CP {cp}.',
+            'opciones_sugeridas': ['Revisar tarifa manual', 'Pedir otro CP', 'Responder manualmente'],
         }
 
 
@@ -12532,7 +12800,7 @@ def _wa_v27_parser_obj(resultado):
         'errores': resolucion.get('errores') or [],
         'advertencias': (resolucion.get('internos') or []) + [
             str(s.get('tipo') or s) for s in (resolucion.get('sugerencias') or [])
-        ],
+        ] + (['requiere_humano'] if resultado.get('requiere_humano') else []),
         'items_lista_v17': extraccion.get('items') or [],
         'items_lista_v27': extraccion.get('items') or [],
         'contexto': {
@@ -12555,6 +12823,7 @@ def _wa_v27_meta_obj(resultado):
         'confianza': confianza.get('confianza') or 'media',
         'accion_recomendada': confianza.get('accion_recomendada') or 'responder_revision',
         'puede_auto_enviar': False,
+        'requiere_humano': bool(resultado.get('requiere_humano')),
     }
 
 
@@ -12625,6 +12894,39 @@ def _wa_v27_actualizar_memoria_db(conversacion_id, telefono, cliente_nombre, tex
         return row or memoria_v27
 
 
+def _wa_v27_registrar_decision_pendiente(resultado, telefono, cliente_nombre, texto_cliente, conversacion_id, memoria_previa):
+    decision = resultado.get('decision_pendiente') or {}
+    if not decision.get('requiere_humano'):
+        return None
+    contexto = {
+        'conversacion_id': conversacion_id,
+        'contexto': resultado.get('contexto') or {},
+        'intencion': resultado.get('intencion') or {},
+        'extraccion': resultado.get('extraccion') or {},
+        'resolucion': resultado.get('resolucion') or {},
+        'confianza': resultado.get('confianza') or {},
+        'memoria_previa': memoria_previa or {},
+    }
+    try:
+        row, notificacion = _ia_decision_crear({
+            'telefono_cliente': telefono,
+            'nombre_cliente': cliente_nombre,
+            'mensaje_cliente': texto_cliente,
+            'contexto_conversacion': contexto,
+            'tipo_decision': decision.get('tipo_decision') or 'revision_humana',
+            'resumen_para_admin': decision.get('resumen_para_admin') or 'La IA requiere revision humana.',
+            'opciones_sugeridas': decision.get('opciones_sugeridas') or [],
+            'respuesta_final_cliente': decision.get('respuesta_provisional') or IA_DECISION_RESPUESTA_PROVISIONAL,
+            'prioridad': decision.get('prioridad') or 'media',
+            'creado_por': 'whatsapp_ia',
+        })
+        row['notificacion'] = notificacion
+        return row
+    except Exception as exc:
+        print('WARN crear decision pendiente v27:', exc, flush=True)
+        return None
+
+
 _wa_v27_view_anterior = app.view_functions.get('whatsapp_ia_simular')
 
 
@@ -12643,12 +12945,19 @@ def whatsapp_ia_simular_v27():
         cliente_nombre = (data.get('cliente_nombre') or '').strip()
         conversacion_id = data.get('conversacion_id')
         nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
+        # V30: modo tester masivo / dry-run adaptado a la versión de Codex.
+        # No guarda mensajes falsos, no altera memoria real, no programa cierres reales
+        # y permite pasar memoria en el JSON para simular conversaciones con varios turnos.
+        tester_mode = bool(data.get('tester_mode') or data.get('dry_run') or data.get('modo_tester'))
 
         export_info = _wa_v16_extraer_bloque_cliente(texto_original, telefono)
         texto_cliente = (export_info.get('texto_cliente') or texto_original).strip()
 
-        _wa_v27_memoria_schema()
-        memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+        if tester_mode:
+            memoria_previa = {} if nueva_conversacion else (data.get('memoria') or {})
+        else:
+            _wa_v27_memoria_schema()
+            memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
         productos_mem = _wa_memoria_productos_min()
 
         payload = dict(data)
@@ -12671,6 +12980,33 @@ def whatsapp_ia_simular_v27():
         resultado['respuesta'] = respuesta
 
         cierre = resultado.get('cierre_diferido') or {}
+        if cierre.get('programar') and tester_mode:
+            memoria_actual = resultado.get('memoria') or memoria_previa or {}
+            return jsonify(json_safe({
+                'ok': True,
+                'tester_mode': True,
+                'dry_run': True,
+                'conversacion_id': conversacion_id or 'TEST-DRY-RUN',
+                'motor': 'v30_tester_dry_run_cierre',
+                'mensaje_cliente': texto_cliente,
+                'mensaje_parser': texto_cliente,
+                'respuesta_sugerida': '',
+                'respuesta_diferida': cierre.get('mensaje') or '',
+                'intencion': 'agradecimiento',
+                'confianza': 'alta',
+                'accion_recomendada': 'cierre_diferido',
+                'puede_auto_enviar': False,
+                'requiere_humano': False,
+                'pedidos': [],
+                'preguntas': [],
+                'errores': [],
+                'advertencias': [],
+                'parser': _wa_v27_parser_obj(resultado),
+                'memoria_usada': memoria_previa,
+                'memoria_actual': memoria_actual,
+                'whatsapp_export': export_info,
+                'v30': resultado,
+            }))
         if cierre.get('programar'):
             conversacion_id = _wa_v15_ensure_conversacion(conversacion_id if not nueva_conversacion else None, telefono, cliente_nombre)
             cierre_db = _wa_v15_programar_cierre(
@@ -12726,14 +13062,49 @@ def whatsapp_ia_simular_v27():
                 'v28': resultado,
             }))
 
+        parsed = _wa_v27_parser_obj(resultado)
+        meta = _wa_v27_meta_obj(resultado)
+        if tester_mode:
+            memoria_actual = resultado.get('memoria') or memoria_previa or {}
+            return jsonify(json_safe({
+                'ok': True,
+                'tester_mode': True,
+                'dry_run': True,
+                'conversacion_id': conversacion_id or 'TEST-DRY-RUN',
+                'motor': 'v30_tester_dry_run',
+                'mensaje_cliente': texto_cliente,
+                'mensaje_parser': texto_cliente,
+                'respuesta_sugerida': respuesta,
+                'intencion': meta.get('intencion'),
+                'confianza': meta.get('confianza'),
+                'accion_recomendada': meta.get('accion_recomendada'),
+                'puede_auto_enviar': False,
+                'requiere_humano': bool(resultado.get('requiere_humano')),
+                'decision_pendiente': resultado.get('decision_pendiente') or {},
+                'decision_pendiente_id': None,
+                'pedidos': parsed.get('pedidos') or [],
+                'preguntas': parsed.get('preguntas') or [],
+                'errores': parsed.get('errores') or [],
+                'advertencias': parsed.get('advertencias') or [],
+                'parser': parsed,
+                'memoria_usada': memoria_previa,
+                'memoria_actual': memoria_actual,
+                'whatsapp_export': export_info,
+                'v30': resultado,
+            }))
+
         try:
             _wa_v15_cancelar_cierres(conversacion_id, telefono, motivo='cliente_continuo_v27')
         except Exception:
             pass
 
         conversacion_id = _wa_v15_ensure_conversacion(conversacion_id if not nueva_conversacion else None, telefono, cliente_nombre)
-        parsed = _wa_v27_parser_obj(resultado)
-        meta = _wa_v27_meta_obj(resultado)
+        decision_db = _wa_v27_registrar_decision_pendiente(
+            resultado, telefono, cliente_nombre, texto_cliente, conversacion_id, memoria_previa
+        )
+        if decision_db:
+            resultado['decision_pendiente_db'] = decision_db
+            resultado['decision_pendiente_id'] = decision_db.get('id')
         try:
             with DB() as db:
                 db.execute("""
@@ -12772,6 +13143,9 @@ def whatsapp_ia_simular_v27():
             'confianza': meta.get('confianza'),
             'accion_recomendada': meta.get('accion_recomendada'),
             'puede_auto_enviar': False,
+            'requiere_humano': bool(resultado.get('requiere_humano')),
+            'decision_pendiente': resultado.get('decision_pendiente') or {},
+            'decision_pendiente_id': resultado.get('decision_pendiente_id'),
             'pedidos': parsed.get('pedidos') or [],
             'preguntas': parsed.get('preguntas') or [],
             'errores': parsed.get('errores') or [],

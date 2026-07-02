@@ -151,7 +151,7 @@ Hueso 26- 1"""
         resultado = run("cuanto sale el envio?")
 
         self.assertEqual(resultado["intencion"]["principal"], "envio")
-        self.assertIn("codigo postal", resultado["respuesta"].lower())
+        self.assertIn("código postal", resultado["respuesta"].lower())
 
     def test_cp_usa_callback_de_cotizacion(self):
         resultado = run(
@@ -167,7 +167,9 @@ Hueso 26- 1"""
         resultado = run("ya quedo el pago")
 
         self.assertEqual(resultado["intencion"]["principal"], "comprobante")
-        self.assertIn("comprobante", resultado["respuesta"].lower())
+        self.assertTrue(resultado["requiere_humano"])
+        self.assertEqual(resultado["decision_pendiente"]["tipo_decision"], "pago_sin_comprobante")
+        self.assertIn("revisarlo", resultado["respuesta"].lower())
         self.assertFalse(resultado["confianza"]["puede_auto_enviar"])
 
     def test_producto_no_manejado_sugiere_alternativas_reales(self):
@@ -189,6 +191,34 @@ Hueso 26- 1"""
         self.assertEqual(pedidos["87"]["color"], "Azul")
         self.assertIn("Cuantas piezas", resultado["respuesta"])
         self.assertNotIn("azul cielo x", resultado["respuesta"].lower())
+
+    def test_descuento_crea_decision_pendiente(self):
+        resultado = run(
+            "si compro 5 madejas de Velluto me mejora el precio?",
+            memoria={"hilo_actual": "VELLUTO", "marca_actual": "ALIZE"},
+        )
+
+        self.assertTrue(resultado["requiere_humano"])
+        self.assertEqual(resultado["decision_pendiente"]["tipo_decision"], "descuento")
+        self.assertEqual(resultado["confianza"]["accion_recomendada"], "requiere_humano")
+        self.assertIn("revisarlo", resultado["respuesta"].lower())
+        self.assertNotIn("descuento", resultado["respuesta"].lower())
+
+    def test_stock_insuficiente_crea_decision_pendiente(self):
+        resultado = run("10 del 56", memoria={"hilo_actual": "VELLUTO", "marca_actual": "ALIZE"})
+
+        self.assertTrue(resultado["requiere_humano"])
+        self.assertEqual(resultado["decision_pendiente"]["tipo_decision"], "stock_insuficiente")
+        self.assertIn("stock insuficiente", resultado["decision_pendiente"]["resumen_para_admin"].lower())
+        self.assertIn("revisarlo", resultado["respuesta"].lower())
+
+    def test_respuesta_de_disponibilidad_no_usa_apartar(self):
+        resultado = run("tienen Velluto blanco?")
+
+        self.assertFalse(resultado["requiere_humano"])
+        self.assertNotIn("aparto", resultado["respuesta"].lower())
+        self.assertNotIn("apartar", resultado["respuesta"].lower())
+        self.assertIn("agrego a su cotización", resultado["respuesta"].lower())
 
 
 if __name__ == "__main__":

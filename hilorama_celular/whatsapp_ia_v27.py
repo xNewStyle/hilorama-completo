@@ -30,6 +30,7 @@ INTENCIONES = {
     "producto_no_manejado",
     "pregunta_horario",
     "pregunta_promocion",
+    "decision_comercial",
 }
 
 ESTADOS_PEDIDO = {
@@ -97,6 +98,8 @@ QTY_WORDS = {
     "diez": 10, "once": 11, "doce": 12, "quince": 15,
     "veinte": 20, "treinta": 30,
 }
+
+RESPUESTA_REVISION_HUMANA = "Claro \U0001f60a déjeme revisarlo y le confirmo para darle la mejor opción."
 
 
 def _sin_acentos(texto):
@@ -464,6 +467,8 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # Color suelto como "azul cielo" o "rojo".
     if not items and intencion["principal"] in ("pedido_lista", "consulta_stock", "duda_general"):
         desc = _limpiar_desc_color(texto_sin_totales)
+        if intencion["principal"] == "consulta_stock" and not _hay_color_en_texto(desc):
+            desc = ""
         if desc and re.search(r"[a-z]", desc) and not detectar_hilos(desc):
             items.append(_item(desc=desc, cantidad=None, raw=desc, fuente="color_suelto"))
 
@@ -853,6 +858,179 @@ def calcular_confianza(intencion, contexto, extraccion, resolucion):
     return {"confianza": nivel, "accion_recomendada": accion, "puede_auto_enviar": False}
 
 
+def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, resolucion, confianza, productos=None, envio=None):
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    principal = intencion.get("principal") or ""
+    pedidos = resolucion.get("pedidos") or []
+    preguntas = resolucion.get("preguntas") or []
+    errores = resolucion.get("errores") or []
+    sugerencias = resolucion.get("sugerencias") or []
+    envio = envio or {}
+
+    def decision(tipo, resumen, opciones=None, prioridad="media"):
+        return {
+            "requiere_humano": True,
+            "tipo_decision": tipo,
+            "prioridad": prioridad,
+            "resumen_para_admin": resumen,
+            "opciones_sugeridas": opciones or [
+                "Responder manualmente",
+                "Mantener condiciones actuales",
+                "Pedir mas informacion a la clienta",
+            ],
+            "respuesta_provisional": RESPUESTA_REVISION_HUMANA,
+        }
+
+    if re.search(r"\b(descuento|rebaja|mejor precio|mejora(?:r|me)? el precio|precio especial|precio final|menos precio|bajar(?:le)?|ajustar precio)\b", texto):
+        return decision(
+            "descuento",
+            _resumen_descuento(texto, contexto, productos),
+            [
+                "Mantener precio actual",
+                "Ofrecer descuento solo desde una cantidad autorizada",
+                "Responder manualmente",
+            ],
+            "alta",
+        )
+
+    if re.search(r"\b(mayoreo|mayorista|precio por volumen|precio de volumen)\b", texto):
+        return decision(
+            "mayoreo_no_configurado",
+            _resumen_descuento(texto, contexto, productos, etiqueta="La clienta pregunta por precio de mayoreo no configurado"),
+            [
+                "Mantener precio actual",
+                "Definir regla de mayoreo",
+                "Responder manualmente",
+            ],
+            "alta",
+        )
+
+    if re.search(r"\b(envio gratis|gratis el envio|cambiar envio|otra paqueteria|mas barato el envio|envio por cobrar|entrega especial|mandamelo por|mandemelo por)\b", texto):
+        return decision(
+            "condicion_envio",
+            "La clienta quiere cambiar condiciones de envio o negociar el costo/paqueteria. Requiere autorizacion antes de prometerlo.",
+            ["Mantener condiciones actuales", "Autorizar cambio de paqueteria", "Responder manualmente"],
+            "media",
+        )
+
+    if re.search(r"\b(promo|promocion|promociones|oferta|ofertas|liquidacion|liquidaci[oó]n|2x1|gratis)\b", texto):
+        return decision(
+            "promocion_no_registrada",
+            "La clienta pregunta por promociones u ofertas. No hay una promocion registrada para responder sin autorizacion.",
+            ["Confirmar que no hay promocion activa", "Autorizar una promocion especifica", "Responder manualmente"],
+            "media",
+        )
+
+    if envio.get("requiere_humano"):
+        return decision(
+            envio.get("tipo_decision") or "envio_sin_tarifa_segura",
+            envio.get("resumen_para_admin") or "Envia.com fallo o no regreso una tarifa segura. Se requiere revisar envio manualmente.",
+            envio.get("opciones_sugeridas") or ["Revisar tarifa manual", "Pedir otro CP/datos de envio", "Responder manualmente"],
+            "alta",
+        )
+
+    if re.search(r"\b(reembolso|devolucion|devoluci[oó]n|cambio|cambiarlo|garantia|garant[ií]a|cancelar compra|cancelacion|cancelaci[oó]n)\b", texto):
+        return decision(
+            "reembolso_cambio_devolucion",
+            "La clienta pide reembolso, cambio, devolucion o cancelacion. No se debe prometer nada sin aprobacion.",
+            ["Revisar caso y evidencia", "Rechazar con politica vigente", "Responder manualmente"],
+            "alta",
+        )
+
+    if re.search(r"\b(queja|molesta|molesto|enojada|enojado|mal servicio|profeco|denuncia|demandar|fraude|estafa|robo|me voy a quejar|amenaza)\b", texto):
+        return decision(
+            "queja_amenaza",
+            "La clienta expresa queja, molestia fuerte o amenaza. Conviene responder con cuidado y revision humana.",
+            ["Responder con disculpa y revision", "Pedir datos del caso", "Responder manualmente"],
+            "alta",
+        )
+
+    if re.search(r"\b(ya pague|ya pagado|ya quedo el pago|ya transferi|ya deposite)\b", texto):
+        if re.search(r"\b(no aparece|no han|no me han|por que|porque|reclamo|me cobraron|si ya pague|no reflejado|no se refleja)\b", texto):
+            return decision(
+                "reclamo_pago",
+                "La clienta reclama un pago o dice que no se le ha reconocido. Se requiere revision humana antes de responder.",
+                ["Revisar pagos y comprobante", "Pedir comprobante y datos", "Responder manualmente"],
+                "alta",
+            )
+        if not re.search(r"\b(comprobante|foto|ticket|recibo|captura|adjunto|mando|mande|envio|envi[oó])\b", texto):
+            return decision(
+                "pago_sin_comprobante",
+                "La clienta dice que ya pago pero no envio comprobante en el mensaje. Se requiere revision antes de avanzar.",
+                ["Pedir comprobante", "Revisar movimientos bancarios", "Responder manualmente"],
+                "alta",
+            )
+
+    insuficientes = [
+        p for p in pedidos
+        if p.get("es_inventariable", True) and int(p.get("stock") or 0) < int(p.get("cantidad") or 1)
+    ]
+    if insuficientes:
+        detalle = "; ".join(
+            f"{_linea_producto(p)} stock {int(p.get('stock') or 0)} / pidio {int(p.get('cantidad') or 1)}"
+            for p in insuficientes[:5]
+        )
+        return decision(
+            "stock_insuficiente",
+            "Hay stock insuficiente para el pedido: " + detalle + ". No prometer disponibilidad sin autorizacion.",
+            ["Ofrecer solo piezas disponibles", "Sugerir sustituto", "Responder manualmente"],
+            "alta",
+        )
+
+    if _requiere_humano_por_ambiguedad(preguntas, errores, sugerencias):
+        detalle = "; ".join((preguntas or [])[:3] + [f"codigo {e}" for e in (errores or [])[:3]])
+        return decision(
+            "codigo_color_ambiguo",
+            "La IA no esta segura del codigo/color/hilo solicitado. Detalle: " + (detalle or "ambiguedad de producto"),
+            ["Pedir confirmacion a la clienta", "Elegir manualmente el producto correcto", "Responder manualmente"],
+            "media",
+        )
+
+    if principal == "producto_no_manejado" and not _hay_alternativas_claras(productos):
+        return decision(
+            "producto_no_manejado_sin_sustituto",
+            "La clienta pide un producto que no esta en almacen y no hay sustituto claro con stock.",
+            ["Responder que no se maneja", "Buscar sustituto manual", "Responder manualmente"],
+            "media",
+        )
+
+    return None
+
+
+def _resumen_descuento(texto, contexto, productos, etiqueta="La clienta pide mejor precio o descuento"):
+    hilo = contexto.get("hilo_actual") or ""
+    ctx = _filtrar_contexto(productos, contexto) if hilo else list(productos or [])
+    precios = [_precio(p) for p in ctx if _precio(p) > 0 and _no_combo(p)]
+    precio_txt = ""
+    if precios:
+        mn, mx = min(precios), max(precios)
+        precio_txt = f" Precio actual detectado: ${mn:,.2f}" if abs(mn - mx) < 0.01 else f" Precio detectado desde ${mn:,.2f}."
+    hilo_txt = f" Hilo/contexto: {_hilo_display(hilo)}." if hilo else ""
+    return f"{etiqueta}.{hilo_txt}{precio_txt} Mensaje: {texto[:240]}"
+
+
+def _requiere_humano_por_ambiguedad(preguntas, errores, sugerencias):
+    if errores:
+        return True
+    if any((s or {}).get("tipo") in ("color_parecido", "agotado") for s in sugerencias or []):
+        return True
+    for q in preguntas or []:
+        qn = _norm(q)
+        if "cuantas piezas" in qn:
+            continue
+        if any(x in qn for x in ("varios hilos", "no ubique", "confirma codigo", "confirmo el color", "opciones parecidas")):
+            return True
+    return False
+
+
+def _hay_alternativas_claras(productos):
+    familias = set()
+    for p in productos or []:
+        if _stock(p) > 0 and _no_combo(p):
+            familias.add(_hilo_family(p.get("hilo")))
+    return bool(familias)
+
+
 def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, resolucion, confianza, productos=None, recursos=None, envio=None):
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     principal = intencion["principal"]
@@ -947,7 +1125,7 @@ def _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, 
         linea = _linea_producto(p)
         stock = int(p.get("stock") or 0)
         if stock > 0:
-            return f"Sí {EMOJI_OK} tengo disponible {linea}. ¿Cuántas piezas le aparto?"
+            return f"Sí {EMOJI_OK} tengo disponible {linea}. ¿Cuántas piezas le agrego a su cotización?"
         return f"Por el momento no me aparece disponible {linea} {EMOJI_SAD} Si gusta le muestro tonos parecidos."
 
     if preguntas and _hay_color_en_texto(texto):
@@ -1196,10 +1374,18 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if callbacks.get("cotizar_envio") and intencion["principal"] == "cp_envio":
         envio = callbacks["cotizar_envio"](extraccion.get("cp") or contexto.get("cp_actual") or "", contexto) or {}
 
-    respuesta = generar_respuesta_vendedora(
+    decision = detectar_decision_pendiente(
         normalizado, intencion, contexto, extraccion, resolucion, confianza,
-        productos=productos, recursos=recursos, envio=envio,
+        productos=productos, envio=envio,
     )
+    if decision:
+        confianza = {"confianza": "baja", "accion_recomendada": "requiere_humano", "puede_auto_enviar": False}
+        respuesta = decision.get("respuesta_provisional") or RESPUESTA_REVISION_HUMANA
+    else:
+        respuesta = generar_respuesta_vendedora(
+            normalizado, intencion, contexto, extraccion, resolucion, confianza,
+            productos=productos, recursos=recursos, envio=envio,
+        )
     memoria_nueva = guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extraccion, resolucion, respuesta)
 
     return {
@@ -1212,6 +1398,8 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
         "resolucion": resolucion,
         "confianza": confianza,
         "respuesta": respuesta,
+        "requiere_humano": bool(decision),
+        "decision_pendiente": decision or {},
         "cierre_diferido": {"programar": False},
         "buffer": buffer_info,
         "memoria": memoria_nueva,
