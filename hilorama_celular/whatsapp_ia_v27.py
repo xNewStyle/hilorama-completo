@@ -225,6 +225,47 @@ def _hilo_display(hilo):
     return str(hilo or "").strip().title()
 
 
+
+
+def _producto_preferible_para_familia(productos, familia):
+    """Elige el hilo real de almacén para una familia.
+
+    En el almacén hay productos auxiliares como paquetes o surtidos que pueden
+    tener nombres parecidos (por ejemplo "KOMFY" / "20 SURTIDOS"). Para el
+    agente de WhatsApp debemos preferir el hilo vendible real, no paquetes.
+    """
+    fam_objetivo = _hilo_family(familia)
+    candidatos = [p for p in (productos or []) if _hilo_family(p.get("hilo")) == fam_objetivo and _no_combo(p)]
+    if not candidatos:
+        candidatos = [p for p in (productos or []) if _hilo_family(p.get("hilo")) == fam_objetivo]
+    if not candidatos:
+        return None
+
+    def score(p):
+        h = _norm(p.get("hilo") or "")
+        m = _norm(p.get("marca") or "")
+        c = _norm(p.get("color") or "")
+        s = 0
+        if _stock(p) > 0:
+            s += 20
+        if _no_combo(p):
+            s += 30
+        if fam_objetivo == "KOMFY MINI":
+            if "komfy mini" in h:
+                s += 80
+            if m == "karina":
+                s += 60
+            if "surtido" in c or "paquete" in c or "combo" in c:
+                s -= 100
+        elif fam_objetivo == "VELLUTO":
+            if "velluto" in h:
+                s += 80
+            if m == "alize":
+                s += 60
+        return s
+
+    return sorted(candidatos, key=lambda p: (-score(p), str(p.get("hilo") or ""), str(p.get("marca") or "")))[0]
+
 def detectar_hilos(texto, productos=None):
     t = _norm(texto)
     encontrados = []
@@ -421,9 +462,9 @@ def _inferir_hilo_por_codigos_y_texto(texto, productos=None):
 
 
 def _hilo_real_para_familia(productos, familia):
-    for p in productos or []:
-        if _hilo_family(p.get("hilo")) == familia:
-            return str(p.get("hilo") or "").strip()
+    elegido = _producto_preferible_para_familia(productos, familia)
+    if elegido:
+        return str(elegido.get("hilo") or "").strip()
     return ""
 
 
@@ -489,6 +530,9 @@ def extraer_contexto_conversacion(normalizado, intencion, memoria=None, producto
 
 def _marca_para_hilo(productos, hilo):
     fam = _hilo_family(hilo)
+    elegido = _producto_preferible_para_familia(productos, fam)
+    if elegido:
+        return str(elegido.get("marca") or "").strip()
     for p in productos or []:
         if _hilo_family(p.get("hilo")) == fam:
             return str(p.get("marca") or "").strip()
@@ -662,15 +706,23 @@ def resolver_productos_con_almacen(extraccion, productos, contexto):
 
 
 def _filtrar_contexto(productos, contexto):
-    out = list(productos or [])
+    base = list(productos or [])
+    out = list(base)
     marca = _norm(contexto.get("marca_actual") or "")
     hilo = contexto.get("hilo_actual") or ""
+    fam = _hilo_family(hilo) if hilo else ""
     if marca:
         out = [p for p in out if _norm(p.get("marca") or "") == marca]
     if hilo:
-        fam = _hilo_family(hilo)
         exact = [p for p in out if _norm(p.get("hilo") or "") == _norm(hilo)]
-        out = exact or [p for p in out if _hilo_family(p.get("hilo")) == fam]
+        fam_matches = [p for p in out if _hilo_family(p.get("hilo")) == fam]
+        out = exact or fam_matches
+        # Si la marca seleccionada dejó solo paquetes/surtidos o vacío, reintentamos
+        # por familia en todo el almacén y preferimos productos vendibles reales.
+        if not out or not any(_no_combo(p) for p in out):
+            out2 = [p for p in base if _hilo_family(p.get("hilo")) == fam]
+            vendibles = [p for p in out2 if _no_combo(p)]
+            out = vendibles or out2 or out
     return out
 
 
@@ -792,8 +844,9 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
 
 
 def _no_combo(p):
-    color = _norm(p.get("color") or "")
-    return not any(x in color for x in ("combo", "paquete", "surtido"))
+    texto = " ".join(str((p or {}).get(k) or "") for k in ("color", "nombre", "descripcion", "hilo"))
+    t = _norm(texto)
+    return not any(x in t for x in ("combo", "paquete", "surtido"))
 
 
 def _stock(p):
@@ -1074,16 +1127,10 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
     # Si solo preguntó disponibilidad, no mandamos a decisión humana por stock 0;
     # respondemos como vendedora diciendo que no aparece disponible.
     if insuficientes and principal not in ("consulta_stock",):
-        detalle = "; ".join(
-            f"{_linea_producto(p)} stock {int(p.get('stock') or 0)} / pidio {int(p.get('cantidad') or 1)}"
-            for p in insuficientes[:5]
-        )
-        return decision(
-            "stock_insuficiente",
-            "Hay stock insuficiente para el pedido: " + detalle + ". No prometer disponibilidad sin autorizacion.",
-            ["Ofrecer solo piezas disponibles", "Sugerir sustituto", "Responder manualmente"],
-            "alta",
-        )
+        # V33: stock insuficiente ya no debe mandar una respuesta genérica al cliente.
+        # El agente sí puede decir de forma segura cuántas piezas aparecen y qué tonos
+        # no están disponibles, sin prometer descuento ni alterar condiciones.
+        return None
 
     if _requiere_humano_por_ambiguedad(preguntas, errores, sugerencias):
         # V32: una duda normal de producto NO debe mandar siempre al humano.
@@ -1225,11 +1272,47 @@ def _respuesta_fallback_humana(normalizado, intencion, contexto, extraccion, res
     return ""
 
 
+
+
+def _pedidos_desde_memoria(memoria):
+    raw = (memoria or {}).get("pedido_en_proceso")
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [dict(x) for x in raw if isinstance(x, dict)]
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return []
+    if isinstance(obj, list):
+        return [dict(x) for x in obj if isinstance(x, dict)]
+    return []
+
+
+def _respuesta_confirmacion_contexto_previo(contexto):
+    mem = contexto.get("memoria_previa") or {}
+    pedidos = _pedidos_desde_memoria(mem)
+    if not pedidos:
+        return ""
+    hilo = _hilo_display(contexto.get("hilo_actual") or mem.get("hilo_actual") or "")
+    total = sum(int(p.get("cantidad") or 1) for p in pedidos)
+    lineas = [f"* {_linea_producto(p)} x{int(p.get('cantidad') or 1)}" for p in pedidos[:25]]
+    intro = f"Perfecto {EMOJI_OK} entonces tomo la lista como {hilo}." if hilo else f"Perfecto {EMOJI_OK} tomo la lista anterior."
+    return intro + "\n\n" + "\n".join(lineas) + f"\n\nTotal: {total} pieza" + ("s." if total != 1 else ".") + "\n\nLe preparo su cotización del pedido."
+
+
 def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, resolucion, confianza, productos=None, recursos=None, envio=None):
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     principal = intencion["principal"]
     recursos = recursos or {}
     envio = envio or {}
+
+    if principal == "confirmacion_contexto":
+        resp_previa = _respuesta_confirmacion_contexto_previo(contexto)
+        if resp_previa:
+            return resp_previa
+        hilo = _hilo_display(contexto.get("hilo_actual") or "")
+        return f"Perfecto {EMOJI_OK} lo reviso como {hilo or 'ese hilo'}. Mándeme la lista o los códigos y se lo cotizo."
 
     if principal == "pide_gama":
         if recursos.get("respuesta"):
@@ -1426,13 +1509,14 @@ def _respuesta_pedido(resolucion, contexto):
     ok = []
     faltantes = []
     agotados = []
+    insuficientes = []
     for p in pedidos:
         if p.get("cantidad_pendiente"):
             faltantes.append(p)
         elif p.get("es_inventariable", True) and int(p.get("stock") or 0) <= 0:
             agotados.append(p)
         elif p.get("es_inventariable", True) and int(p.get("stock") or 0) < int(p.get("cantidad") or 1):
-            agotados.append(p)
+            insuficientes.append(p)
         else:
             ok.append(p)
 
@@ -1440,14 +1524,16 @@ def _respuesta_pedido(resolucion, contexto):
     if ok:
         total = sum(int(p.get("cantidad") or 1) for p in ok)
         lineas = [f"* {_linea_producto(p)} x{int(p.get('cantidad') or 1)}" for p in ok]
-        partes.append(f"Claro {EMOJI_OK} le agrego a su lista/pedido:\n\n" + "\n".join(lineas))
-        partes.append(f"Total: {total} pieza" + ("s." if total != 1 else "."))
+        partes.append(f"Claro {EMOJI_OK} le agrego a su cotización:\n\n" + "\n".join(lineas))
+        partes.append(f"Total agregado: {total} pieza" + ("s." if total != 1 else "."))
         if contexto.get("total_esperado") and total != int(contexto.get("total_esperado") or 0):
             partes.append(f"Me quedan {int(contexto.get('total_esperado') or 0) - total} piezas por completar de las que me indicó.")
     for p in faltantes:
-        partes.append(f"Cuantas piezas de {_linea_producto(p)} le agrego?")
+        partes.append(f"¿Cuántas piezas de {_linea_producto(p)} le agrego?")
     for p in agotados:
-        partes.append(f"{_linea_producto(p)} por el momento no me aparece disponible {EMOJI_SAD} ¿Le muestro opciones parecidas?")
+        partes.append(f"{_linea_producto(p)} por el momento no me aparece disponible {EMOJI_SAD} ¿Le muestro una opción parecida?")
+    for p in insuficientes:
+        partes.append(f"De {_linea_producto(p)} me aparecen {int(p.get('stock') or 0)} pieza(s) disponibles y usted pidió {int(p.get('cantidad') or 1)}. ¿Le agrego las disponibles o le muestro otra opción?")
     # Si hay productos correctos pero tambien dudas, no tapamos lo correcto: mostramos lo agregado y
     # pedimos confirmar solo lo que falta.
     pendientes = resolucion.get("preguntas") or []
@@ -1478,7 +1564,7 @@ def guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extr
         "fecha_ultima_actividad": datetime.now().isoformat(sep=" ", timespec="seconds"),
         "cp_actual": extraccion.get("cp") or contexto.get("cp_actual") or nueva.get("cp_actual") or "",
         "total_esperado": total_esperado,
-        "pedido_en_proceso": json.dumps(pedidos[:60], ensure_ascii=False),
+        "pedido_en_proceso": json.dumps(pedidos[:60], ensure_ascii=False) if pedidos else nueva.get("pedido_en_proceso", "[]"),
     })
     if items and (resolucion.get("preguntas") or resolucion.get("errores") or not pedidos):
         nueva["ultima_lista_pendiente"] = json.dumps(items[:80], ensure_ascii=False)
@@ -1561,7 +1647,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v32_motor_conversacional",
+            "motor": "v33_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -1610,7 +1696,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v32_motor_conversacional",
+        "motor": "v33_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
