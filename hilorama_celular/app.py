@@ -11333,3 +11333,525 @@ def whatsapp_ia_simular_v22():
 
 
 app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v22
+
+
+# ==========================================================
+# V24 - Envia.com SOLO COTIZACION DE ENVIOS (NO GENERA GUIAS)
+# ==========================================================
+# Seguridad: este bloque NUNCA llama /ship/generate/. Solo consulta /ship/rate/.
+# Sirve para que el agente WhatsApp IA responda costos reales por CP sin inventar.
+
+ENVIA_V24_REF_PRECIOS = {
+    'correosdemexico': 110.0,
+    'correos': 110.0,
+    'estafeta': 199.0,
+    'fedex': 269.0,
+    'dhl': 269.0,
+}
+
+ENVIA_V24_NOMBRES = {
+    'correosdemexico': 'Correos de México',
+    'correos': 'Correos de México',
+    'estafeta': 'Estafeta',
+    'fedex': 'FedEx',
+    'dhl': 'DHL',
+    'paquetexpress': 'Paquetexpress',
+    'ampm': 'AmPm',
+    'uber': 'Uber',
+    'redpack': 'Redpack',
+}
+
+
+def _envia_v24_bool_env(name, default=False):
+    val = str(os.environ.get(name, '')).strip().lower()
+    if not val:
+        return bool(default)
+    return val in ('1', 'true', 'yes', 'si', 'sí', 'on', 'enabled')
+
+
+def _envia_v24_float_env(name, default):
+    try:
+        return float(str(os.environ.get(name, default)).strip() or default)
+    except Exception:
+        return float(default)
+
+
+def _envia_v24_int_env(name, default):
+    try:
+        return int(float(str(os.environ.get(name, default)).strip() or default))
+    except Exception:
+        return int(default)
+
+
+def _envia_v24_config():
+    env = str(os.environ.get('ENVIA_ENV') or 'sandbox').strip().lower()
+    production = env in ('prod', 'production', 'real')
+    return {
+        'enabled': _envia_v24_bool_env('ENVIA_ENABLED', False),
+        'env': 'production' if production else 'sandbox',
+        'token': (os.environ.get('ENVIA_TOKEN') or '').strip(),
+        'api_base': 'https://api.envia.com' if production else 'https://api-test.envia.com',
+        'queries_base': 'https://queries.envia.com' if production else 'https://queries-test.envia.com',
+        # Envia documenta Geocodes con URL única sin token.
+        'geocodes_base': 'https://geocodes.envia.com',
+        'origin_country': (os.environ.get('ENVIA_ORIGIN_COUNTRY') or 'MX').strip().upper(),
+        'origin_zip': re.sub(r'\D+', '', os.environ.get('ENVIA_ORIGIN_ZIP') or ''),
+        'origin_name': (os.environ.get('ENVIA_ORIGIN_NAME') or 'Hilorama').strip(),
+        'origin_phone': (os.environ.get('ENVIA_ORIGIN_PHONE') or '+520000000000').strip(),
+        'origin_street': (os.environ.get('ENVIA_ORIGIN_STREET') or 'Origen Hilorama').strip(),
+        'origin_city': (os.environ.get('ENVIA_ORIGIN_CITY') or '').strip(),
+        'origin_state': (os.environ.get('ENVIA_ORIGIN_STATE') or '').strip(),
+        'weight_kg': _envia_v24_float_env('ENVIA_DEFAULT_WEIGHT_KG', 1),
+        'length_cm': _envia_v24_float_env('ENVIA_DEFAULT_LENGTH_CM', 30),
+        'width_cm': _envia_v24_float_env('ENVIA_DEFAULT_WIDTH_CM', 25),
+        'height_cm': _envia_v24_float_env('ENVIA_DEFAULT_HEIGHT_CM', 20),
+        'cache_hours': _envia_v24_int_env('ENVIA_CACHE_HOURS', 24),
+        'declared_value': _envia_v24_float_env('ENVIA_DECLARED_VALUE', 1000),
+        'currency': (os.environ.get('ENVIA_CURRENCY') or 'MXN').strip().upper(),
+        'timeout': _envia_v24_int_env('ENVIA_TIMEOUT_SECONDS', 18),
+    }
+
+
+def _envia_v24_carriers():
+    raw = os.environ.get('ENVIA_CARRIERS') or 'estafeta,fedex,dhl,paquetexpress,correosdemexico'
+    carriers = []
+    for c in str(raw).split(','):
+        c = re.sub(r'\s+', '', c.strip().lower())
+        if c and c not in carriers:
+            carriers.append(c)
+    return carriers or ['estafeta', 'fedex']
+
+
+def _envia_v24_http_json(method, url, payload=None, token=None, timeout=18):
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+    body = None
+    headers = {'Content-Type': 'application/json'}
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    if payload is not None:
+        body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(url, data=body, method=method.upper(), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode('utf-8', errors='replace')
+            try:
+                return True, json.loads(raw or '{}'), int(resp.status or 200), ''
+            except Exception:
+                return True, {'raw': raw}, int(resp.status or 200), ''
+    except urllib.error.HTTPError as exc:
+        raw = ''
+        try:
+            raw = exc.read().decode('utf-8', errors='replace')
+        except Exception:
+            pass
+        try:
+            obj = json.loads(raw or '{}')
+        except Exception:
+            obj = {'raw': raw}
+        return False, obj, int(getattr(exc, 'code', 0) or 0), str(exc)
+    except Exception as exc:
+        return False, {}, 0, str(exc)
+
+
+def _envia_v24_extraer_geocode(obj):
+    """Acepta varias formas de respuesta de Geocodes y devuelve city/state/locality si existen."""
+    candidatos = []
+    if isinstance(obj, dict):
+        for k in ('data', 'result', 'results', 'zipcodes', 'zipcode'):
+            v = obj.get(k)
+            if isinstance(v, list):
+                candidatos.extend([x for x in v if isinstance(x, dict)])
+            elif isinstance(v, dict):
+                candidatos.append(v)
+        candidatos.append(obj)
+    elif isinstance(obj, list):
+        candidatos.extend([x for x in obj if isinstance(x, dict)])
+    for item in candidatos:
+        city = item.get('city') or item.get('municipality') or item.get('municipio') or item.get('locality') or item.get('localidad') or item.get('town') or ''
+        state = item.get('state_code') or item.get('stateCode') or item.get('state') or item.get('province') or item.get('region') or ''
+        locality = item.get('locality') or item.get('localidad') or item.get('neighborhood') or item.get('colony') or item.get('colonia') or ''
+        if city or state or locality:
+            return {'city': str(city or '').strip(), 'state': str(state or '').strip(), 'locality': str(locality or '').strip(), 'raw': item}
+    return {'city': '', 'state': '', 'locality': '', 'raw': obj}
+
+
+def _envia_v24_geocode_zip(country, cp):
+    cfg = _envia_v24_config()
+    cp = re.sub(r'\D+', '', str(cp or ''))
+    country = (country or 'MX').strip().upper()
+    if not cp:
+        return {'city': '', 'state': '', 'locality': ''}
+    url = f"{cfg['geocodes_base'].rstrip('/')}/zipcode/{country}/{cp}"
+    ok, obj, status, err = _envia_v24_http_json('GET', url, None, None, cfg['timeout'])
+    if not ok:
+        print('WARN Envia geocode fallo:', status, err, flush=True)
+        return {'city': '', 'state': '', 'locality': '', 'error': err, 'status': status}
+    return _envia_v24_extraer_geocode(obj)
+
+
+def _envia_v24_address(cp, tipo='destination', nombre='Cliente'):
+    cfg = _envia_v24_config()
+    country = cfg['origin_country'] or 'MX'
+    cp = re.sub(r'\D+', '', str(cp or ''))
+    geo = _envia_v24_geocode_zip(country, cp)
+    if tipo == 'origin':
+        return {
+            'name': cfg['origin_name'] or 'Hilorama',
+            'phone': cfg['origin_phone'] or '+520000000000',
+            'street': cfg['origin_street'] or 'Origen Hilorama',
+            'city': cfg['origin_city'] or geo.get('city') or 'Ciudad',
+            'state': cfg['origin_state'] or geo.get('state') or '',
+            'country': country,
+            'postalCode': cp,
+        }
+    return {
+        'name': nombre or 'Cliente Hilorama',
+        'phone': '+520000000000',
+        'street': 'Por confirmar',
+        'city': geo.get('city') or 'Ciudad',
+        'state': geo.get('state') or '',
+        'country': country,
+        'postalCode': cp,
+    }
+
+
+def _envia_v24_package(piezas=None, peso_kg=None, largo_cm=None, ancho_cm=None, alto_cm=None):
+    cfg = _envia_v24_config()
+    try:
+        piezas_i = max(1, int(piezas or 0))
+    except Exception:
+        piezas_i = 1
+    # Regla conservadora: si no pasas peso, usa el default configurado. Si se pasan piezas,
+    # estima mínimo 0.12kg por madeja, sin bajar del default si ENVIA_DEFAULT_WEIGHT_KG ya es mayor.
+    peso = float(peso_kg or 0) or max(float(cfg['weight_kg'] or 1), round(piezas_i * 0.12, 2) if piezas_i else 1)
+    largo = float(largo_cm or cfg['length_cm'] or 30)
+    ancho = float(ancho_cm or cfg['width_cm'] or 25)
+    alto = float(alto_cm or cfg['height_cm'] or 20)
+    return {
+        'type': 'box',
+        'content': 'Hilos y estambres',
+        'amount': 1,
+        'declaredValue': float(cfg['declared_value'] or 1000),
+        'lengthUnit': 'CM',
+        'weightUnit': 'KG',
+        'weight': round(peso, 3),
+        'dimensions': {'length': round(largo, 2), 'width': round(ancho, 2), 'height': round(alto, 2)},
+    }
+
+
+def _envia_v24_cache_schema():
+    try:
+        with DB() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS envios_cotizaciones_cache (
+                    id SERIAL PRIMARY KEY,
+                    cache_key TEXT UNIQUE,
+                    cp_destino TEXT,
+                    request_json TEXT,
+                    response_json TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_envios_cache_key ON envios_cotizaciones_cache(cache_key)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_envios_cache_cp ON envios_cotizaciones_cache(cp_destino, expires_at)")
+    except Exception as exc:
+        print('WARN schema Envia cache:', exc, flush=True)
+
+
+def _envia_v24_cache_key(cp_destino, paquete, carriers):
+    cfg = _envia_v24_config()
+    base = {
+        'env': cfg['env'],
+        'origin_zip': cfg['origin_zip'],
+        'cp_destino': re.sub(r'\D+', '', str(cp_destino or '')),
+        'package': paquete,
+        'carriers': carriers,
+    }
+    return json.dumps(base, sort_keys=True, ensure_ascii=False)
+
+
+def _envia_v24_cache_get(cache_key):
+    _envia_v24_cache_schema()
+    try:
+        with DB() as db:
+            row = db.execute("""
+                SELECT response_json FROM envios_cotizaciones_cache
+                WHERE cache_key=%s AND (expires_at IS NULL OR expires_at > %s)
+                ORDER BY created_at DESC LIMIT 1
+            """, (cache_key, now_mexico())).fetchone()
+            if row and row.get('response_json'):
+                data = json.loads(row['response_json'])
+                data['desde_cache'] = True
+                return data
+    except Exception as exc:
+        print('WARN leer cache Envia:', exc, flush=True)
+    return None
+
+
+def _envia_v24_cache_set(cache_key, cp_destino, request_obj, response_obj):
+    _envia_v24_cache_schema()
+    cfg = _envia_v24_config()
+    expires = now_mexico() + timedelta(hours=max(1, int(cfg.get('cache_hours') or 24)))
+    try:
+        with DB() as db:
+            db.execute("""
+                INSERT INTO envios_cotizaciones_cache (cache_key, cp_destino, request_json, response_json, created_at, expires_at)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (cache_key) DO UPDATE SET
+                    request_json=EXCLUDED.request_json,
+                    response_json=EXCLUDED.response_json,
+                    created_at=EXCLUDED.created_at,
+                    expires_at=EXCLUDED.expires_at
+            """, (
+                cache_key, cp_destino,
+                json.dumps(request_obj, ensure_ascii=False),
+                json.dumps(response_obj, ensure_ascii=False),
+                now_mexico(), expires,
+            ))
+    except Exception as exc:
+        print('WARN guardar cache Envia:', exc, flush=True)
+
+
+def _envia_v24_collect_rates(obj, carrier):
+    """Extrae tarifas aunque Envia cambie ligeramente nombres/campos."""
+    encontrados = []
+    def walk(x):
+        if isinstance(x, dict):
+            price_raw = x.get('totalPrice', x.get('price', x.get('amount', x.get('total'))))
+            if price_raw is not None and (x.get('carrier') or carrier):
+                try:
+                    precio = float(str(price_raw).replace(',', '').strip())
+                except Exception:
+                    precio = None
+                if precio is not None and precio >= 0:
+                    c = str(x.get('carrier') or carrier or '').strip().lower()
+                    ref = ENVIA_V24_REF_PRECIOS.get(c)
+                    encontrados.append({
+                        'carrier': c,
+                        'paqueteria': ENVIA_V24_NOMBRES.get(c, str(x.get('carrier') or carrier).title()),
+                        'service': x.get('service') or x.get('serviceCode') or '',
+                        'servicio': x.get('serviceDescription') or x.get('serviceName') or x.get('description') or x.get('service') or '',
+                        'entrega': x.get('deliveryEstimate') or x.get('delivery') or x.get('estimatedDelivery') or '',
+                        'precio': round(float(precio), 2),
+                        'moneda': x.get('currency') or 'MXN',
+                        'precio_referencia': ref,
+                        'posible_reexpedicion': bool(ref and precio > ref * 1.25),
+                    })
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for it in x:
+                walk(it)
+    walk(obj)
+    # Deduplicar por carrier/servicio/precio.
+    out, seen = [], set()
+    for r in encontrados:
+        key = (r.get('carrier'), r.get('service'), r.get('precio'))
+        if key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
+
+
+def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, ancho_cm=None, alto_cm=None, carriers=None):
+    """Cotiza Envia.com SOLO por /ship/rate/. No crea guías ni cobra etiquetas."""
+    cfg = _envia_v24_config()
+    cp_destino = re.sub(r'\D+', '', str(cp_destino or ''))
+    if not re.fullmatch(r'\d{5}', cp_destino or ''):
+        return {'ok': False, 'error': 'CP destino inválido', 'opciones': [], 'modo': 'SOLO_COTIZACION_NO_GUIAS'}
+    if not cfg['enabled']:
+        return {'ok': False, 'error': 'ENVIA_ENABLED no está activo', 'opciones': [], 'modo': 'SOLO_COTIZACION_NO_GUIAS'}
+    if not cfg['token']:
+        return {'ok': False, 'error': 'ENVIA_TOKEN no configurado', 'opciones': [], 'modo': 'SOLO_COTIZACION_NO_GUIAS'}
+    if not re.fullmatch(r'\d{5}', cfg['origin_zip'] or ''):
+        return {'ok': False, 'error': 'ENVIA_ORIGIN_ZIP inválido o vacío', 'opciones': [], 'modo': 'SOLO_COTIZACION_NO_GUIAS'}
+
+    carriers = carriers or _envia_v24_carriers()
+    paquete = _envia_v24_package(piezas, peso_kg, largo_cm, ancho_cm, alto_cm)
+    cache_key = _envia_v24_cache_key(cp_destino, paquete, carriers)
+    cached = _envia_v24_cache_get(cache_key)
+    if cached:
+        return cached
+
+    origin = _envia_v24_address(cfg['origin_zip'], 'origin')
+    destination = _envia_v24_address(cp_destino, 'destination')
+    base_req = {
+        'origin': origin,
+        'destination': destination,
+        'packages': [paquete],
+        'settings': {'currency': cfg['currency'] or 'MXN'},
+    }
+    opciones, errores = [], []
+    for carrier in carriers:
+        req_obj = dict(base_req)
+        req_obj['shipment'] = {'type': 1, 'carrier': carrier}
+        url = cfg['api_base'].rstrip('/') + '/ship/rate/'
+        ok, obj, status, err = _envia_v24_http_json('POST', url, req_obj, cfg['token'], cfg['timeout'])
+        if not ok:
+            # No exponemos token ni payload completo en respuesta al cliente.
+            errores.append({'carrier': carrier, 'status': status, 'error': str(err)[:180], 'respuesta': obj})
+            continue
+        rates = _envia_v24_collect_rates(obj, carrier)
+        if not rates:
+            errores.append({'carrier': carrier, 'status': status, 'error': 'Sin tarifas disponibles', 'respuesta': obj})
+        opciones.extend(rates)
+
+    opciones = sorted(opciones, key=lambda x: float(x.get('precio') or 0))
+    resp = {
+        'ok': bool(opciones),
+        'cp_destino': cp_destino,
+        'cp_origen': cfg['origin_zip'],
+        'env': cfg['env'],
+        'modo': 'SOLO_COTIZACION_NO_GUIAS',
+        'desde_cache': False,
+        'paquete': paquete,
+        'opciones': opciones,
+        # Errores solo para diagnostico interno/API, no para respuesta pública.
+        'errores': errores[:10],
+    }
+    _envia_v24_cache_set(cache_key, cp_destino, {'base': base_req, 'carriers': carriers}, resp)
+    return resp
+
+
+@app.route('/api/envios/cotizar', methods=['GET', 'POST'])
+def api_envios_cotizar_v24():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args.to_dict(flat=True)
+    cp = data.get('cp_destino') or data.get('cp') or data.get('codigo_postal') or data.get('postalCode') or ''
+    carriers_raw = data.get('carriers') or data.get('paqueterias') or ''
+    carriers = None
+    if carriers_raw:
+        if isinstance(carriers_raw, str):
+            carriers = [re.sub(r'\s+', '', c.strip().lower()) for c in carriers_raw.split(',') if c.strip()]
+        elif isinstance(carriers_raw, list):
+            carriers = [re.sub(r'\s+', '', str(c).strip().lower()) for c in carriers_raw if str(c).strip()]
+    result = cotizar_envio_envia(
+        cp,
+        piezas=data.get('piezas'),
+        peso_kg=data.get('peso_kg') or data.get('peso'),
+        largo_cm=data.get('largo_cm') or data.get('largo'),
+        ancho_cm=data.get('ancho_cm') or data.get('ancho'),
+        alto_cm=data.get('alto_cm') or data.get('alto'),
+        carriers=carriers,
+    )
+    status = 200 if result.get('ok') or result.get('opciones') else 400
+    return jsonify(json_safe(result)), status
+
+
+def _envia_v24_formato_publico(cp, cotizacion):
+    opciones = (cotizacion or {}).get('opciones') or []
+    if not opciones:
+        return (
+            f"Con el CP {cp} necesito revisar el envío manualmente 😊 "
+            "No me aparecen opciones automáticas seguras en este momento."
+        )
+    lineas = []
+    vistos = set()
+    for op in opciones[:6]:
+        nombre = op.get('paqueteria') or op.get('carrier') or 'Paquetería'
+        servicio = op.get('servicio') or op.get('service') or ''
+        precio = float(op.get('precio') or 0)
+        moneda = op.get('moneda') or 'MXN'
+        key = (str(nombre).lower(), str(servicio).lower(), round(precio, 2))
+        if key in vistos:
+            continue
+        vistos.add(key)
+        desc = f"🚚 {nombre}: ${precio:,.2f} {moneda}"
+        if servicio and servicio.lower() not in str(nombre).lower():
+            desc += f" ({servicio})"
+        if op.get('entrega'):
+            desc += f" — {op.get('entrega')}"
+        lineas.append(desc)
+    if not lineas:
+        return f"Con el CP {cp} necesito revisar el envío manualmente 😊"
+    extra = ''
+    if any(op.get('posible_reexpedicion') for op in opciones):
+        extra = '\n\nPara ese CP el costo puede cambiar por zona o servicio; se lo confirmo antes de cerrar la nota.'
+    cache_txt = ' (cotización guardada)' if (cotizacion or {}).get('desde_cache') else ''
+    return (
+        f"A su zona con CP {cp} me aparecen estas opciones{cache_txt}:\n\n" +
+        "\n".join(lineas) +
+        "\n\nEsta cotización es para el paquete configurado y puede variar si cambia peso o volumen. ¿Cuál le gustaría usar?" +
+        extra
+    )
+
+
+# Guardamos la función anterior como respaldo si Envia falla o no está configurado.
+_wa_v24_envio_opciones_anterior = _wa_v22_envio_opciones_texto
+
+
+def _wa_v22_envio_opciones_texto(cp=''):
+    cp_m = re.search(r'\b\d{5}\b', str(cp or ''))
+    if not cp_m:
+        return "Claro 😊 para decirle el costo exacto de envío necesito su código postal."
+    cp_txt = cp_m.group(0)
+    try:
+        cot = cotizar_envio_envia(cp_txt)
+        if cot.get('ok') and cot.get('opciones'):
+            return _envia_v24_formato_publico(cp_txt, cot)
+        # Si Envia está activo pero no regresó tarifas, no inventamos precio.
+        if _envia_v24_config().get('enabled'):
+            return (
+                f"Con el CP {cp_txt} necesito revisar el envío manualmente 😊 "
+                "No me aparece una tarifa automática segura en este momento."
+            )
+    except Exception as exc:
+        print('WARN Envia cotizacion WA:', exc, flush=True)
+    # Respaldo anterior solo si Envia no está activo/configurado.
+    return _wa_v24_envio_opciones_anterior(cp_txt)
+
+
+_wa_v24_clasificar_anterior = _clasificar_intencion_wa
+
+
+def _clasificar_intencion_wa(texto, parsed):
+    meta = _wa_v24_clasificar_anterior(texto, parsed)
+    t = _wa_v22_norm(texto)
+    # Un CP solo, después de hablar de envío, debe disparar cotización y no tratarse como código de hilo.
+    if re.fullmatch(r'\s*(?:cp\s*)?\d{5}\s*', str(texto or ''), re.I) or re.search(r'\b(codigo postal|código postal|cp|envio|envío|paqueteria|paquetería)\b', t):
+        meta['intencion'] = 'pregunta_envio'
+        meta['accion_recomendada'] = 'cotizar_envio_revision'
+        meta['confianza'] = 'media'
+        meta['puede_auto_enviar'] = False
+    return meta
+
+
+_wa_v24_view_anterior = app.view_functions.get('whatsapp_ia_simular')
+
+
+def whatsapp_ia_simular_v24():
+    out = _wa_v24_view_anterior()
+    status = 200
+    response = out
+    if isinstance(out, tuple):
+        response = out[0]
+        if len(out) > 1:
+            status = out[1]
+    try:
+        data = response.get_json() if hasattr(response, 'get_json') else None
+    except Exception:
+        data = None
+    if not isinstance(data, dict):
+        return out
+    # Si el mensaje trae CP/envío y Envia está configurado, forzamos respuesta de cotización real.
+    texto_req = ''
+    try:
+        req_data = request.get_json(silent=True) or {}
+        texto_req = ' '.join(str(req_data.get(k) or '') for k in ('texto', 'texto_imagen'))
+    except Exception:
+        texto_req = ''
+    if re.search(r'\b\d{5}\b', texto_req) and re.search(r'\b(cp|codigo postal|código postal|envio|envío|paqueteria|paquetería|\d{5})\b', _wa_v22_norm(texto_req)):
+        data['respuesta_sugerida'] = _wa_v22_envio_opciones_texto(texto_req)
+        data['intencion'] = 'pregunta_envio'
+        data['accion_recomendada'] = 'cotizar_envio_revision'
+        data['puede_auto_enviar'] = False
+    data['motor'] = str(data.get('motor') or '') + ':v24_envia_solo_cotizacion'
+    return jsonify(json_safe(data)), status
+
+
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v24
