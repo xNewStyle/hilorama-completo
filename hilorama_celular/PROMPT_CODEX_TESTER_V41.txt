@@ -1,0 +1,30 @@
+PROMPT PARA CODEX - SI FALLA EL TESTER V41
+
+Revisa los reportes de tools/whatsapp_ia_human_tester_v41.py y corrige la IA de WhatsApp sin romper los 50 casos que ya pasaban en V40.
+Prioridades:
+
+1. Saludos e incompletos:
+   - 'Hola', 'Buenos días', 'Oye una pregunta', 'mira', 'audio' no deben cotizarse ni convertirse en producto.
+   - Deben permitir que el cliente escriba más. Si existe buffer de espera, mantenerlo.
+
+2. Cantidades humanas:
+   - dos, tres, cuatro, cinco, sinco, trez, todos x2, todos dos.
+   - Listas raras: 55=2, 55-2, #55 x2, (55)(2), 2*55.
+
+3. Contexto de hilo:
+   - Si el cliente dice 'velluto' y luego manda códigos, mantener Velluto.
+   - Si cambia a Komfy Mini, Kurumi, Baby Best, etc., no mezclar códigos del hilo anterior.
+
+4. Accesorios:
+   - Ojos de seguridad, ganchos en mm y relleno no son hilos.
+   - 4.5, 5, 12mm, 14mm y bolsa de 100 no deben tratarse como códigos de Velluto/Komfy.
+
+5. Correcciones:
+   - 'quita', 'mejor', 'corrijo', 'eran', 'déjame solo' deben actualizar el pedido sin duplicar.
+
+6. Comercial/pago/envío:
+   - No aprobar descuentos, apartados, envío gratis ni pagos confirmados automáticamente.
+   - En esos casos debe responder que revisa y confirma.
+
+Al terminar, vuelve a correr:
+python hilorama_celular/tools/whatsapp_ia_human_tester_v41.py --base-url http://127.0.0.1:5000 --pin TU_PIN --limit 150 --sleep 0.2

@@ -1,0 +1,4084 @@
+[
+  {
+    "case_id": "00001_v41_saludo_puro_debe_esperar_hola",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Hola"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00002_v41_saludo_puro_debe_esperar_holaaa",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "holaaa"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00003_v41_saludo_puro_debe_esperar_buenos_d_as",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Buenos días"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00004_v41_saludo_puro_debe_esperar_buen_dia",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Buen dia"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00005_v41_saludo_puro_debe_esperar_buenas",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Buenas"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00006_v41_saludo_puro_debe_esperar_buenas_tardes",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Buenas tardes"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00007_v41_saludo_puro_debe_esperar_disculpa",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Disculpa"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00008_v41_saludo_puro_debe_esperar_oye",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Oye"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00009_v41_saludo_puro_debe_esperar_oye_una_pregunta",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Oye una pregunta"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00010_v41_saludo_puro_debe_esperar_hola_buenas_una_duda",
+    "category": "v41_saludo_puro_debe_esperar",
+    "turns": [
+      "Hola buenas, una duda"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "hola",
+        "buen",
+        "claro",
+        "con gusto",
+        "atiendo",
+        "duda",
+        "pedido",
+        "producto"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "le cotizo",
+        "total:",
+        "total agregado",
+        "x1",
+        "x2"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true
+    }
+  },
+  {
+    "case_id": "00011_v41_saludo_luego_pedido_partido_2_del_55_y_3_del_60",
+    "category": "v41_saludo_luego_pedido_partido",
+    "turns": [
+      "Hola",
+      "quiero hacer un pedido",
+      "seria de velluto",
+      "2 del 55 y 3 del 60"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 3
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "pedido"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00012_v41_buenos_dias_luego_lista_todos_x2_porfa",
+    "category": "v41_buenos_dias_luego_lista",
+    "turns": [
+      "Buenos dias",
+      "le paso mi lista",
+      "55\n60\n429",
+      "todos x2 porfa"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 2
+        },
+        {
+          "codigo": "429",
+          "cantidad": 2
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00013_v41_saludo_duda_luego_pedido_dos_del_55_y_sinco_del_60",
+    "category": "v41_saludo_duda_luego_pedido",
+    "turns": [
+      "Ola buen dia",
+      "una preguntita",
+      "quiero veluto",
+      "dos del 55 y sinco del 60"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 5
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego"
+      ]
+    }
+  },
+  {
+    "case_id": "00014_v41_pedido_mala_escritura_cantidades_palabras_kiero_dos_del_55_i_sinco_del_60_de_belluto",
+    "category": "v41_pedido_mala_escritura_cantidades_palabras",
+    "turns": [
+      "hola",
+      "kiero dos del 55 i sinco del 60 de belluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 5
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "no sé",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00015_v41_pedido_mala_escritura_cantidades_palabras_me_cotisas_trez_del_429_y_uno_del_55_de_veluto",
+    "category": "v41_pedido_mala_escritura_cantidades_palabras",
+    "turns": [
+      "hola",
+      "me cotisas trez del 429 y uno del 55 de veluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "429",
+          "cantidad": 3
+        },
+        {
+          "codigo": "55",
+          "cantidad": 1
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "no sé",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00016_v41_pedido_mala_escritura_cantidades_palabras_ocupoo_4_d_60_y_2_d_55_vellutto",
+    "category": "v41_pedido_mala_escritura_cantidades_palabras",
+    "turns": [
+      "hola",
+      "ocupoo 4 d 60 y 2 d 55 vellutto"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "60",
+          "cantidad": 4
+        },
+        {
+          "codigo": "55",
+          "cantidad": 2
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "no sé",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00017_v41_pedido_mala_escritura_cantidades_palabras_beluto_55_x_dos_60_x_3_y_429_x_uno",
+    "category": "v41_pedido_mala_escritura_cantidades_palabras",
+    "turns": [
+      "hola",
+      "beluto 55 x dos, 60 x 3 y 429 x uno"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 3
+        },
+        {
+          "codigo": "429",
+          "cantidad": 1
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "no sé",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00018_v41_pedido_mala_escritura_cantidades_palabras_me_das_1_del_55_2_del_60_3_del_429_todo_velluto",
+    "category": "v41_pedido_mala_escritura_cantidades_palabras",
+    "turns": [
+      "hola",
+      "me das 1 del 55 2 del 60 3 del 429 todo velluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 1
+        },
+        {
+          "codigo": "60",
+          "cantidad": 2
+        },
+        {
+          "codigo": "429",
+          "cantidad": 3
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "no sé",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00019_v41_pedido_mala_escritura_cantidades_palabras_dame_el_blanco_dos_y_negro_cinco_de_velluto",
+    "category": "v41_pedido_mala_escritura_cantidades_palabras",
+    "turns": [
+      "hola",
+      "dame el blanco dos y negro cinco de velluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 5
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "no sé",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00020_v41_pedido_mala_escritura_cantidades_palabras_ocupo_blanco_y_negro_2_y_4_de_velluto",
+    "category": "v41_pedido_mala_escritura_cantidades_palabras",
+    "turns": [
+      "hola",
+      "ocupo blanco y negro, 2 y 4, de velluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 4
+        }
+      ],
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "429",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "no se",
+        "no sé",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00021_v41_lista_extrana_whatsapp_55_x2_60x3_429_1",
+    "category": "v41_lista_extrana_whatsapp",
+    "turns": [
+      "velluto",
+      "#55 x2 / #60x3 / 429 1"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 3
+        },
+        {
+          "codigo": "429",
+          "cantidad": 1
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00022_v41_lista_extrana_whatsapp_todos_dos",
+    "category": "v41_lista_extrana_whatsapp",
+    "turns": [
+      "le paso lista",
+      "55, 60, 429",
+      "todos dos"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 2
+        },
+        {
+          "codigo": "429",
+          "cantidad": 2
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00023_v41_lista_extrana_whatsapp_velluto_55_2_60_1_429_4",
+    "category": "v41_lista_extrana_whatsapp",
+    "turns": [
+      "buenas",
+      "velluto: 55-2, 60-1, 429-4"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 1
+        },
+        {
+          "codigo": "429",
+          "cantidad": 4
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00024_v41_lista_extrana_whatsapp_55_2_60_5_429_1_no_es_total_son_piezas",
+    "category": "v41_lista_extrana_whatsapp",
+    "turns": [
+      "cotizacion",
+      "55=2\n60=5\n429=1\n(no es total son piezas)"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 5
+        },
+        {
+          "codigo": "429",
+          "cantidad": 1
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00025_v41_lista_extrana_whatsapp_el_55_son_dos_los_otros_uno",
+    "category": "v41_lista_extrana_whatsapp",
+    "turns": [
+      "velluto",
+      "55 55 60 429",
+      "el 55 son dos, los otros uno"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 1
+        },
+        {
+          "codigo": "429",
+          "cantidad": 1
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00026_v41_lista_extrana_whatsapp_lista_rara_jaja_2_55_3_60_1_429",
+    "category": "v41_lista_extrana_whatsapp",
+    "turns": [
+      "me ayudas",
+      "lista rara jaja: 2*55 + 3*60 + 1*429"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 3
+        },
+        {
+          "codigo": "429",
+          "cantidad": 1
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00027_v41_lista_extrana_whatsapp_55_2_60_2_429_3_todo_velluto",
+    "category": "v41_lista_extrana_whatsapp",
+    "turns": [
+      "quiero cotisar",
+      "(55)(2) (60)(2) (429)(3) todo velluto"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 2
+        },
+        {
+          "codigo": "429",
+          "cantidad": 3
+        }
+      ],
+      "must_contain_any": [
+        "55",
+        "60",
+        "429",
+        "velluto",
+        "cotiz",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00028_v41_pedido_mixto_hilos_accesorios_mismo_mensaje_me_cotizas_2_velluto_55_3_komfy_mini_negro_y_un_relleno_medio_kilo",
+    "category": "v41_pedido_mixto_hilos_accesorios_mismo_mensaje",
+    "turns": [
+      "hola",
+      "me cotizas 2 velluto 55, 3 komfy mini negro y un relleno medio kilo"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "55",
+        "komfy",
+        "relleno",
+        "cotiz",
+        "agrego",
+        "revis",
+        "pedido"
+      ],
+      "must_not_contain_any": [
+        "Si x5",
+        "4 x1",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00029_v41_pedido_mixto_hilos_accesorios_mismo_mensaje_velluto_55_x2_komfy_mini_01_x4_ojos_de_seguridad_14mm_bolsa_de_100",
+    "category": "v41_pedido_mixto_hilos_accesorios_mismo_mensaje",
+    "turns": [
+      "pedido",
+      "velluto 55 x2, komfy mini 01 x4, ojos de seguridad 14mm bolsa de 100"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "55",
+        "komfy",
+        "ojo",
+        "seguridad",
+        "cotiz",
+        "agrego",
+        "revis",
+        "pedido"
+      ],
+      "must_not_contain_any": [
+        "Si x5",
+        "4 x1",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00030_v41_pedido_mixto_hilos_accesorios_mismo_mensaje_quiero_3_del_60_de_velluto_y_tambien_gancho_4_5_si_tienes",
+    "category": "v41_pedido_mixto_hilos_accesorios_mismo_mensaje",
+    "turns": [
+      "buenas",
+      "quiero 3 del 60 de velluto y tambien gancho 4.5 si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "60",
+        "gancho",
+        "4.5",
+        "cotiz",
+        "agrego",
+        "revis",
+        "pedido"
+      ],
+      "must_not_contain_any": [
+        "Si x5",
+        "4 x1",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00031_v41_pedido_mixto_hilos_accesorios_mismo_mensaje_2_del_55_velluto_1_relleno_ojos_negros_12_mm_bolsa",
+    "category": "v41_pedido_mixto_hilos_accesorios_mismo_mensaje",
+    "turns": [
+      "hola",
+      "2 del 55 velluto + 1 relleno + ojos negros 12 mm bolsa"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "55",
+        "relleno",
+        "ojo",
+        "cotiz",
+        "agrego",
+        "revis",
+        "pedido"
+      ],
+      "must_not_contain_any": [
+        "Si x5",
+        "4 x1",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00032_v41_pedido_mixto_hilos_accesorios_mismo_mensaje_komfy_mini_99_dos_piezas_y_velluto_429_tres_piezas_envio_al_97000",
+    "category": "v41_pedido_mixto_hilos_accesorios_mismo_mensaje",
+    "turns": [
+      "buenas tardes",
+      "komfy mini 99 dos piezas y velluto 429 tres piezas, envio al 97000"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "99",
+        "429",
+        "97000",
+        "cotiz",
+        "agrego",
+        "revis",
+        "pedido"
+      ],
+      "must_not_contain_any": [
+        "Si x5",
+        "4 x1",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00033_v41_pedido_mixto_hilos_accesorios_mismo_mensaje_kurumi_rosa_2_velluto_55_1_gancho_del_5_uno",
+    "category": "v41_pedido_mixto_hilos_accesorios_mismo_mensaje",
+    "turns": [
+      "me puede cotizar",
+      "kurumi rosa 2, velluto 55 1, gancho del 5 uno"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "kurumi",
+        "velluto",
+        "gancho",
+        "cotiz",
+        "agrego",
+        "revis",
+        "pedido"
+      ],
+      "must_not_contain_any": [
+        "Si x5",
+        "4 x1",
+        "Pregunta x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00034_v41_correcciones_quitar_poner_no_duplicar_del_55_dejame_solo_2",
+    "category": "v41_correcciones_quitar_poner_no_duplicar",
+    "turns": [
+      "velluto",
+      "ponme 5 del 55 y 3 del 60",
+      "quita el 60",
+      "del 55 dejame solo 2"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "quito",
+        "actualiz",
+        "55",
+        "2"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "descuento aprobado",
+        "se lo aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00035_v41_correcciones_quitar_poner_no_duplicar_y_agrega_1_del_60",
+    "category": "v41_correcciones_quitar_poner_no_duplicar",
+    "turns": [
+      "pedido velluto",
+      "2 del 55",
+      "perdon eran 4 del 55",
+      "y agrega 1 del 60"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "actualiz",
+        "55",
+        "4",
+        "60"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "descuento aprobado",
+        "se lo aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00036_v41_correcciones_quitar_poner_no_duplicar_no_mejor_quitalo_y_ponme_2_del_60",
+    "category": "v41_correcciones_quitar_poner_no_duplicar",
+    "turns": [
+      "quiero 3 del 429",
+      "no, mejor quitalo y ponme 2 del 60"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "quito",
+        "actualiz",
+        "60",
+        "2"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "descuento aprobado",
+        "se lo aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00037_v41_correcciones_quitar_poner_no_duplicar_agrega_429_x3_y_quita_uno_del_55",
+    "category": "v41_correcciones_quitar_poner_no_duplicar",
+    "turns": [
+      "velluto 55 x2 y 60 x2",
+      "agrega 429 x3 y quita uno del 55"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "actualiz",
+        "429",
+        "3",
+        "55"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "descuento aprobado",
+        "se lo aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00038_v41_correcciones_quitar_poner_no_duplicar_mejor_quita_todo_komfy_y_pon_velluto_55_x2",
+    "category": "v41_correcciones_quitar_poner_no_duplicar",
+    "turns": [
+      "komfy mini 01 x3",
+      "mejor quita todo komfy y pon velluto 55 x2"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "quito",
+        "velluto",
+        "55",
+        "2"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "descuento aprobado",
+        "se lo aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00039_v41_correcciones_quitar_poner_no_duplicar_mejor_no_apartes_solo_cotizame_5",
+    "category": "v41_correcciones_quitar_poner_no_duplicar",
+    "turns": [
+      "me apartas 10 del 55?",
+      "mejor no apartes, solo cotizame 5"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "cotiz",
+        "55",
+        "5",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "descuento aprobado",
+        "se lo aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00040_v41_correcciones_quitar_poner_no_duplicar_corrijo_era_el_60_no_el_55",
+    "category": "v41_correcciones_quitar_poner_no_duplicar",
+    "turns": [
+      "quiero velluto 55 2",
+      "corrijo era el 60, no el 55"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "corrijo",
+        "60",
+        "55"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "descuento aprobado",
+        "se lo aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00041_v41_cliente_valida_total_piezas_serian_15_piezas_verdad",
+    "category": "v41_cliente_valida_total_piezas",
+    "turns": [
+      "velluto",
+      "5 del 55 y 10 del 60",
+      "serian 15 piezas verdad?"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 5
+        },
+        {
+          "codigo": "60",
+          "cantidad": 10
+        }
+      ],
+      "must_contain_all": [
+        "15"
+      ],
+      "must_contain_any": [
+        "piezas",
+        "si",
+        "sí",
+        "correcto"
+      ]
+    }
+  },
+  {
+    "case_id": "00042_v41_cliente_corrige_total_no_producto_entonces_son_4_en_total_no",
+    "category": "v41_cliente_corrige_total_no_producto",
+    "turns": [
+      "velluto",
+      "2 del 55 y 2 del 60",
+      "entonces son 4 en total no?"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 2
+        },
+        {
+          "codigo": "60",
+          "cantidad": 2
+        }
+      ],
+      "must_contain_any": [
+        "4",
+        "total",
+        "piezas",
+        "correcto",
+        "si",
+        "sí"
+      ],
+      "must_not_contain_any": [
+        "Total No x1",
+        "No x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00043_v41_total_dinero_no_codigo_me_sale_como_en_300_verdad",
+    "category": "v41_total_dinero_no_codigo",
+    "turns": [
+      "me llevo 5 del 55",
+      "me sale como en 300 verdad?"
+    ],
+    "expect": {
+      "scope": "all",
+      "expected_items": [
+        {
+          "codigo": "55",
+          "cantidad": 5
+        }
+      ],
+      "must_contain_any": [
+        "300",
+        "total",
+        "aprox",
+        "cotiz",
+        "confirm"
+      ],
+      "must_not_contain_any": [
+        "300 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00044_v41_envio_cp_dentro_de_mensaje_cuanto_seria_con_envio",
+    "category": "v41_envio_cp_dentro_de_mensaje",
+    "turns": [
+      "velluto 55 x5 y 60 x5 cp 97000",
+      "cuanto seria con envio?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "envio",
+        "envío",
+        "cp",
+        "97000",
+        "03910",
+        "57000",
+        "revis",
+        "confirm",
+        "cotiz"
+      ],
+      "must_not_contain_any": [
+        "gratis seguro",
+        "envío gratis seguro",
+        "se lo dejo"
+      ]
+    }
+  },
+  {
+    "case_id": "00045_v41_envio_cp_dentro_de_mensaje_aun_no_hago_pedido_solo_quiero_saber",
+    "category": "v41_envio_cp_dentro_de_mensaje",
+    "turns": [
+      "hola",
+      "envias a 03910?",
+      "aun no hago pedido solo quiero saber"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "envio",
+        "envío",
+        "cp",
+        "97000",
+        "03910",
+        "57000",
+        "revis",
+        "confirm",
+        "cotiz"
+      ],
+      "must_not_contain_any": [
+        "gratis seguro",
+        "envío gratis seguro",
+        "se lo dejo"
+      ]
+    }
+  },
+  {
+    "case_id": "00046_v41_envio_cp_dentro_de_mensaje_cuanto_total",
+    "category": "v41_envio_cp_dentro_de_mensaje",
+    "turns": [
+      "quiero 2 del 55",
+      "mi cp es 97000 merida yucatan",
+      "cuanto total?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "envio",
+        "envío",
+        "cp",
+        "97000",
+        "03910",
+        "57000",
+        "revis",
+        "confirm",
+        "cotiz"
+      ],
+      "must_not_contain_any": [
+        "gratis seguro",
+        "envío gratis seguro",
+        "se lo dejo"
+      ]
+    }
+  },
+  {
+    "case_id": "00047_v41_envio_cp_dentro_de_mensaje_envio_a_nezahualcoyotl_cp_57000",
+    "category": "v41_envio_cp_dentro_de_mensaje",
+    "turns": [
+      "me cotizas 1 relleno y 2 velluto 60",
+      "envio a nezahualcoyotl cp 57000"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "envio",
+        "envío",
+        "cp",
+        "97000",
+        "03910",
+        "57000",
+        "revis",
+        "confirm",
+        "cotiz"
+      ],
+      "must_not_contain_any": [
+        "gratis seguro",
+        "envío gratis seguro",
+        "se lo dejo"
+      ]
+    }
+  },
+  {
+    "case_id": "00048_v41_envio_cp_dentro_de_mensaje_envio_gratis_o_como_queda_al_97000",
+    "category": "v41_envio_cp_dentro_de_mensaje",
+    "turns": [
+      "si compro 20 madejas",
+      "envio gratis o como queda al 97000?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "envio",
+        "envío",
+        "cp",
+        "97000",
+        "03910",
+        "57000",
+        "revis",
+        "confirm",
+        "cotiz"
+      ],
+      "must_not_contain_any": [
+        "gratis seguro",
+        "envío gratis seguro",
+        "se lo dejo"
+      ]
+    }
+  },
+  {
+    "case_id": "00049_v41_pago_comprobante_no_marcar_solo_me_confirmas_si_lleg",
+    "category": "v41_pago_comprobante_no_marcar_solo",
+    "turns": [
+      "ya pague",
+      "te mando el comprobante",
+      "me confirmas si llegó?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "comprobante",
+        "revis",
+        "confirm"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "ya quedó pagado",
+        "pago confirmado",
+        "le aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00050_v41_pago_comprobante_no_marcar_solo_me_guardas_mi_pedido",
+    "category": "v41_pago_comprobante_no_marcar_solo",
+    "turns": [
+      "te pago en la noche",
+      "me guardas mi pedido?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "revis",
+        "confirm",
+        "cotiz",
+        "pago"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "ya quedó pagado",
+        "pago confirmado",
+        "le aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00051_v41_pago_comprobante_no_marcar_solo_es_para_depositar_hoy",
+    "category": "v41_pago_comprobante_no_marcar_solo",
+    "turns": [
+      "me puedes pasar datos de pago?",
+      "es para depositar hoy"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "datos",
+        "pago",
+        "transfer",
+        "cuenta",
+        "revis",
+        "confirm"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "ya quedó pagado",
+        "pago confirmado",
+        "le aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00052_v41_pago_comprobante_no_marcar_solo_si_se_ve",
+    "category": "v41_pago_comprobante_no_marcar_solo",
+    "turns": [
+      "ya mande foto del comprobante",
+      "si se ve?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "comprobante",
+        "revis",
+        "confirm"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "ya quedó pagado",
+        "pago confirmado",
+        "le aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00053_v41_pago_comprobante_no_marcar_solo_puedo_pagar_al_recibir",
+    "category": "v41_pago_comprobante_no_marcar_solo",
+    "turns": [
+      "solo tengo efectivo",
+      "puedo pagar al recibir?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "revis",
+        "confirm",
+        "pago",
+        "opcion"
+      ],
+      "must_not_contain_any": [
+        "marcado como pagado",
+        "ya quedó pagado",
+        "pago confirmado",
+        "le aparto seguro"
+      ]
+    }
+  },
+  {
+    "case_id": "00054_v41_decision_comercial_requiere_humano_si_llevo_30_vellutos_me_mejoras_precio",
+    "category": "v41_decision_comercial_requiere_humano",
+    "turns": [
+      "si llevo 30 vellutos me mejoras precio?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "revis",
+        "confirm",
+        "opcion",
+        "cotiz",
+        "pago",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "descuento aprobado",
+        "se lo dejo",
+        "envio gratis seguro",
+        "le aparto seguro",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00055_v41_decision_comercial_requiere_humano_me_das_precio_especial",
+    "category": "v41_decision_comercial_requiere_humano",
+    "turns": [
+      "soy mayorista",
+      "quiero 100 piezas mezcladas",
+      "me das precio especial?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "revis",
+        "confirm",
+        "opcion",
+        "cotiz",
+        "pago",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "descuento aprobado",
+        "se lo dejo",
+        "envio gratis seguro",
+        "le aparto seguro",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00056_v41_decision_comercial_requiere_humano_me_apartas_20_del_60_y_te_pago_ma_ana",
+    "category": "v41_decision_comercial_requiere_humano",
+    "turns": [
+      "me apartas 20 del 60 y te pago mañana"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "revis",
+        "confirm",
+        "opcion",
+        "cotiz",
+        "pago",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "descuento aprobado",
+        "se lo dejo",
+        "envio gratis seguro",
+        "le aparto seguro",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00057_v41_decision_comercial_requiere_humano_si_pago_ahorita_me_das_envio_gratis",
+    "category": "v41_decision_comercial_requiere_humano",
+    "turns": [
+      "si pago ahorita me das envio gratis?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "revis",
+        "confirm",
+        "opcion",
+        "cotiz",
+        "pago",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "descuento aprobado",
+        "se lo dejo",
+        "envio gratis seguro",
+        "le aparto seguro",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00058_v41_decision_comercial_requiere_humano_cuanto_es_lo_menos_por_50_madejas_de_velluto",
+    "category": "v41_decision_comercial_requiere_humano",
+    "turns": [
+      "cuanto es lo menos por 50 madejas de velluto?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "revis",
+        "confirm",
+        "opcion",
+        "cotiz",
+        "pago",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "descuento aprobado",
+        "se lo dejo",
+        "envio gratis seguro",
+        "le aparto seguro",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00059_v41_foto_tono_catalogo_no_agregar_me_muestras_foto_del_55",
+    "category": "v41_foto_tono_catalogo_no_agregar",
+    "turns": [
+      "me muestras foto del 55?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "foto",
+        "imagen",
+        "tono",
+        "catalogo",
+        "catálogo",
+        "muestro",
+        "mando",
+        "revis"
+      ],
+      "expected_no_pedidos": true,
+      "must_not_contain_any": [
+        "le agrego",
+        "total agregado",
+        "x1",
+        "x2"
+      ]
+    }
+  },
+  {
+    "case_id": "00060_v41_foto_tono_catalogo_no_agregar_tienes_imagen_del_tono_429",
+    "category": "v41_foto_tono_catalogo_no_agregar",
+    "turns": [
+      "tienes imagen del tono 429?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "foto",
+        "imagen",
+        "tono",
+        "catalogo",
+        "catálogo",
+        "muestro",
+        "mando",
+        "revis"
+      ],
+      "expected_no_pedidos": true,
+      "must_not_contain_any": [
+        "le agrego",
+        "total agregado",
+        "x1",
+        "x2"
+      ]
+    }
+  },
+  {
+    "case_id": "00061_v41_foto_tono_catalogo_no_agregar_quiero_ver_el_color_60_antes_de_pedir",
+    "category": "v41_foto_tono_catalogo_no_agregar",
+    "turns": [
+      "quiero ver el color 60 antes de pedir"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "foto",
+        "imagen",
+        "tono",
+        "catalogo",
+        "catálogo",
+        "muestro",
+        "mando",
+        "revis"
+      ],
+      "expected_no_pedidos": true,
+      "must_not_contain_any": [
+        "le agrego",
+        "total agregado",
+        "x1",
+        "x2"
+      ]
+    }
+  },
+  {
+    "case_id": "00062_v41_foto_tono_catalogo_no_agregar_me_mandas_catalogo_de_velluto_completo",
+    "category": "v41_foto_tono_catalogo_no_agregar",
+    "turns": [
+      "me mandas catalogo de velluto completo?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "foto",
+        "imagen",
+        "tono",
+        "catalogo",
+        "catálogo",
+        "muestro",
+        "mando",
+        "revis"
+      ],
+      "expected_no_pedidos": true,
+      "must_not_contain_any": [
+        "le agrego",
+        "total agregado",
+        "x1",
+        "x2"
+      ]
+    }
+  },
+  {
+    "case_id": "00063_v41_foto_tono_catalogo_no_agregar_quiero_foto_de_los_ojos_14mm",
+    "category": "v41_foto_tono_catalogo_no_agregar",
+    "turns": [
+      "quiero foto de los ojos 14mm"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "foto",
+        "imagen",
+        "tono",
+        "catalogo",
+        "catálogo",
+        "muestro",
+        "mando",
+        "revis"
+      ],
+      "expected_no_pedidos": true,
+      "must_not_contain_any": [
+        "le agrego",
+        "total agregado",
+        "x1",
+        "x2"
+      ]
+    }
+  },
+  {
+    "case_id": "00064_v41_no_manejado_recomendar_sin_inventar_si_no_cual_se_parece",
+    "category": "v41_no_manejado_recomendar_sin_inventar",
+    "turns": [
+      "manejas estambre abuelita?",
+      "si no cual se parece?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "no",
+        "por el momento",
+        "revis",
+        "parecid",
+        "opcion",
+        "opción",
+        "similar",
+        "trapillo"
+      ],
+      "must_not_contain_any": [
+        "sí manejamos abuelita",
+        "Abuelita x1",
+        "999 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00065_v41_no_manejado_recomendar_sin_inventar_algo_parecido_suave",
+    "category": "v41_no_manejado_recomendar_sin_inventar",
+    "turns": [
+      "tienes himalaya dolphin?",
+      "algo parecido suave?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "no",
+        "por el momento",
+        "revis",
+        "parecid",
+        "opcion",
+        "opción",
+        "similar",
+        "trapillo"
+      ],
+      "must_not_contain_any": [
+        "sí manejamos abuelita",
+        "Abuelita x1",
+        "999 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00066_v41_no_manejado_recomendar_sin_inventar_tienes_c_digo_999_de_velluto",
+    "category": "v41_no_manejado_recomendar_sin_inventar",
+    "turns": [
+      "tienes código 999 de velluto?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "no",
+        "por el momento",
+        "revis",
+        "parecid",
+        "opcion",
+        "opción",
+        "similar",
+        "trapillo"
+      ],
+      "must_not_contain_any": [
+        "sí manejamos abuelita",
+        "Abuelita x1",
+        "999 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00067_v41_no_manejado_recomendar_sin_inventar_si_no_tienes_algo_similar",
+    "category": "v41_no_manejado_recomendar_sin_inventar",
+    "turns": [
+      "busco lana merino real",
+      "si no tienes algo similar"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "no",
+        "por el momento",
+        "revis",
+        "parecid",
+        "opcion",
+        "opción",
+        "similar",
+        "trapillo"
+      ],
+      "must_not_contain_any": [
+        "sí manejamos abuelita",
+        "Abuelita x1",
+        "999 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00068_v41_no_manejado_recomendar_sin_inventar_o_trapillo_kraft_si_tienes",
+    "category": "v41_no_manejado_recomendar_sin_inventar",
+    "turns": [
+      "quiero hilo para trapear jajaja",
+      "o trapillo kraft si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "no",
+        "por el momento",
+        "revis",
+        "parecid",
+        "opcion",
+        "opción",
+        "similar",
+        "trapillo"
+      ],
+      "must_not_contain_any": [
+        "sí manejamos abuelita",
+        "Abuelita x1",
+        "999 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00069_v41_accesorios_mm_bolsa_no_codigo_hilo_y_bolsa_de_100_cuanto",
+    "category": "v41_accesorios_mm_bolsa_no_codigo_hilo",
+    "turns": [
+      "tienes ojo de seguridad negro de 14 mm?",
+      "y bolsa de 100 cuanto?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_all": [
+        "ojo"
+      ],
+      "must_contain_any": [
+        "ojo",
+        "seguridad",
+        "100",
+        "manej",
+        "tenemos",
+        "revis",
+        "precio",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Komfy Mini",
+        "Si x5",
+        "4 x1",
+        "5 si",
+        "Velluto 14",
+        "Velluto 12"
+      ]
+    }
+  },
+  {
+    "case_id": "00070_v41_accesorios_mm_bolsa_no_codigo_hilo_si_hay_agregame_uno_de_cada",
+    "category": "v41_accesorios_mm_bolsa_no_codigo_hilo",
+    "turns": [
+      "ocupo ganchos 4.5 y 5",
+      "si hay agregame uno de cada"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_all": [
+        "gancho"
+      ],
+      "must_contain_any": [
+        "gancho",
+        "4.5",
+        "5",
+        "manej",
+        "tenemos",
+        "revis",
+        "precio",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Komfy Mini",
+        "Si x5",
+        "4 x1",
+        "5 si",
+        "Velluto 14",
+        "Velluto 12"
+      ]
+    }
+  },
+  {
+    "case_id": "00071_v41_accesorios_mm_bolsa_no_codigo_hilo_me_agregas_2_junto_con_5_del_55",
+    "category": "v41_accesorios_mm_bolsa_no_codigo_hilo",
+    "turns": [
+      "relleno medio kilo",
+      "me agregas 2 junto con 5 del 55"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_all": [
+        "relleno"
+      ],
+      "must_contain_any": [
+        "relleno",
+        "55",
+        "manej",
+        "tenemos",
+        "revis",
+        "precio",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Komfy Mini",
+        "Si x5",
+        "4 x1",
+        "5 si",
+        "Velluto 14",
+        "Velluto 12"
+      ]
+    }
+  },
+  {
+    "case_id": "00072_v41_accesorios_mm_bolsa_no_codigo_hilo_y_de_14mm_tambien",
+    "category": "v41_accesorios_mm_bolsa_no_codigo_hilo",
+    "turns": [
+      "me das precio de ojos 12mm",
+      "y de 14mm tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_all": [
+        "ojo"
+      ],
+      "must_contain_any": [
+        "ojo",
+        "seguridad",
+        "12",
+        "14",
+        "manej",
+        "tenemos",
+        "revis",
+        "precio",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Komfy Mini",
+        "Si x5",
+        "4 x1",
+        "5 si",
+        "Velluto 14",
+        "Velluto 12"
+      ]
+    }
+  },
+  {
+    "case_id": "00073_v41_accesorios_mm_bolsa_no_codigo_hilo_no_es_codigo_de_hilo_es_medida",
+    "category": "v41_accesorios_mm_bolsa_no_codigo_hilo",
+    "turns": [
+      "gancho del 4 y medio tienes?",
+      "no es codigo de hilo, es medida"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_all": [
+        "gancho"
+      ],
+      "must_contain_any": [
+        "gancho",
+        "4",
+        "medio",
+        "medida",
+        "manej",
+        "tenemos",
+        "revis",
+        "precio",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Komfy Mini",
+        "Si x5",
+        "4 x1",
+        "5 si",
+        "Velluto 14",
+        "Velluto 12"
+      ]
+    }
+  },
+  {
+    "case_id": "00074_v41_accesorios_mm_bolsa_no_codigo_hilo_para_amigurumi_chico",
+    "category": "v41_accesorios_mm_bolsa_no_codigo_hilo",
+    "turns": [
+      "quiero nariz flock y ojos negros",
+      "para amigurumi chico"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_all": [
+        "nariz"
+      ],
+      "must_contain_any": [
+        "nariz",
+        "ojo",
+        "amigurumi",
+        "manej",
+        "tenemos",
+        "revis",
+        "precio",
+        "agrego"
+      ],
+      "must_not_contain_any": [
+        "Komfy Mini",
+        "Si x5",
+        "4 x1",
+        "5 si",
+        "Velluto 14",
+        "Velluto 12"
+      ]
+    }
+  },
+  {
+    "case_id": "00075_v41_mensaje_largo_multiples_intenciones_hola_buen_dia_disculpa_tanta_molestia_quiero_hacer_un_pedido_pero_toda",
+    "category": "v41_mensaje_largo_multiples_intenciones",
+    "turns": [
+      "Hola buen dia, disculpa tanta molestia, quiero hacer un pedido pero todavía no sé si todo lo tienen, sería velluto 55 dos piezas, 60 tres, y si manejan relleno medio kilo agregame uno, tambien dime envio al 97000 porfa"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "komfy",
+        "relleno",
+        "ojo",
+        "seguridad",
+        "catalogo",
+        "catálogo",
+        "foto",
+        "cotiz",
+        "revis",
+        "total"
+      ],
+      "must_not_contain_any": [
+        "no me agregues x1",
+        "Molestia x1",
+        "Ayer x1",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00076_v41_mensaje_largo_multiples_intenciones_buenas_soy_nueva_comprando_quiero_hacer_amigurumis_algo_suave_que_no_s",
+    "category": "v41_mensaje_largo_multiples_intenciones",
+    "turns": [
+      "Buenas, soy nueva comprando, quiero hacer amigurumis, algo suave que no salga tan caro, y si tienes ojos de seguridad negros de 12mm dime cuánto sale bolsa de 100"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "komfy",
+        "relleno",
+        "ojo",
+        "seguridad",
+        "catalogo",
+        "catálogo",
+        "foto",
+        "cotiz",
+        "revis",
+        "total"
+      ],
+      "must_not_contain_any": [
+        "no me agregues x1",
+        "Molestia x1",
+        "Ayer x1",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00077_v41_mensaje_largo_multiples_intenciones_holaa_ayer_te_dije_que_queria_10_del_55_pero_mejor_quiero_5_del_55_5_d",
+    "category": "v41_mensaje_largo_multiples_intenciones",
+    "turns": [
+      "Holaa, ayer te dije que queria 10 del 55 pero mejor quiero 5 del 55, 5 del 60 y 2 komfy mini blanco, me confirmas total?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "komfy",
+        "relleno",
+        "ojo",
+        "seguridad",
+        "catalogo",
+        "catálogo",
+        "foto",
+        "cotiz",
+        "revis",
+        "total"
+      ],
+      "must_not_contain_any": [
+        "no me agregues x1",
+        "Molestia x1",
+        "Ayer x1",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00078_v41_mensaje_largo_multiples_intenciones_disculpa_te_paso_lista_velluto_55x2_60x2_429x2_komfy_mini_01x3_relleno",
+    "category": "v41_mensaje_largo_multiples_intenciones",
+    "turns": [
+      "Disculpa, te paso lista: velluto 55x2 60x2 429x2, komfy mini 01x3, relleno medio kilo 1, y no me apartes hasta que te pague"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "komfy",
+        "relleno",
+        "ojo",
+        "seguridad",
+        "catalogo",
+        "catálogo",
+        "foto",
+        "cotiz",
+        "revis",
+        "total"
+      ],
+      "must_not_contain_any": [
+        "no me agregues x1",
+        "Molestia x1",
+        "Ayer x1",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00079_v41_mensaje_largo_multiples_intenciones_buenos_d_as_nada_m_s_estoy_viendo_colores_no_me_agregues_todav_a_me_pu",
+    "category": "v41_mensaje_largo_multiples_intenciones",
+    "turns": [
+      "Buenos días, nada más estoy viendo colores, no me agregues todavía, me puedes mandar catálogo o fotos del velluto en tonos café?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "komfy",
+        "relleno",
+        "ojo",
+        "seguridad",
+        "catalogo",
+        "catálogo",
+        "foto",
+        "cotiz",
+        "revis",
+        "total"
+      ],
+      "must_not_contain_any": [
+        "no me agregues x1",
+        "Molestia x1",
+        "Ayer x1",
+        "apartado confirmado"
+      ]
+    }
+  },
+  {
+    "case_id": "00080_v41_hilo_conversacion_largo_cambia_contexto_cuanto_con_envio_al_97000",
+    "category": "v41_hilo_conversacion_largo_cambia_contexto",
+    "turns": [
+      "hola",
+      "quiero hacer pedido",
+      "velluto 55 x2",
+      "tambien komfy mini 99 x3",
+      "y relleno medio kilo",
+      "quita el komfy mejor",
+      "cuanto con envio al 97000"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "relleno",
+        "envio",
+        "97000",
+        "quita",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "Pedio",
+        "Baby Best 55 x2 si era velluto"
+      ]
+    }
+  },
+  {
+    "case_id": "00081_v41_hilo_conversacion_largo_cambia_contexto_me_pasas_total",
+    "category": "v41_hilo_conversacion_largo_cambia_contexto",
+    "turns": [
+      "buenas tardes",
+      "manejas karina?",
+      "que tienes de karina",
+      "ok dame komfy mini blanco 2",
+      "y ojos 12 mm bolsa",
+      "me pasas total"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "karina",
+        "komfy",
+        "blanco",
+        "ojo",
+        "12",
+        "total",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "Pedio",
+        "Baby Best 55 x2 si era velluto"
+      ]
+    }
+  },
+  {
+    "case_id": "00082_v41_hilo_conversacion_largo_cambia_contexto_mejora_precio_si_llevo_esos",
+    "category": "v41_hilo_conversacion_largo_cambia_contexto",
+    "turns": [
+      "oye",
+      "tienes velluto?",
+      "quiero 60 55 429",
+      "todos x2",
+      "mejora precio si llevo esos?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "60",
+        "55",
+        "429",
+        "2",
+        "precio",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "Pedio",
+        "Baby Best 55 x2 si era velluto"
+      ]
+    }
+  },
+  {
+    "case_id": "00083_v41_hilo_conversacion_largo_cambia_contexto_me_confirmas_piezas",
+    "category": "v41_hilo_conversacion_largo_cambia_contexto",
+    "turns": [
+      "hola",
+      "quiero baby best",
+      "2 del 55",
+      "perdon no baby, era velluto",
+      "entonces 2 del 55 velluto",
+      "me confirmas piezas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "2",
+        "confirm",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "Pedio",
+        "Baby Best 55 x2 si era velluto"
+      ]
+    }
+  },
+  {
+    "case_id": "00084_v41_numeros_ambiguos_no_tomar_como_codigo_tienes_ganchos_4_5_mm",
+    "category": "v41_numeros_ambiguos_no_tomar_como_codigo",
+    "turns": [
+      "tienes ganchos 4.5 mm?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "ojo",
+        "seguridad",
+        "cp",
+        "envio",
+        "envío",
+        "pago",
+        "revis",
+        "confirm",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "97000 x1",
+        "300 x1",
+        "15 x1",
+        "429 x1",
+        "60 x1",
+        "4 x1",
+        "14 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00085_v41_numeros_ambiguos_no_tomar_como_codigo_ojos_de_14_mm_en_bolsa_de_100",
+    "category": "v41_numeros_ambiguos_no_tomar_como_codigo",
+    "turns": [
+      "ojos de 14 mm en bolsa de 100"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "ojo",
+        "seguridad",
+        "cp",
+        "envio",
+        "envío",
+        "pago",
+        "revis",
+        "confirm",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "97000 x1",
+        "300 x1",
+        "15 x1",
+        "429 x1",
+        "60 x1",
+        "4 x1",
+        "14 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00086_v41_numeros_ambiguos_no_tomar_como_codigo_mi_cp_es_97000_no_es_codigo",
+    "category": "v41_numeros_ambiguos_no_tomar_como_codigo",
+    "turns": [
+      "mi cp es 97000, no es codigo"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "ojo",
+        "seguridad",
+        "cp",
+        "envio",
+        "envío",
+        "pago",
+        "revis",
+        "confirm",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "97000 x1",
+        "300 x1",
+        "15 x1",
+        "429 x1",
+        "60 x1",
+        "4 x1",
+        "14 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00087_v41_numeros_ambiguos_no_tomar_como_codigo_me_sale_300",
+    "category": "v41_numeros_ambiguos_no_tomar_como_codigo",
+    "turns": [
+      "me sale 300?"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "ojo",
+        "seguridad",
+        "cp",
+        "envio",
+        "envío",
+        "pago",
+        "revis",
+        "confirm",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "97000 x1",
+        "300 x1",
+        "15 x1",
+        "429 x1",
+        "60 x1",
+        "4 x1",
+        "14 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00088_v41_numeros_ambiguos_no_tomar_como_codigo_te_pago_el_15_en_la_noche",
+    "category": "v41_numeros_ambiguos_no_tomar_como_codigo",
+    "turns": [
+      "te pago el 15 en la noche"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "ojo",
+        "seguridad",
+        "cp",
+        "envio",
+        "envío",
+        "pago",
+        "revis",
+        "confirm",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "97000 x1",
+        "300 x1",
+        "15 x1",
+        "429 x1",
+        "60 x1",
+        "4 x1",
+        "14 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00089_v41_numeros_ambiguos_no_tomar_como_codigo_todav_a_no_hago_pedido",
+    "category": "v41_numeros_ambiguos_no_tomar_como_codigo",
+    "turns": [
+      "quiero envío a la calle 60 número 429",
+      "todavía no hago pedido"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "gancho",
+        "ojo",
+        "seguridad",
+        "cp",
+        "envio",
+        "envío",
+        "pago",
+        "revis",
+        "confirm",
+        "precio"
+      ],
+      "must_not_contain_any": [
+        "97000 x1",
+        "300 x1",
+        "15 x1",
+        "429 x1",
+        "60 x1",
+        "4 x1",
+        "14 x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00090_v41_confirmaciones_cortas_con_contexto_agregame_2",
+    "category": "v41_confirmaciones_cortas_con_contexto",
+    "turns": [
+      "tienes velluto 55?",
+      "si",
+      "agregame 2"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "si",
+        "sí",
+        "velluto",
+        "relleno",
+        "agrego",
+        "cotiz",
+        "55",
+        "60"
+      ],
+      "must_not_contain_any": [
+        "Si x1",
+        "Mira x1",
+        "Todo Velluto x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00091_v41_confirmaciones_cortas_con_contexto_55_60_429_todos_x1",
+    "category": "v41_confirmaciones_cortas_con_contexto",
+    "turns": [
+      "te paso lista?",
+      "si mira",
+      "55 60 429 todos x1"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "si",
+        "sí",
+        "velluto",
+        "relleno",
+        "agrego",
+        "cotiz",
+        "55",
+        "60"
+      ],
+      "must_not_contain_any": [
+        "Si x1",
+        "Mira x1",
+        "Todo Velluto x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00092_v41_confirmaciones_cortas_con_contexto_si_hay_agregame_uno",
+    "category": "v41_confirmaciones_cortas_con_contexto",
+    "turns": [
+      "hay relleno medio kilo?",
+      "si hay agregame uno"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "si",
+        "sí",
+        "velluto",
+        "relleno",
+        "agrego",
+        "cotiz",
+        "55",
+        "60"
+      ],
+      "must_not_contain_any": [
+        "Si x1",
+        "Mira x1",
+        "Todo Velluto x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00093_v41_confirmaciones_cortas_con_contexto_55_2_60_2",
+    "category": "v41_confirmaciones_cortas_con_contexto",
+    "turns": [
+      "me preguntaste si era velluto",
+      "si todo velluto",
+      "55 2 60 2"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "si",
+        "sí",
+        "velluto",
+        "relleno",
+        "agrego",
+        "cotiz",
+        "55",
+        "60"
+      ],
+      "must_not_contain_any": [
+        "Si x1",
+        "Mira x1",
+        "Todo Velluto x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00094_v41_mensaje_incompleto_no_cotizar_",
+    "category": "v41_mensaje_incompleto_no_cotizar",
+    "turns": [
+      "🤔"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "con gusto",
+        "cuando guste",
+        "escrib",
+        "duda",
+        "pedido",
+        "atiendo"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true,
+      "must_not_contain_any": [
+        "x1",
+        "le cotizo",
+        "total:"
+      ]
+    }
+  },
+  {
+    "case_id": "00095_v41_mensaje_incompleto_no_cotizar_audio",
+    "category": "v41_mensaje_incompleto_no_cotizar",
+    "turns": [
+      "audio"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "con gusto",
+        "cuando guste",
+        "escrib",
+        "duda",
+        "pedido",
+        "atiendo"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true,
+      "must_not_contain_any": [
+        "x1",
+        "le cotizo",
+        "total:"
+      ]
+    }
+  },
+  {
+    "case_id": "00096_v41_mensaje_incompleto_no_cotizar_te_mando_nota_de_voz",
+    "category": "v41_mensaje_incompleto_no_cotizar",
+    "turns": [
+      "te mando nota de voz"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "con gusto",
+        "cuando guste",
+        "escrib",
+        "duda",
+        "pedido",
+        "atiendo"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true,
+      "must_not_contain_any": [
+        "x1",
+        "le cotizo",
+        "total:"
+      ]
+    }
+  },
+  {
+    "case_id": "00097_v41_mensaje_incompleto_no_cotizar_",
+    "category": "v41_mensaje_incompleto_no_cotizar",
+    "turns": [
+      "???"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "con gusto",
+        "cuando guste",
+        "escrib",
+        "duda",
+        "pedido",
+        "atiendo"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true,
+      "must_not_contain_any": [
+        "x1",
+        "le cotizo",
+        "total:"
+      ]
+    }
+  },
+  {
+    "case_id": "00098_v41_mensaje_incompleto_no_cotizar_mira",
+    "category": "v41_mensaje_incompleto_no_cotizar",
+    "turns": [
+      "mira"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "con gusto",
+        "cuando guste",
+        "escrib",
+        "duda",
+        "pedido",
+        "atiendo"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true,
+      "must_not_contain_any": [
+        "x1",
+        "le cotizo",
+        "total:"
+      ]
+    }
+  },
+  {
+    "case_id": "00099_v41_mensaje_incompleto_no_cotizar_perame",
+    "category": "v41_mensaje_incompleto_no_cotizar",
+    "turns": [
+      "perame"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "claro",
+        "con gusto",
+        "cuando guste",
+        "escrib",
+        "duda",
+        "pedido",
+        "atiendo"
+      ],
+      "expected_no_pedidos": true,
+      "should_wait_for_more": true,
+      "must_not_contain_any": [
+        "x1",
+        "le cotizo",
+        "total:"
+      ]
+    }
+  },
+  {
+    "case_id": "00100_v41_variaciones_dificiles_generadas_el_primero_5_y_el_segundo_2",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero confi mini",
+      "1\n99",
+      "el primero 5 y el segundo 2"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00101_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 1 velluto codigo 55, y 3 codigo 60",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00102_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "belluto: 60-2; 429-4",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00103_v41_variaciones_dificiles_generadas_veluto_55_tres_y_429_cinco",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "veluto 55 tres y 429 cinco"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00104_v41_variaciones_dificiles_generadas_y_uno_del_99_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones cuatro del 01",
+      "y uno del 99 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00105_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "1x5 99x2 de confi mini",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00106_v41_variaciones_dificiles_generadas_el_primero_1_y_el_segundo_3",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero velluto",
+      "55\n60",
+      "el primero 1 y el segundo 3"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00107_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 2 belluto codigo 60, y 4 codigo 429",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00108_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "veluto: 55-3; 429-5",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00109_v41_variaciones_dificiles_generadas_komfy_mini_01_cuatro_y_99_uno",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "komfy mini 01 cuatro y 99 uno"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00110_v41_variaciones_dificiles_generadas_y_dos_del_99_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones cinco del 1",
+      "y dos del 99 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00111_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "55x1 60x3 de velluto",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00112_v41_variaciones_dificiles_generadas_el_primero_2_y_el_segundo_4",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero belluto",
+      "60\n429",
+      "el primero 2 y el segundo 4"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00113_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 3 veluto codigo 55, y 5 codigo 429",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00114_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "komfy mini: 01-4; 99-1",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00115_v41_variaciones_dificiles_generadas_confi_mini_1_cinco_y_99_dos",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "confi mini 1 cinco y 99 dos"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00116_v41_variaciones_dificiles_generadas_y_tres_del_60_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones uno del 55",
+      "y tres del 60 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00117_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "60x2 429x4 de belluto",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00118_v41_variaciones_dificiles_generadas_el_primero_3_y_el_segundo_5",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero veluto",
+      "55\n429",
+      "el primero 3 y el segundo 5"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00119_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 4 komfy mini codigo 01, y 1 codigo 99",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00120_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "confi mini: 1-5; 99-2",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00121_v41_variaciones_dificiles_generadas_velluto_55_uno_y_60_tres",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "velluto 55 uno y 60 tres"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00122_v41_variaciones_dificiles_generadas_y_cuatro_del_429_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones dos del 60",
+      "y cuatro del 429 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00123_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "55x3 429x5 de veluto",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00124_v41_variaciones_dificiles_generadas_el_primero_4_y_el_segundo_1",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero komfy mini",
+      "01\n99",
+      "el primero 4 y el segundo 1"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00125_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 5 confi mini codigo 1, y 2 codigo 99",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00126_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "velluto: 55-1; 60-3",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00127_v41_variaciones_dificiles_generadas_belluto_60_dos_y_429_cuatro",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "belluto 60 dos y 429 cuatro"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00128_v41_variaciones_dificiles_generadas_y_cinco_del_429_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones tres del 55",
+      "y cinco del 429 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00129_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "01x4 99x1 de komfy mini",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00130_v41_variaciones_dificiles_generadas_el_primero_5_y_el_segundo_2",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero confi mini",
+      "1\n99",
+      "el primero 5 y el segundo 2"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00131_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 1 velluto codigo 55, y 3 codigo 60",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00132_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "belluto: 60-2; 429-4",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00133_v41_variaciones_dificiles_generadas_veluto_55_tres_y_429_cinco",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "veluto 55 tres y 429 cinco"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00134_v41_variaciones_dificiles_generadas_y_uno_del_99_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones cuatro del 01",
+      "y uno del 99 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00135_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "1x5 99x2 de confi mini",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00136_v41_variaciones_dificiles_generadas_el_primero_1_y_el_segundo_3",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero velluto",
+      "55\n60",
+      "el primero 1 y el segundo 3"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00137_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 2 belluto codigo 60, y 4 codigo 429",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00138_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "veluto: 55-3; 429-5",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00139_v41_variaciones_dificiles_generadas_komfy_mini_01_cuatro_y_99_uno",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "komfy mini 01 cuatro y 99 uno"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00140_v41_variaciones_dificiles_generadas_y_dos_del_99_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones cinco del 1",
+      "y dos del 99 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00141_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "55x1 60x3 de velluto",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00142_v41_variaciones_dificiles_generadas_el_primero_2_y_el_segundo_4",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero belluto",
+      "60\n429",
+      "el primero 2 y el segundo 4"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00143_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 3 veluto codigo 55, y 5 codigo 429",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00144_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "komfy mini: 01-4; 99-1",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00145_v41_variaciones_dificiles_generadas_confi_mini_1_cinco_y_99_dos",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "confi mini 1 cinco y 99 dos"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00146_v41_variaciones_dificiles_generadas_y_tres_del_60_tambien",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buenas",
+      "me pones uno del 55",
+      "y tres del 60 tambien"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "velluto",
+        "55",
+        "60",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00147_v41_variaciones_dificiles_generadas_mas_un_relleno_si_tienes",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "pedido",
+      "60x2 429x4 de belluto",
+      "mas un relleno si tienes"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "belluto",
+        "60",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00148_v41_variaciones_dificiles_generadas_el_primero_3_y_el_segundo_5",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "oye",
+      "quiero veluto",
+      "55\n429",
+      "el primero 3 y el segundo 5"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "veluto",
+        "55",
+        "429",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00149_v41_variaciones_dificiles_generadas_no_es_cp",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "hola",
+      "cotizame 4 komfy mini codigo 01, y 1 codigo 99",
+      "no es cp"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "komfy",
+        "01",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  },
+  {
+    "case_id": "00150_v41_variaciones_dificiles_generadas_si_no_hay_me_avisas",
+    "category": "v41_variaciones_dificiles_generadas",
+    "turns": [
+      "buen dia",
+      "confi mini: 1-5; 99-2",
+      "si no hay me avisas"
+    ],
+    "expect": {
+      "scope": "all",
+      "must_contain_any": [
+        "confi",
+        "1",
+        "99",
+        "cotiz",
+        "agrego",
+        "revis"
+      ],
+      "must_not_contain_any": [
+        "Pregunta x1",
+        "codigo no es cp x1"
+      ]
+    }
+  }
+]

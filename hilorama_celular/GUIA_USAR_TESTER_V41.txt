@@ -1,0 +1,25 @@
+GUIA RAPIDA PARA USAR V41
+
+1) Descomprime este ZIP.
+2) Copia la carpeta hilorama_celular encima de tu carpeta actual del proyecto.
+3) Acepta reemplazar archivos.
+4) Prueba primero local:
+
+cd C:\Users\jorge\OneDrive\Escritorio\Hilorama
+python hilorama_celular/tools/whatsapp_ia_human_tester_v41.py --base-url http://127.0.0.1:5000 --pin TU_PIN --limit 30 --sleep 0.2
+
+5) Si funciona, prueba 80, 120 y 150.
+6) Si ya te gusta, sube a GitHub:
+
+git status
+git add .
+git commit -m "Agrega tester dificil WhatsApp IA V41"
+git push origin main
+
+Si tu rama es master:
+
+git push origin master
+
+7) Después de Render:
+
+python hilorama_celular/tools/whatsapp_ia_human_tester_v41.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 150 --sleep 0.3
