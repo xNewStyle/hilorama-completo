@@ -1,0 +1,22 @@
+GUÍA RÁPIDA PARA SUBIR V40 A RENDER
+
+1) Descomprime este ZIP.
+2) Copia la carpeta hilorama_celular encima de tu carpeta actual dentro de:
+   C:\Users\jorge\OneDrive\Escritorio\Hilorama
+
+3) En PowerShell:
+   cd C:\Users\jorge\OneDrive\Escritorio\Hilorama
+   git status
+   git add .
+   git commit -m "Fix WhatsApp IA V40 ojos seguridad y ganchos"
+   git push origin main
+
+Si tu rama es master:
+   git push origin master
+
+4) Espera el deploy de Render.
+5) Prueba:
+   python hilorama_celular/tools/whatsapp_ia_human_tester_v40.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 50 --sleep 0.2
+
+6) Abre reportes:
+   explorer .\wa_tester_reports

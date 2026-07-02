@@ -364,6 +364,35 @@ def _es_consulta_accesorio(texto):
     )
 
 
+def _memoria_habla_de_accesorio(memoria=None):
+    """V40: detecta si el último contexto era accesorio, aunque el mensaje actual solo diga
+    'del 4.5', 'bolsa de 100' o 'cuánto'. Evita convertir medidas en códigos de hilo.
+    """
+    mem = memoria or {}
+    campos = [
+        mem.get("ultima_respuesta_enviada") or "",
+        mem.get("ultima_pregunta_hecha") or "",
+        mem.get("hilo_actual") or "",
+        mem.get("marca_actual") or "",
+    ]
+    t = _norm(" ".join(str(x) for x in campos if x))
+    return bool(re.search(r"\b(relleno|ojo|ojos|seguridad|gancho|ganchos|aguja|agujas|crochet|ganchillo|aluminio|bolsa)\b", t))
+
+
+def _consulta_seguimiento_accesorio(texto, memoria=None):
+    """Seguimientos como 'y bolsa de 100 cuánto' o 'ocupo del 4.5 y del 5'."""
+    t = _norm(texto)
+    if re.search(r"\b(ojo|ojos|seguridad|gancho|ganchos|aguja|agujas|relleno|bolsa|paquete|mm|aluminio)\b", t):
+        return True
+    if not _memoria_habla_de_accesorio(memoria):
+        return False
+    return bool(
+        re.search(r"\b(?:del|de)\s*\d+(?:\.\d+)?\b", t)
+        or re.search(r"\b\d+(?:\.\d+)?\s*(?:mm|piezas|pz|bolsa|paquete)\b", t)
+        or re.search(r"\b(cuanto|precio|cuesta|sale|vale|hay|tienes|tiene|manejas|manejan|necesito|ocupo)\b", t)
+    )
+
+
 def _pide_colores_disponibles(texto):
     t = _norm(texto)
     return bool(re.search(r"\b(colores|tonos|disponibles|stock|existencia|existencias)\b", t))
@@ -469,6 +498,10 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         estado = "esperando_cp"
     elif re.search(r"\b(descuento|rebaja|mejor\s+precio|mejora(?:r|me|s)?\s+(?:el\s+)?precio|mejorarme\s+precio|mejoras\s+precio|precio\s+especial|precio\s+final|menos\s+precio|bajar(?:le)?|ajustar\s+precio)\b", texto):
         principal = "decision_comercial"
+    elif _consulta_seguimiento_accesorio(texto, memoria):
+        # V40: no tratar medidas o bolsas de accesorios como códigos de hilo.
+        principal = "pregunta_precio" if re.search(r"\b(precio|cuanto|cuesta|costo|vale|sale)\b", texto) else "catalogo_general"
+        secundaria = "accesorio_especifico"
     elif _es_consulta_accesorio(texto):
         principal = "catalogo_general"
         secundaria = "accesorio_especifico"
@@ -528,6 +561,10 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
 def _parece_lista_o_pedido(texto, memoria=None):
     t = _norm(texto)
     if _es_saludo_simple(t) or _es_consulta_catalogo_general(t) or _es_consulta_recomendacion(t):
+        return False
+    # V40: si venimos hablando de accesorios, frases como
+    # "ocupo del 4.5 y del 5" son medidas, no códigos de hilos.
+    if _consulta_seguimiento_accesorio(t, memoria) and re.search(r"\b(?:del|de)\s*\d+(?:\.\d+)?\b|\b\d+(?:\.\d+)?\s*mm\b", t):
         return False
     if re.search(r"\b\d{1,3}\s*(?:del|de|codigo|cod|tono)\s*\d{1,4}\b", t):
         return True
@@ -665,6 +702,15 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     texto_sin_totales = _quitar_totales_y_cp(texto)
     items = []
+
+    # V40: medidas de accesorios no se extraen como productos inventados/códigos.
+    if intencion.get("secundaria") == "accesorio_especifico" and _consulta_seguimiento_accesorio(texto, (contexto or {}).get("memoria_previa") or {}):
+        return {
+            "items": [],
+            "cp": intencion.get("cp") or "",
+            "total_esperado": intencion.get("total_esperado"),
+            "texto_sin_totales": texto_sin_totales,
+        }
 
     # 5 del 55, 10 de 60, dos del 55, cinco del 60
     qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta"
@@ -807,6 +853,9 @@ def _limpiar_desc_color(desc):
 
 def _debe_tomar_codigos_sueltos(texto, intencion, contexto, items_count, nums_count):
     t = _norm(texto)
+    mem = (contexto or {}).get("memoria_previa") or {}
+    if _consulta_seguimiento_accesorio(t, mem):
+        return False
     if re.search(r"\b(ojo|ojos|seguridad|gancho|ganchos|aguja|agujas|relleno|bolsa|paquete)\b", t) and re.search(r"\b\d+(?:\.\d+)?\s*(?:mm|piezas|pz|bolsa)\b", t):
         return False
     if intencion["principal"] == "pide_foto_tono":
@@ -1575,6 +1624,10 @@ def _respuesta_accesorio_especifico(texto, productos, incluir_precio=False):
             if extra:
                 linea += " (" + ", ".join(extra) + ")"
             lineas.append(linea)
+        if re.search(r"\b(ojo|ojos|seguridad)\b", t):
+            return f"Sí {EMOJI_OK} manejamos ojos de seguridad: " + "; ".join(lineas) + ". ¿Cuántas piezas necesita?"
+        if re.search(r"\b(gancho|ganchos|aguja|agujas|crochet|aluminio)\b", t):
+            return f"Sí {EMOJI_OK} manejamos ganchos/agujas: " + "; ".join(lineas) + ". ¿Cuántas piezas necesita?"
         return f"Sí {EMOJI_OK} manejamos " + "; ".join(lineas) + ". ¿Cuántas piezas necesita?"
     if re.search(r"\brelleno\b", t):
         return f"Sí {EMOJI_OK} manejamos relleno para amigurumi. Le reviso presentación, precio y stock disponible. ¿Lo busca por pieza o por paquete?"
@@ -1663,6 +1716,19 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     resp_total = _respuesta_validacion_total(normalizado, intencion, contexto)
     if resp_total:
         return resp_total
+
+    # V40: seguimiento de accesorios. Ej.: después de "ganchos de aluminio",
+    # "ocupo del 4.5 y del 5" debe responder sobre ganchos, no cotizar "Si x5".
+    if intencion.get("secundaria") == "accesorio_especifico" or _consulta_seguimiento_accesorio(texto, (contexto or {}).get("memoria_previa") or {}):
+        mem = (contexto or {}).get("memoria_previa") or {}
+        texto_acc = _texto_accesorio_con_memoria(texto, mem)
+        resp_acc = _respuesta_accesorio_especifico(texto_acc, productos, incluir_precio=bool(re.search(r"\b(precio|cuanto|cuesta|costo|vale|sale)\b", texto)))
+        if resp_acc:
+            return resp_acc
+        if re.search(r"\b(gancho|ganchos|aguja|agujas|aluminio)\b", _norm(texto_acc)):
+            return f"Sí {EMOJI_OK} le reviso ganchos/agujas en esas medidas y le confirmo stock disponible."
+        if re.search(r"\b(ojo|ojos|seguridad)\b", _norm(texto_acc)):
+            return f"Sí {EMOJI_OK} le reviso ojos de seguridad en esa medida y le confirmo precio y stock."
 
     if principal == "decision_comercial" and intencion.get("secundaria") == "promesa_pago_futuro":
         return f"Claro {EMOJI_OK} lo reviso en su cotización y le confirmo disponibilidad. Cuando realice el pago me manda su comprobante, por favor."
@@ -1771,12 +1837,27 @@ def _primer_codigo(texto):
     return m.group(0) if m else ""
 
 
+def _texto_accesorio_con_memoria(texto, memoria=None):
+    mem = memoria or {}
+    prev = _norm(" ".join([str(mem.get("ultima_respuesta_enviada") or ""), str(mem.get("ultima_pregunta_hecha") or ""), str(mem.get("hilo_actual") or "")]))
+    claves = []
+    # No reutilizamos toda la respuesta previa porque trae precios/stock y esos números
+    # pueden contaminar la búsqueda; solo conservamos el tipo de accesorio.
+    if re.search(r"\b(relleno|delcron|guata)\b", prev):
+        claves.append("relleno")
+    if re.search(r"\b(ojo|ojos|seguridad)\b", prev):
+        claves.append("ojo seguridad")
+    if re.search(r"\b(gancho|ganchos|aguja|agujas|crochet|aluminio)\b", prev):
+        claves.append("gancho aluminio")
+    return _compact(" ".join(claves + [str(texto or "")]))
+
+
 def _respuesta_precio(contexto, productos):
     hilo = contexto.get("hilo_actual") or ""
     if not hilo:
         mem = contexto.get("memoria_previa") or {}
         prev = _norm(mem.get("ultima_respuesta_enviada") or "")
-        if any(x in prev for x in ("relleno", "ojo", "ojos", "gancho", "agujas")):
+        if any(x in prev for x in ("relleno", "ojo", "ojos", "seguridad", "gancho", "ganchos", "agujas")):
             resp_acc = _respuesta_accesorio_especifico(prev, productos, incluir_precio=True)
             if resp_acc:
                 return resp_acc
@@ -2117,7 +2198,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v39_motor_conversacional",
+            "motor": "v40_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -2166,7 +2247,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v39_motor_conversacional",
+        "motor": "v40_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
