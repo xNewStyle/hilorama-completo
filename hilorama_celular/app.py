@@ -11601,7 +11601,7 @@ app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v22
 
 
 # ==========================================================
-# V24 - Envia.com SOLO COTIZACION DE ENVIOS (NO GENERA GUIAS)
+# V24/V47 - Envia.com SOLO COTIZACION DE ENVIOS (NO GENERA GUIAS)
 # ==========================================================
 # Seguridad: este bloque NUNCA llama /ship/generate/. Solo consulta /ship/rate/.
 # Sirve para que el agente WhatsApp IA responda costos reales por CP sin inventar.
@@ -11664,8 +11664,22 @@ def _envia_v24_config():
         'origin_name': (os.environ.get('ENVIA_ORIGIN_NAME') or 'Hilorama').strip(),
         'origin_phone': (os.environ.get('ENVIA_ORIGIN_PHONE') or '+520000000000').strip(),
         'origin_street': (os.environ.get('ENVIA_ORIGIN_STREET') or 'Origen Hilorama').strip(),
+        # V47: estructura oficial similar al ejemplo enviado por soporte de Envia.com.
+        'origin_number': (os.environ.get('ENVIA_ORIGIN_NUMBER') or 'S/N').strip(),
+        'origin_company': (os.environ.get('ENVIA_ORIGIN_COMPANY') or os.environ.get('ENVIA_ORIGIN_NAME') or 'Hilorama').strip(),
+        'origin_email': (os.environ.get('ENVIA_ORIGIN_EMAIL') or 'no-reply@hilorama.com').strip(),
+        'origin_district': (os.environ.get('ENVIA_ORIGIN_DISTRICT') or 'Centro').strip(),
+        'origin_category': _envia_v24_int_env('ENVIA_ORIGIN_CATEGORY', 1),
         'origin_city': (os.environ.get('ENVIA_ORIGIN_CITY') or '').strip(),
         'origin_state': (os.environ.get('ENVIA_ORIGIN_STATE') or '').strip(),
+        'destination_number': (os.environ.get('ENVIA_DESTINATION_NUMBER') or 'S/N').strip(),
+        'destination_company': (os.environ.get('ENVIA_DESTINATION_COMPANY') or 'Cliente').strip(),
+        'destination_name': (os.environ.get('ENVIA_DESTINATION_NAME') or 'Cliente Hilorama').strip(),
+        'destination_email': (os.environ.get('ENVIA_DESTINATION_EMAIL') or 'cliente@correo.com').strip(),
+        'destination_phone': (os.environ.get('ENVIA_DESTINATION_PHONE') or '8181818111').strip(),
+        'destination_street': (os.environ.get('ENVIA_DESTINATION_STREET') or 'Por confirmar').strip(),
+        'destination_district': (os.environ.get('ENVIA_DESTINATION_DISTRICT') or 'Centro').strip(),
+        'destination_category': _envia_v24_int_env('ENVIA_DESTINATION_CATEGORY', 1),
         'weight_kg': _envia_v24_float_env('ENVIA_DEFAULT_WEIGHT_KG', 1),
         'length_cm': _envia_v24_float_env('ENVIA_DEFAULT_LENGTH_CM', 30),
         'width_cm': _envia_v24_float_env('ENVIA_DEFAULT_WIDTH_CM', 25),
@@ -11692,7 +11706,12 @@ def _envia_v24_http_json(method, url, payload=None, token=None, timeout=18):
     import urllib.error
     import urllib.parse
     body = None
-    headers = {'Content-Type': 'application/json'}
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        # V47: algunos 403/1010 pueden venir de reglas WAF/Cloudflare ante User-Agent vacío de urllib.
+        'User-Agent': os.environ.get('ENVIA_USER_AGENT') or 'Hilorama/1.0 Render Cotizacion Envia',
+    }
     if token:
         headers['Authorization'] = f'Bearer {token}'
     if payload is not None:
@@ -11796,8 +11815,9 @@ def _envia_v24_package(piezas=None, peso_kg=None, largo_cm=None, ancho_cm=None, 
     alto = float(alto_cm or cfg['height_cm'] or 20)
     return {
         'type': 'box',
-        'content': 'Hilos y estambres',
+        'content': os.environ.get('ENVIA_PACKAGE_CONTENT', 'hilos y estambres'),
         'amount': 1,
+        'name': os.environ.get('ENVIA_PACKAGE_NAME', 'paquete hilos'),
         'declaredValue': float(cfg['declared_value'] or 1000),
         'lengthUnit': 'CM',
         'weightUnit': 'KG',
@@ -11977,7 +11997,10 @@ def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, an
         # Errores solo para diagnostico interno/API, no para respuesta pública.
         'errores': errores[:10],
     }
-    _envia_v24_cache_set(cache_key, cp_destino, {'base': base_req, 'carriers': carriers}, resp)
+    # V47: NO cachear errores 403/1010 ni respuestas sin tarifas. Antes se guardaban fallos por 24h
+    # y parecía que Envia seguía fallando aunque ya se hubiera corregido token/payload.
+    if opciones:
+        _envia_v24_cache_set(cache_key, cp_destino, {'base': base_req, 'carriers': carriers}, resp)
     return resp
 
 
@@ -12277,29 +12300,56 @@ def _envia_v24_geocode_zip(country, cp):
     return {'city': 'Ciudad', 'state': '', 'locality': '', 'source': 'fallback_no_geocode'}
 
 
+def _envia_v47_phone_10(phone):
+    """Envia.com normalmente espera teléfono nacional de 10 dígitos, sin +52."""
+    digits = re.sub(r'\D+', '', str(phone or ''))
+    if digits.startswith('52') and len(digits) > 10:
+        digits = digits[2:]
+    if len(digits) > 10:
+        digits = digits[-10:]
+    return digits or '8181818111'
+
+
 def _envia_v24_address(cp, tipo='destination', nombre='Cliente'):
     cfg = _envia_v24_config()
     country = cfg['origin_country'] or 'MX'
     cp = re.sub(r'\D+', '', str(cp or ''))
     geo = _envia_v24_geocode_zip(country, cp)
+    city = geo.get('city') or 'Ciudad'
+    state = _envia_v25_state_code(geo.get('state') or '')
+    district = geo.get('locality') or 'Centro'
     if tipo == 'origin':
         return {
-            'name': cfg['origin_name'] or 'Hilorama',
-            'phone': cfg['origin_phone'] or '+520000000000',
-            'street': cfg['origin_street'] or 'Origen Hilorama',
-            'city': cfg['origin_city'] or geo.get('city') or 'Ciudad',
-            'state': _envia_v25_state_code(cfg['origin_state'] or geo.get('state') or ''),
-            'country': country,
+            'number': cfg.get('origin_number') or 'S/N',
             'postalCode': cp,
+            'type': 'origin',
+            'company': cfg.get('origin_company') or cfg.get('origin_name') or 'Hilorama',
+            'name': cfg.get('origin_name') or 'Hilorama',
+            'email': cfg.get('origin_email') or 'no-reply@hilorama.com',
+            'phone': _envia_v47_phone_10(cfg.get('origin_phone') or '8181818111'),
+            'country': country,
+            'phone_code': country,
+            'street': cfg.get('origin_street') or 'Origen Hilorama',
+            'district': cfg.get('origin_district') or district or 'Centro',
+            'city': cfg.get('origin_city') or city,
+            'state': _envia_v25_state_code(cfg.get('origin_state') or state),
+            'category': int(cfg.get('origin_category') or 1),
         }
     return {
-        'name': nombre or 'Cliente Hilorama',
-        'phone': os.environ.get('ENVIA_DESTINATION_PHONE', '+520000000000'),
-        'street': os.environ.get('ENVIA_DESTINATION_STREET', 'Por confirmar'),
-        'city': geo.get('city') or 'Ciudad',
-        'state': _envia_v25_state_code(geo.get('state') or ''),
-        'country': country,
+        'number': cfg.get('destination_number') or 'S/N',
         'postalCode': cp,
+        'type': 'destination',
+        'company': cfg.get('destination_company') or 'Cliente',
+        'name': nombre or cfg.get('destination_name') or 'Cliente Hilorama',
+        'email': cfg.get('destination_email') or 'cliente@correo.com',
+        'phone': _envia_v47_phone_10(cfg.get('destination_phone') or '8181818111'),
+        'country': country,
+        'phone_code': country,
+        'street': cfg.get('destination_street') or 'Por confirmar',
+        'district': cfg.get('destination_district') or district or 'Centro',
+        'city': city,
+        'state': state,
+        'category': int(cfg.get('destination_category') or 1),
     }
 
 
@@ -12307,7 +12357,7 @@ def _envia_v24_cache_key(cp_destino, paquete, carriers):
     # Cambiamos version para no reutilizar errores/cache de V24 donde fallaba Geocodes.
     cfg = _envia_v24_config()
     base = {
-        'version': 'v25_cp_offline',
+        'version': 'v47_payload_oficial_envia',
         'env': cfg.get('env'),
         'origin_zip': cfg.get('origin_zip'),
         'origin_state': cfg.get('origin_state'),
@@ -12331,6 +12381,42 @@ def api_envios_debug_direccion_v25():
         'destination': _envia_v24_address(cp, 'destination'),
         'carriers': _envia_v24_carriers(),
         'nota': 'No se muestra ENVIA_TOKEN. Este endpoint solo ayuda a revisar ciudad/estado/CP.',
+    }))
+
+
+@app.route('/api/envios/debug-payload', methods=['GET'])
+def api_envios_debug_payload_v47():
+    """Muestra el payload exacto que se mandaría a Envia sin exponer el token."""
+    cp = request.args.get('cp') or request.args.get('cp_destino') or '64600'
+    carrier = re.sub(r'\s+', '', (request.args.get('carrier') or 'dhl').strip().lower()) or 'dhl'
+    cfg = _envia_v24_config()
+    paquete = _envia_v24_package(
+        piezas=request.args.get('piezas'),
+        peso_kg=request.args.get('peso_kg') or request.args.get('peso'),
+        largo_cm=request.args.get('largo_cm') or request.args.get('largo'),
+        ancho_cm=request.args.get('ancho_cm') or request.args.get('ancho'),
+        alto_cm=request.args.get('alto_cm') or request.args.get('alto'),
+    )
+    payload = {
+        'origin': _envia_v24_address(cfg.get('origin_zip'), 'origin'),
+        'destination': _envia_v24_address(cp, 'destination'),
+        'packages': [paquete],
+        'settings': {'currency': cfg.get('currency') or 'MXN'},
+        'shipment': {'type': 1, 'carrier': carrier},
+    }
+    return jsonify(json_safe({
+        'ok': True,
+        'modo': 'V47_DEBUG_PAYLOAD_NO_GUIAS_NO_TOKEN',
+        'endpoint': cfg.get('api_base', '').rstrip('/') + '/ship/rate/',
+        'env': cfg.get('env'),
+        'authorization': 'Bearer TOKEN_OCULTO' if cfg.get('token') else 'SIN_TOKEN_CONFIGURADO',
+        'headers_sin_token': {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': os.environ.get('ENVIA_USER_AGENT') or 'Hilorama/1.0 Render Cotizacion Envia',
+        },
+        'payload': payload,
+        'nota': 'Este endpoint solo muestra el payload. No cobra, no genera guia y no llama /ship/generate/.',
     }))
 
 
@@ -13157,7 +13243,37 @@ def whatsapp_ia_simular_v27():
             'v28': resultado,
         }))
     except Exception as exc:
-        print('WARN v27 motor conversacional, se usa respaldo v26:', exc, flush=True)
+        print('WARN v27 motor conversacional:', exc, flush=True)
+        try:
+            data_err = request.get_json(silent=True) or {}
+            tester_mode_err = bool(data_err.get('tester_mode') or data_err.get('dry_run') or data_err.get('modo_tester'))
+            if tester_mode_err:
+                return jsonify(json_safe({
+                    'ok': False,
+                    'tester_mode': True,
+                    'dry_run': True,
+                    'conversacion_id': data_err.get('conversacion_id') or 'TEST-DRY-RUN',
+                    'motor': 'v48_tester_error_seguro',
+                    'mensaje_cliente': (data_err.get('texto') or ''),
+                    'mensaje_parser': (data_err.get('texto') or ''),
+                    'respuesta_sugerida': 'Tuve un error al revisar ese mensaje. Lo paso a revisión para no inventar información.',
+                    'intencion': 'revision_humana',
+                    'confianza': 'baja',
+                    'accion_recomendada': 'revision_humana',
+                    'puede_auto_enviar': False,
+                    'requiere_humano': True,
+                    'pedidos': [],
+                    'preguntas': [],
+                    'errores': [str(exc)],
+                    'advertencias': ['error_controlado_tester'],
+                    'parser': {'ok': False, 'pedidos': [], 'preguntas': [], 'errores': [str(exc)]},
+                    'memoria_usada': data_err.get('memoria') or {},
+                    'memoria_actual': data_err.get('memoria') or {},
+                    'whatsapp_export': {'es_export': False, 'telefono': data_err.get('telefono') or '', 'texto_cliente': data_err.get('texto') or ''},
+                    'v30': {'ok': False, 'error': str(exc)},
+                })), 200
+        except Exception:
+            pass
         if _wa_v27_view_anterior:
             return _wa_v27_view_anterior()
         raise

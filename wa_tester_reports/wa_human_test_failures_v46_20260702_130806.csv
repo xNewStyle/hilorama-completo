@@ -1,0 +1,9 @@
+case_id,category,reasons,turns,final_response,intencion,confianza,accion
+00002_v46_larga_pregunta_codigo_suelto_no_pedido_gracias_y_el_429,v46_larga_pregunta_codigo_suelto_no_pedido,no debía detectar/agregar pedidos en este caso,"ola buen dia || manejas veluto? || me mandas la carta de colores? || gracias, y el 429?","Sí 😊 el Velluto 429 Tabaco Claro me aparece disponible, stock 110. Está en $59.99. ¿Le mando foto o cuántas piezas le agrego?",duda_general,baja,preguntar
+00015_v46_real_foto_tono_contexto_tienes_imagen_del_60,v46_real_foto_tono_contexto,no debía detectar/agregar pedidos en este caso,"holaaa buenas || manejas el velluto de alize? || mmm no me encantaron esos tonos, tienes otros mas claritos? || tienes imagen del 60?","Claro 😊 le comparto la foto del tono Velluto 60.
+📎 Recurso para enviar: Foto tono Velluto 60
+/static/recursos_ia/Velluto Colores/60.webp",pide_foto_tono,alta,sugerir_respuesta
+00019_v46_real_foto_tono_contexto_me_mandas_foto_del_429_antes_de_pedir,v46_real_foto_tono_contexto,no debía detectar/agregar pedidos en este caso,"oye una pregunta || manejas el velluto de alize? || que bien, me podria mandar el catalogo por favor? || busco algo para peluche, no quiero que quede duro || me mandas foto del 429 antes de pedir?","Claro 😊 le comparto la foto del tono Velluto 429.
+📎 Recurso para enviar: Foto tono Velluto 429
+/static/recursos_ia/Velluto Colores/429.webp",pide_foto_tono,alta,sugerir_respuesta
+00024_v46_real_codigo_invalido_no_inventar_tendras_el_4299_o_sera_429,v46_real_codigo_invalido_no_inventar,EXCEPTION: El servidor no regresó tester_mode=true. Deteniendo para no guardar datos falsos.,"hola buenas noches || vendes belluto? || me puedes pasar la carta de colores? || mmm no me encantaron esos tonos, tienes otros mas claritos? || tendras el 4299 o sera 429?",,,,

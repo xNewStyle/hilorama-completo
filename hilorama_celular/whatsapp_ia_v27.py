@@ -432,7 +432,7 @@ def _hay_color_en_texto(texto):
 def _codigo_contextual_desde_texto(texto):
     """Extrae un código/tono en preguntas humanas de seguimiento.
     Ejemplos: "429", "el 429", "color 429", "qué color es el 429",
-    "stock del 429", "el 429 cuanto sale".
+    "stock del 429", "gracias, y el 429", "el 429 cuanto sale".
     """
     t = _norm(texto)
     if _detectar_cp(t):
@@ -440,16 +440,24 @@ def _codigo_contextual_desde_texto(texto):
     # No tomar cantidades explícitas como código único.
     if re.search(r"\b\d{1,3}\s*(?:piezas|madejas|pz|pzas)\b", t):
         return ""
+    # Quitar relleno típico de WhatsApp sin perder el código.
+    t2 = re.sub(r"\b(gracias|ok|okay|va|sale|perfecto|bueno|entonces|y|tambien|también|por\s+favor|porfa)\b", " ", t)
+    t2 = re.sub(r"\s+", " ", t2).strip()
     pats = [
         r"\b(?:que\s+color\s+es\s+)?(?:el\s+)?(?:color|tono|codigo|cod)\s*#?(\d{1,4})\b",
         r"\b(?:stock|existencia|disponible|hay|tienes|tiene|manejas|me\s+dices|me\s+puede\s+decir|cuanto|precio|cuesta|sale|vale)\s+(?:del|de|el)?\s*#?(\d{1,4})\b",
         r"\b(?:el|del)\s*#?(\d{1,4})\s*(?:cuanto|precio|cuesta|sale|vale|hay|tienes|color|tono)?\b",
         r"^#?(\d{1,4})$",
     ]
-    for pat in pats:
-        m = re.search(pat, t)
-        if m:
-            return m.group(1).lstrip("0") or m.group(1)
+    for texto_busca in (t, t2):
+        for pat in pats:
+            m = re.search(pat, texto_busca)
+            if m:
+                return m.group(1).lstrip("0") or m.group(1)
+    # Último recurso: si sólo queda un número y hay contexto, úsalo como código informativo.
+    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", t2)
+    if len(nums) == 1 and re.search(r"\b(el|del|tono|color|codigo|cod|gracias|y)\b", t):
+        return nums[0].lstrip("0") or nums[0]
     return ""
 
 
@@ -507,14 +515,27 @@ def _es_consulta_recomendacion(texto):
         return False
     return bool(
         re.search(r"\b(recomienda|recomiendas|recomendacion|conviene|sirve\s+para|cual\s+me\s+sirve|que\s+hilo\s+uso|que\s+hilo\s+me\s+conviene)\b", t)
-        or re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos)\b", t)
-        or re.search(r"\b(tipo\s+chenille|chenille|suave|barato|economico|económico|no\s+salga\s+tan\s+caro)\b", t)
+        or re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos|peluche|elefante|oso|conejo)\b", t)
+        or re.search(r"\b(tipo\s+chenille|chenille|suave|barato|economico|económico|no\s+salga\s+tan\s+caro|no\s+quede\s+duro|quede\s+duro|duro|esponjoso|rellenito)\b", t)
+        or re.search(r"\b(busco\s+algo\s+para|algo\s+para\s+(?:peluche|amigurumi|muñeco|muneco))\b", t)
+    )
+
+
+def _es_consulta_tonos_variantes(texto):
+    """Seguimientos humanos sobre tonos/colores: no son pedidos aunque haya contexto de hilo."""
+    t = _norm(texto)
+    if _es_saludo_simple(t):
+        return False
+    return bool(
+        re.search(r"\b(?:no\s+me\s+(?:gustan|gustaron|encantan|encantaron)|no\s+me\s+convencen|no\s+me\s+latieron)\b.*\b(?:tono|tonos|color|colores)\b", t)
+        or re.search(r"\b(?:tienes|tendras|hay|manejas|muestras|muestro|me\s+muestras)\b.*\b(?:otros|otras|mas\s+claritos|claritos|claras|claros|oscuros|pastel|vivos)\b", t)
+        or re.search(r"\b(?:otros|otras)\s+(?:tonos|colores)\b", t)
     )
 
 
 def _es_pedido_real_por_texto(texto):
     t = _norm(texto)
-    if _es_saludo_simple(t) or _es_consulta_catalogo_general(t) or _es_consulta_recomendacion(t):
+    if _es_saludo_simple(t) or _es_consulta_catalogo_general(t) or _es_consulta_tonos_variantes(t) or _es_consulta_recomendacion(t):
         return False
     if re.search(r"\b(cotiza|cotizar|pedido|lista|poner|agregar|quiero|ocupo|necesito|dame|deme|ponme)\b", t):
         # Recomendaciones tipo "quiero hacer amigurumis" no son pedido de producto.
@@ -568,12 +589,15 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         secundaria = "accesorio_especifico"
     elif _es_consulta_catalogo_general(texto):
         principal = "catalogo_general"
+    elif _es_consulta_tonos_variantes(texto):
+        principal = "consulta_stock"
+        secundaria = "tonos_variantes"
     elif _es_consulta_recomendacion(texto):
         principal = "recomendacion_producto"
     elif _es_solicitud_foto_tono(texto):
         principal = "pide_foto_tono"
     elif (memoria or {}).get("hilo_actual") and _codigo_contextual_desde_texto(texto) and _es_pregunta_info_codigo(texto) and not _es_pedido_cantidad_codigo_texto(texto) and str((memoria or {}).get("estado_actual") or "") not in ("esperando_lista_de_colores", "preparando_cotizacion"):
-        if re.search(r"(cuanto|precio|cuesta|sale|vale)", texto):
+        if re.search(r"\b(cuanto|precio|cuesta|sale|vale)\b", texto):
             principal = "pregunta_precio"
             secundaria = "codigo_contextual"
         else:
@@ -794,8 +818,17 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             "texto_sin_totales": texto_sin_totales,
         }
 
-    # V46: consultas de información sobre un código/tono no son pedidos.
-    if intencion.get("principal") in ("consulta_stock", "pregunta_precio", "duda_general") and intencion.get("secundaria") == "codigo_contextual" and not _es_pedido_cantidad_codigo_texto(texto):
+    # V46/V48: consultas de información sobre un código/tono no son pedidos.
+    if (
+        intencion.get("principal") in ("consulta_stock", "pregunta_precio", "duda_general", "recomendacion_producto")
+        and (
+            intencion.get("secundaria") in ("codigo_contextual", "tonos_variantes")
+            or (_codigo_contextual_desde_texto(texto) and (contexto or {}).get("hilo_actual"))
+            or _es_consulta_tonos_variantes(texto)
+            or _es_consulta_recomendacion(texto)
+        )
+        and not _es_pedido_cantidad_codigo_texto(texto)
+    ):
         return {
             "items": [],
             "cp": intencion.get("cp") or "",
@@ -2106,7 +2139,7 @@ def _producto_por_codigo_contexto(productos, contexto, codigo):
         if str(p.get("codigo") or "").strip().lstrip("0") == codigo:
             return p
     # Luego fallback global.
-    for p in products or []:
+    for p in productos or []:
         if str(p.get("codigo") or "").strip().lstrip("0") == codigo:
             return p
     return None
@@ -2118,6 +2151,28 @@ def _respuesta_codigo_contextual(texto, contexto, productos, modo="stock"):
         return ""
     hilo = contexto.get("hilo_actual") or ""
     nombre = _hilo_display(hilo) if hilo else ""
+    # Si la clienta compara códigos: "4299 o será 429", no inventar.
+    nums = []
+    for n in re.findall(r"(?<!\d)\d{1,4}(?!\d)", _norm(texto)):
+        nn = n.lstrip("0") or n
+        if nn not in nums:
+            nums.append(nn)
+    if len(nums) >= 2 and re.search(r"\b(o|sera|seria|será|sería|mejor)\b", _norm(texto)):
+        encontrados = []
+        faltantes = []
+        for n in nums[:4]:
+            pp = _producto_por_codigo_contexto(productos, contexto, n)
+            if pp:
+                encontrados.append(pp)
+            else:
+                faltantes.append(n)
+        partes = []
+        if faltantes:
+            partes.append("No me aparece el código " + ", ".join(faltantes) + (f" en {nombre}" if nombre else ""))
+        if encontrados:
+            partes.append("Sí ubico " + "; ".join(_linea_producto(pp) for pp in encontrados))
+        if partes:
+            return f"{EMOJI_OK} " + ". ".join(partes) + ". ¿Me confirma cuál tono desea revisar?"
     p = _producto_por_codigo_contexto(productos, contexto, codigo)
     # Si no encontramos el código exacto, respondemos sin inventar.
     if not p:
@@ -2137,7 +2192,7 @@ def _respuesta_codigo_contextual(texto, contexto, productos, modo="stock"):
         return f"Claro {EMOJI_OK} le comparto la foto del tono {linea}."
     if stock > 0:
         precio_txt = f" Está en ${precio:,.2f}." if precio > 0 else ""
-        return f"Sí {EMOJI_OK} el {linea} me aparece disponible, stock {stock}.{precio_txt} ¿Le mando foto o cuántas piezas le agrego?"
+        return f"Sí {EMOJI_OK} el {linea} me aparece disponible, stock {stock}.{precio_txt} ¿Le mando foto o desea que lo agregue a una cotización?"
     return f"El {linea} sí lo ubico, pero por el momento no me aparece stock disponible {EMOJI_SAD}. ¿Le muestro un tono parecido?"
 
 def _color_compatible_con_solicitud(color_producto, color_solicitado):
@@ -2463,7 +2518,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v46_motor_conversacional",
+            "motor": "v48_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -2512,7 +2567,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v46_motor_conversacional",
+        "motor": "v48_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
