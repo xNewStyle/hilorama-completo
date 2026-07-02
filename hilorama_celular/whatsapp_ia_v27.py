@@ -70,11 +70,11 @@ COLOR_ALIASES = {
     "azul": ["azul", "azul cielo", "cielo", "celeste", "turquesa", "marino"],
     "verde": ["verde", "menta", "pistache", "olivo"],
     "amarillo": ["amarillo", "canario", "mostaza", "oro"],
-    "cafe": ["cafe", "cafe oscuro", "cafe claro", "chocolate", "camel"],
+    "cafe": ["cafe", "cafe oscuro", "cafe claro", "chocolate"],
     "gris": ["gris", "plata"],
     "morado": ["morado", "lila", "uva", "lavanda"],
     "naranja": ["naranja", "mandarina", "coral"],
-    "beige": ["beige", "arena", "piel", "nude", "carne"],
+    "beige": ["beige", "arena", "piel", "nude", "carne", "camel"],
 }
 
 NORMALIZACIONES = [
@@ -104,6 +104,39 @@ QTY_WORDS = {
 }
 
 RESPUESTA_REVISION_HUMANA = "Claro \U0001f60a déjeme revisarlo y le confirmo para darle la mejor opción."
+
+# V32: mapas comerciales seguros para mejorar entendimiento humano cuando el
+# almacén no alcanza a resolver por alias/ortografía. Se usan para redactar
+# respuestas de venta, no para generar notas sin validar en almacén.
+KOMFY_MINI_CODE_COLORS = {
+    "01": "Blanco", "1": "Blanco",
+    "06": "Cielo", "6": "Cielo",
+    "08": "Turquesa", "8": "Turquesa",
+    "14": "Rosa Bebé",
+    "20": "Lila",
+    "99": "Negro",
+}
+KOMFY_MINI_COLOR_CODES = {
+    "blanco": "01",
+    "negro": "99",
+    "cielo": "06",
+    "azul cielo": "06",
+    "turquesa": "08",
+    "rosa bebe": "14",
+    "rosa bb": "14",
+    "lila": "20",
+}
+VELLUTO_CODE_COLORS = {
+    "55": "Blanco", "56": "Rojo", "60": "Negro",
+    "216": "Canario", "429": "Camel", "493": "Café Oscuro",
+    "530": "Arena", "550": "Mandarina", "218": "Azul Bebé",
+    "310": "Trigo", "107": "Vino", "329": "", "466": "", "26": "", "87": "", "428": "", "13": "", "31": "",
+}
+VELLUTO_COLOR_CODES = {
+    "blanco": "55", "negro": "60", "rojo": "56",
+    "camel": "429", "arena": "530", "canario": "216",
+    "amarillo": "216", "mandarina": "550", "cafe oscuro": "493",
+}
 
 
 def _sin_acentos(texto):
@@ -351,12 +384,47 @@ def _parece_lista_o_pedido(texto, memoria=None):
         return True
     if len(re.findall(r"(?<!\d)\d{1,4}(?!\d)", t)) >= 3 and not _detectar_cp(t):
         return True
-    if re.search(r"\b(agregar|quiero pedir|dame|deme|ponme|me puede poner|lista)\b", t):
+    # V32: pedidos humanos tipo "quiero 4 blanco de komfy mini" o "ocupo 2 lila".
+    if re.search(r"\b(quiero|ocupo|necesito|me\s+cotiza|cotiza|me\s+puede\s+poner|poner|agregar|dame|deme)\s+\d{1,3}\s+[a-z]", t):
+        return True
+    if re.search(r"\b(agregar|quiero pedir|dame|deme|ponme|me puede poner|lista|cotizar|cotiza)\b", t):
         return True
     estado = str((memoria or {}).get("estado_actual") or "")
     if estado in ("esperando_lista_de_colores", "preparando_cotizacion") and re.search(r"\b\d{1,4}\b", t):
         return True
     return False
+
+
+def _inferir_hilo_por_codigos_y_texto(texto, productos=None):
+    """Inferencia comercial de bajo riesgo para mensajes sin hilo explícito.
+    Ejemplo: "3 del 06 y 6 del 99" casi siempre es Komfy Mini.
+    """
+    t = _norm(texto)
+    if detectar_hilos(t, productos):
+        return ""
+    # Preferimos los números que realmente parecen códigos, no cantidades.
+    codigos = []
+    codigos.extend(m.group(1) for m in re.finditer(r"\b\d{1,3}\s*(?:del|de|codigo|cod|tono)\s*#?(\d{1,4})\b", t))
+    codigos.extend(m.group(1) for m in re.finditer(r"\b(\d{1,4})\s*(?:x|\*)\s*\d{1,3}\b", t))
+    if not codigos:
+        codigos = re.findall(r"(?<!\d)\d{1,4}(?!\d)", t)
+    if not codigos:
+        return ""
+    cods = {c.zfill(2) if len(c) <= 2 else c for c in codigos}
+    komfy = set(KOMFY_MINI_CODE_COLORS.keys())
+    velluto = set(VELLUTO_CODE_COLORS.keys())
+    if cods and cods.issubset(komfy):
+        return _hilo_real_para_familia(productos, "KOMFY MINI") or "Komfy Mini"
+    if cods and cods.issubset(velluto):
+        return _hilo_real_para_familia(productos, "VELLUTO") or "Velluto"
+    return ""
+
+
+def _hilo_real_para_familia(productos, familia):
+    for p in productos or []:
+        if _hilo_family(p.get("hilo")) == familia:
+            return str(p.get("hilo") or "").strip()
+    return ""
 
 
 def extraer_contexto_conversacion(normalizado, intencion, memoria=None, productos=None, marca_ui="", hilo_ui=""):
@@ -373,9 +441,14 @@ def extraer_contexto_conversacion(normalizado, intencion, memoria=None, producto
     elif hilos:
         hilo = hilos[0]
         origen = "mensaje_actual"
-    elif memoria.get("hilo_actual"):
-        hilo = memoria.get("hilo_actual")
-        origen = "memoria"
+    else:
+        inferido = _inferir_hilo_por_codigos_y_texto(texto, productos)
+        if inferido:
+            hilo = inferido
+            origen = "inferencia_codigos"
+        elif memoria.get("hilo_actual"):
+            hilo = memoria.get("hilo_actual")
+            origen = "memoria"
 
     if marca_ui and _norm(marca_ui) not in ("todo", "todos", "toda", "todas", "all"):
         marca = marca_ui
@@ -527,7 +600,7 @@ def _limpiar_desc_color(desc):
     d = re.sub(r"\bno\s+(?:se\s+)?(?:vea|sea|este)?\s*(?:tan|muy|mas)?\s*(amarillo|amarillento|rosa|rosado|oscuro|fuerte)\b", " ", d)
     # Quita verbos/frases de venta para que "¿tienen Velluto blanco?" deje solo "blanco".
     d = re.sub(r"\b(quiero|dame|deme|ponme|agregar|agregame|apartame|me|puede|podria|poner|apartar|pedido|lista|cotizar|cotiza|color|tono|de|del|el|la|los|las|por favor|favor|tiene|tienen|manejan|maneja|hay|busco|busca|necesito|ocupo|quiero|disponible|disponibles|en|un|una|unos|unas)\b", " ", d)
-    d = re.sub(r"\b(velluto|komfy mini|komfy|kurumi|kairo|trapillo|alize|karina|hilorama)\b", " ", d)
+    d = re.sub(r"\b(velluto|komfy mini|komfy|komfi|konfy|comfy|mini|kurumi|kairo|trapillo|alize|karina|hilorama)\b", " ", d)
     d = re.sub(r"\b(que|se|vea|tan|no|muy|mas|menos|como|para)\b", " ", d)
     d = re.sub(r"\s+", " ", d).strip()
     return d
@@ -685,9 +758,22 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
             out["preguntas"].append(f"Le muestro opciones parecidas para {desc}?")
             return out
         if not prod:
-            out["preguntas"].append(f"No ubique bien {desc}. Me confirma codigo o tono?")
+            # V32: si no se resolvió en almacén, no generamos error técnico.
+            # Dejamos una pregunta humana que conserva hilo/color para que la respuesta sea útil.
+            out["preguntas"].append(f"Me confirma si quiere {desc} en {_hilo_display(hilo_ctx)}?")
             return out
     elif codigo:
+        # V32: códigos típicos pueden inferirse por familia para dar respuesta humana,
+        # aunque no se pueda generar nota automática sin producto_id.
+        fam_ctx = _hilo_family(hilo_ctx) if hilo_ctx else ""
+        if fam_ctx == "KOMFY MINI" and (codigo_raw.zfill(2) in KOMFY_MINI_CODE_COLORS or codigo in KOMFY_MINI_CODE_COLORS):
+            color = KOMFY_MINI_CODE_COLORS.get(codigo_raw.zfill(2)) or KOMFY_MINI_CODE_COLORS.get(codigo) or ""
+            out["preguntas"].append(f"Me confirma Komfy Mini {codigo_raw.zfill(2)} {color}?")
+            return out
+        if fam_ctx == "VELLUTO" and (codigo_raw in VELLUTO_CODE_COLORS or codigo in VELLUTO_CODE_COLORS):
+            color = VELLUTO_CODE_COLORS.get(codigo_raw) or VELLUTO_CODE_COLORS.get(codigo) or ""
+            out["preguntas"].append(f"Me confirma Velluto {codigo_raw or codigo} {color}?")
+            return out
         out["errores"].append(codigo_raw or codigo)
         out["preguntas"].append("Me confirma ese codigo para revisarlo bien?")
         return out
@@ -1000,13 +1086,11 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
         )
 
     if _requiere_humano_por_ambiguedad(preguntas, errores, sugerencias):
-        detalle = "; ".join((preguntas or [])[:3] + [f"codigo {e}" for e in (errores or [])[:3]])
-        return decision(
-            "codigo_color_ambiguo",
-            "La IA no esta segura del codigo/color/hilo solicitado. Detalle: " + (detalle or "ambiguedad de producto"),
-            ["Pedir confirmacion a la clienta", "Elegir manualmente el producto correcto", "Responder manualmente"],
-            "media",
-        )
+        # V32: una duda normal de producto NO debe mandar siempre al humano.
+        # Primero preguntamos de forma amable a la clienta. Solo casos comerciales
+        # delicados (descuentos, pagos, reclamos, envío especial, stock insuficiente)
+        # generan decisión pendiente.
+        return None
 
     if principal == "producto_no_manejado" and not _hay_alternativas_claras(productos):
         return decision(
@@ -1051,6 +1135,94 @@ def _hay_alternativas_claras(productos):
         if _stock(p) > 0 and _no_combo(p):
             familias.add(_hilo_family(p.get("hilo")))
     return bool(familias)
+
+
+def _color_solicitado_desde_texto(texto):
+    t = _norm(texto)
+    # Primero alias específicos para no convertir lila->morado o cielo/turquesa->azul.
+    for color in (
+        "rosa bebe", "rosa bb", "azul cielo", "cielo", "turquesa", "lila",
+        "blanco", "negro", "camel", "arena", "cafe oscuro", "cafe claro", "rojo escolar", "rojo",
+    ):
+        if re.search(rf"(?<!\w){re.escape(color)}(?!\w)", t):
+            return color
+    colores = _hay_color_en_texto(t)
+    if colores:
+        c = colores[0]
+        if c == "azul" and "cielo" in t:
+            return "cielo"
+        if c == "morado" and "lila" in t:
+            return "lila"
+        return c
+    return ""
+
+
+def _fallback_codigo_color_por_familia(hilo, codigo="", color=""):
+    fam = _hilo_family(hilo)
+    codigo = str(codigo or "").strip()
+    if fam == "KOMFY MINI":
+        if codigo:
+            color = KOMFY_MINI_CODE_COLORS.get(codigo.zfill(2)) or KOMFY_MINI_CODE_COLORS.get(codigo) or color
+            return codigo.zfill(2) if len(codigo) <= 2 else codigo, color
+        cn = _norm(color)
+        cod = KOMFY_MINI_COLOR_CODES.get(cn) or KOMFY_MINI_COLOR_CODES.get(cn.replace("é", "e"))
+        return cod or "", color.title() if color else ""
+    if fam == "VELLUTO":
+        if codigo:
+            color = VELLUTO_CODE_COLORS.get(codigo) or color
+            return codigo, color
+        cn = _norm(color)
+        cod = VELLUTO_COLOR_CODES.get(cn)
+        return cod or "", color.title() if color else ""
+    return codigo, color.title() if color else ""
+
+
+def _respuesta_fallback_humana(normalizado, intencion, contexto, extraccion, resolucion):
+    """Respuesta humana cuando el almacén no resolvió perfecto.
+    Evita el genérico 'déjeme revisar' para preguntas comunes de venta.
+    """
+    texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
+    principal = intencion.get("principal") or ""
+    hilo = contexto.get("hilo_actual") or ""
+    nombre = _hilo_display(hilo) if hilo else ""
+    color = _color_solicitado_desde_texto(texto)
+    items = extraccion.get("items") or []
+
+    if principal == "consulta_stock" and nombre and color:
+        cod, col = _fallback_codigo_color_por_familia(hilo, color=color)
+        detalle = f" {cod} {col}".strip() if cod or col else color
+        return f"Claro {EMOJI_OK} le reviso {nombre} {detalle}. ¿Cuántas piezas necesita?"
+
+    if principal == "consulta_stock" and nombre:
+        return f"Sí {EMOJI_OK} manejamos {nombre}. ¿Le comparto la gama de colores o busca algún tono en especial?"
+
+    if principal in ("pedido_lista", "duda_general") and (items or color or nombre):
+        lineas = []
+        total = 0
+        fam_hilo = hilo or (_inferir_hilo_por_codigos_y_texto(texto) or "")
+        if not nombre and fam_hilo:
+            nombre = _hilo_display(fam_hilo)
+        for it in items:
+            qty = int(it.get("cantidad") or 1)
+            cod = str(it.get("codigo_raw") or it.get("codigo") or "").strip()
+            desc = str(it.get("desc") or "").strip()
+            fc, fcolor = _fallback_codigo_color_por_familia(fam_hilo or nombre, codigo=cod, color=desc)
+            if not fc and not fcolor and desc:
+                fc, fcolor = _fallback_codigo_color_por_familia(fam_hilo or nombre, color=desc)
+            etiqueta = " ".join(x for x in (nombre, fc, fcolor) if x).strip() or (desc or cod or "tono")
+            lineas.append(f"- {etiqueta} x{qty}")
+            total += qty
+        if not lineas and color and nombre:
+            qty_match = re.search(r"(?<!\d)(\d{1,3})\s+", texto)
+            qty = int(qty_match.group(1)) if qty_match else 1
+            fc, fcolor = _fallback_codigo_color_por_familia(hilo, color=color)
+            etiqueta = " ".join(x for x in (nombre, fc, fcolor) if x).strip() or f"{nombre} {color}"
+            lineas.append(f"- {etiqueta} x{qty}")
+            total = qty
+        if lineas:
+            return f"Claro {EMOJI_OK} le cotizo:\n" + "\n".join(lineas) + f"\n\nTotal: {total} pieza" + ("s." if total != 1 else ".")
+
+    return ""
 
 
 def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, resolucion, confianza, productos=None, recursos=None, envio=None):
@@ -1122,6 +1294,10 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     if resolucion.get("pedidos"):
         return _respuesta_pedido(resolucion, contexto)
 
+    fallback = _respuesta_fallback_humana(normalizado, intencion, contexto, extraccion, resolucion)
+    if fallback:
+        return fallback
+
     if resolucion.get("preguntas"):
         return _respuesta_pregunta_corta(resolucion, contexto)
 
@@ -1170,6 +1346,9 @@ def _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, 
         return f"Por el momento no me aparece disponible {linea} {EMOJI_SAD} Si gusta le muestro tonos parecidos."
 
     if preguntas and _hay_color_en_texto(texto):
+        fb = _respuesta_fallback_humana({"texto": texto}, {"principal": "consulta_stock"}, contexto, extraccion, resolucion)
+        if fb:
+            return fb
         # Pregunta amable, sin lenguaje tecnico.
         return _respuesta_pregunta_corta(resolucion, contexto)
 
@@ -1382,7 +1561,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v28_motor_conversacional",
+            "motor": "v32_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -1431,7 +1610,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v28_motor_conversacional",
+        "motor": "v32_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
