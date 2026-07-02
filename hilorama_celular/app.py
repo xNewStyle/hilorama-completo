@@ -12068,3 +12068,306 @@ def api_envios_debug_direccion_v25():
         'nota': 'No se muestra ENVIA_TOKEN. Este endpoint solo ayuda a revisar ciudad/estado/CP.',
     }))
 
+
+# -----------------------------------------------------------------------------
+# V26 - Entendimiento conversacional: pausas humanas + cantidades "5 del 55"
+# -----------------------------------------------------------------------------
+# Corrige casos reales de WhatsApp donde la clienta escribe por partes:
+#   "hola buenas tardes quiero cotizar un pedido de velluto son 15 madejas"
+#   "5 del 55 y 10 del 60"
+# El agente debe seguir el hilo de Velluto, ignorar el total "15 madejas" como
+# código, y entender "5 del 55" = cantidad 5 del código 55.
+
+WA_V26_BUFFER_SECONDS = int(os.environ.get('WA_MESSAGE_BUFFER_SECONDS', '35') or '35')
+WA_V26_CONTEXT_STRONG_MINUTES = int(os.environ.get('WA_CONTEXT_STRONG_MINUTES', '30') or '30')
+
+try:
+    _wa_v26_linea_anterior
+except NameError:
+    _wa_v26_linea_anterior = _wa_v17_linea_a_item
+
+try:
+    _wa_v26_extraer_anterior
+except NameError:
+    _wa_v26_extraer_anterior = _wa_v17_extraer_items_lista
+
+
+def _wa_v26_norm(v):
+    try:
+        return _wa_v22_norm(v or '')
+    except Exception:
+        return re.sub(r'\s+', ' ', str(v or '').lower()).strip()
+
+
+def _wa_v26_limpiar_intro_pedido(texto):
+    """Quita cortesía/encabezados sin borrar los items reales."""
+    s = str(texto or '').replace('×', 'x').replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s).strip(' ,.;')
+    # Quitar saludos y frases de intención, pero conservar lo que viene después.
+    s = re.sub(r'^(?:hola|ola|buen\s+dia|buen\s+día|buenas\s+tardes|buenas\s+noches|buenos\s+dias|buenos\s+días)\b\s*,?\s*', '', s, flags=re.I).strip()
+    s = re.sub(r'^(?:quiero|quisiera|me\s+gustaria|me\s+gustaría|podria|podría|me\s+puede)\s+', '', s, flags=re.I).strip()
+    return s
+
+
+def _wa_v26_items_cantidad_del_codigo(texto):
+    """Detecta expresiones humanas: 5 del 55, 10 de 60, 3 piezas del código 429."""
+    raw = str(texto or '').strip()
+    if not raw:
+        return []
+    s = raw.replace('×', 'x').replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s)
+    # Evitar que totales como "son 15 madejas" se traten como producto.
+    s = re.sub(r'\b(?:son|serian|serían|seria|sería|total(?:es)?)\s+\d{1,3}\s*(?:madejas?|piezas?|pzas?|pz)\b', ' ', s, flags=re.I)
+    s = re.sub(r'\b\d{1,3}\s*(?:madejas?|piezas?|pzas?|pz)\s+en\s+total\b', ' ', s, flags=re.I)
+
+    items = []
+    # 5 del 55 / 10 de 60 / 3 piezas del codigo 429 / 2 pzas tono 56
+    pat = re.compile(
+        r'(?<!\d)(\d{1,3})\s*'
+        r'(?:pzas?|piezas?|madejas?|unidades?)?\s*'
+        r'(?:del|de\s+el|de|codigo|código|cod|tono|color)\s*'
+        r'(?:#|n[uú]m(?:ero)?\.?\s*)?'
+        r'(\d{1,4})(?!\d)',
+        flags=re.I
+    )
+    for m in pat.finditer(s):
+        qty = int(m.group(1))
+        code_raw = m.group(2)
+        # Si accidentalmente el "código" parece CP largo, no tomarlo. Aquí ya limitamos a 4.
+        if qty <= 0:
+            continue
+        items.append({
+            'codigo': code_raw.lstrip('0') or code_raw,
+            'codigo_raw': code_raw,
+            'cantidad': qty,
+            'desc': '',
+            'raw': m.group(0).strip(),
+            'fuente': 'v26_cantidad_del_codigo',
+        })
+    return items
+
+
+def _wa_v26_items_codigo_con_cantidad_contextual(texto):
+    """Detecta: del 55 quiero 5, código 60 serían 10. Menos común, pero útil."""
+    raw = str(texto or '').strip()
+    if not raw:
+        return []
+    s = raw.replace('×', 'x').replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s)
+    items = []
+    pat = re.compile(
+        r'(?:del|de\s+el|de|codigo|código|cod|tono|color)\s*(\d{1,4})\s*'
+        r'(?:quiero|deme|dame|ponme|agregue|agrega|serian|serían|son)?\s*'
+        r'(\d{1,3})\s*(?:pzas?|piezas?|madejas?|unidades?)?\b',
+        flags=re.I
+    )
+    for m in pat.finditer(s):
+        code_raw = m.group(1)
+        qty = int(m.group(2))
+        if qty <= 0:
+            continue
+        items.append({
+            'codigo': code_raw.lstrip('0') or code_raw,
+            'codigo_raw': code_raw,
+            'cantidad': qty,
+            'desc': '',
+            'raw': m.group(0).strip(),
+            'fuente': 'v26_codigo_cantidad_contextual',
+        })
+    return items
+
+
+def _wa_v26_dedup_items(items):
+    out = []
+    seen = set()
+    for it in items or []:
+        key = (str(it.get('codigo_raw') or it.get('codigo') or ''), int(it.get('cantidad') or 1), _wa_v26_norm(it.get('raw') or ''))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(it)
+    return out
+
+
+def _wa_v17_linea_a_item(linea):
+    """V26: agrega lectura humana de cantidad antes del código."""
+    raw = str(linea or '').strip()
+    if not raw:
+        return []
+
+    # Primero detectar expresiones inequívocas de cantidad + código.
+    items = _wa_v26_items_cantidad_del_codigo(raw) + _wa_v26_items_codigo_con_cantidad_contextual(raw)
+    if items:
+        return _wa_v26_dedup_items(items)
+
+    # Si no es ese caso, usar todo lo anterior.
+    try:
+        return _wa_v26_linea_anterior(linea)
+    except Exception:
+        return []
+
+
+def _wa_v17_extraer_items_lista(texto_cliente):
+    """V26: una frase completa también puede contener lista/pedido."""
+    texto = str(texto_cliente or '').strip()
+    if not texto:
+        return [], False
+
+    # Caso prioritario: pedido humano en una sola frase o en mensaje separado.
+    items_humanos = []
+    for bloque in re.split(r'[\n,;]+', texto):
+        items_humanos.extend(_wa_v26_items_cantidad_del_codigo(bloque))
+        items_humanos.extend(_wa_v26_items_codigo_con_cantidad_contextual(bloque))
+    # También revisar el texto completo para frases con "y": 5 del 55 y 10 del 60.
+    items_humanos.extend(_wa_v26_items_cantidad_del_codigo(texto))
+    items_humanos.extend(_wa_v26_items_codigo_con_cantidad_contextual(texto))
+    items_humanos = _wa_v26_dedup_items(items_humanos)
+
+    if items_humanos:
+        t = _wa_v26_norm(texto)
+        # Si se detectó qty+codigo, es pedido aunque no diga "lista".
+        es_pedido = True
+        # Evitar confundir preguntas tipo "foto del 55" (no debería entrar porque no hay qty antes), por seguridad.
+        if re.search(r'\b(foto|imagen|mostrar|muestra|ver|enseñar|ensena|enseña)\b', t) and not re.search(r'\b(quiero|deme|dame|ponme|agregar|agregue|cotizar|pedido|surtir|surte)\b', t):
+            es_pedido = False
+        if es_pedido:
+            return items_humanos, True
+
+    try:
+        return _wa_v26_extraer_anterior(texto_cliente)
+    except Exception:
+        return [], False
+
+
+def _wa_v26_es_mensaje_preparatorio(texto):
+    """Mensajes humanos que abren una intención pero todavía no traen productos."""
+    t = _wa_v26_norm(texto)
+    if not t:
+        return False
+    if _wa_v17_extraer_items_lista(texto)[0]:
+        return False
+    return bool(re.search(r'\b(quiero|quisiera|me\s+gustaria|me\s+gustaría|voy\s+a|le\s+paso|mando|mandar|pasar|cotizar|cotizacion|cotización|pedido|lista)\b', t))
+
+
+def _wa_v26_respuesta_preparatoria(texto, memoria):
+    t = _wa_v26_norm(texto)
+    hilo = (memoria or {}).get('hilo_actual') or (memoria or {}).get('ultimo_hilo') or ''
+    if 'velluto' in t:
+        hilo = 'VELLUTO'
+    elif 'komfy' in t or 'konfy' in t or 'comfy' in t:
+        hilo = 'KOMFY MINI'
+    if hilo:
+        return f"Claro 😊 mándeme la lista cuando guste y se la cotizo en {hilo}."
+    return "Claro 😊 mándeme la lista cuando guste y se la cotizo."
+
+
+_wa_v26_view_anterior = app.view_functions.get('whatsapp_ia_simular')
+
+
+def whatsapp_ia_simular_v26():
+    """V26: maneja mejor mensajes por pausas y pedidos en mensajes separados."""
+    data = request.get_json(force=True) or {}
+    texto_original = (data.get('texto') or '').strip()
+    marca = _wa_v19_clean_selector(data.get('marca') or '')
+    hilo = _wa_v19_clean_selector(data.get('hilo') or '')
+    telefono = (data.get('telefono') or '').strip()
+    conversacion_id = data.get('conversacion_id')
+    nueva_conversacion = bool(data.get('nueva_conversacion') or data.get('reset_contexto'))
+
+    # Si solo es un mensaje preparatorio sin productos, responder humano y guardar contexto.
+    # En WhatsApp real este tipo de mensaje se puede esperar/agrupir por WA_MESSAGE_BUFFER_SECONDS.
+    try:
+        export_info = _wa_v16_extraer_bloque_cliente(texto_original, telefono)
+        texto_cliente = (export_info.get('texto_cliente') or texto_original).strip()
+        memoria_previa = {} if nueva_conversacion else _wa_memoria_cargar(conversacion_id, telefono)
+        productos_mem = _wa_memoria_productos_min()
+        hilos = _wa_memoria_detectar_hilos_explicitos(texto_cliente, productos_mem) or []
+        if _wa_v26_es_mensaje_preparatorio(texto_cliente) and not hilos:
+            # Si no menciona hilo y tampoco hay memoria, dejar que el flujo anterior pregunte mejor.
+            pass
+        elif _wa_v26_es_mensaje_preparatorio(texto_cliente) and not re.search(r'\b\d{1,4}\b', texto_cliente):
+            # Menciona pedido/lista, pero aún no manda productos.
+            marca_parser, hilo_parser, memoria_aplicada = _wa_memoria_resolver_contexto_para_parser(
+                texto_cliente, marca, hilo, memoria_previa, productos_mem
+            )
+            if hilo_parser or hilos:
+                if nueva_conversacion:
+                    conversacion_id = None
+                conversacion_id = _wa_v15_ensure_conversacion(conversacion_id, telefono, (data.get('cliente_nombre') or '').strip())
+                parsed = {'ok': True, 'modo': 'v26_mensaje_preparatorio_pedido', 'pedidos': [], 'preguntas': [], 'errores': [], 'advertencias': [], 'contexto': {'hilo': hilo_parser or (hilos[0] if hilos else '')}}
+                meta = {'intencion': 'pedido_en_espera', 'confianza': 'alta', 'accion_recomendada': 'esperar_lista', 'puede_auto_enviar': False}
+                respuesta = _wa_v26_respuesta_preparatoria(texto_cliente, {'hilo_actual': hilo_parser or (hilos[0] if hilos else '')})
+                try:
+                    with DB() as db:
+                        db.execute("""
+                            INSERT INTO whatsapp_mensajes (conversacion_id, direccion, tipo, texto, respuesta_sugerida, metadata)
+                            VALUES (%s,%s,%s,%s,%s,%s)
+                        """, (conversacion_id, 'IN', 'texto', texto_cliente, respuesta, json.dumps({'parsed': parsed, 'meta': meta, 'motor': 'v26_mensaje_preparatorio', 'buffer_seconds': WA_V26_BUFFER_SECONDS}, ensure_ascii=False)))
+                except Exception as exc:
+                    print('WARN guardar preparatorio v26:', exc, flush=True)
+                memoria_actualizada = _wa_memoria_actualizar(
+                    conversacion_id=conversacion_id,
+                    telefono=telefono,
+                    cliente_nombre=(data.get('cliente_nombre') or '').strip(),
+                    texto=texto_cliente,
+                    respuesta=respuesta,
+                    parsed=parsed,
+                    meta=meta,
+                    marca_parser=marca_parser,
+                    hilo_parser=hilo_parser or (hilos[0] if hilos else ''),
+                    memoria_previa=memoria_previa,
+                    productos=productos_mem,
+                )
+                return jsonify(json_safe({
+                    'ok': True,
+                    'conversacion_id': conversacion_id,
+                    'motor': 'reglas_hilorama_v26_mensaje_preparatorio_buffer',
+                    'mensaje_cliente': texto_cliente,
+                    'mensaje_parser': texto_cliente,
+                    'respuesta_sugerida': respuesta,
+                    'intencion': meta.get('intencion'),
+                    'confianza': meta.get('confianza'),
+                    'accion_recomendada': meta.get('accion_recomendada'),
+                    'puede_auto_enviar': meta.get('puede_auto_enviar'),
+                    'pedidos': [],
+                    'preguntas': [],
+                    'errores': [],
+                    'advertencias': [f'V26: mensaje preparatorio. En WhatsApp real se espera {WA_V26_BUFFER_SECONDS}s para agrupar si la clienta sigue escribiendo.'],
+                    'parser': parsed,
+                    'memoria_usada': memoria_previa,
+                    'memoria_actual': memoria_actualizada,
+                    'whatsapp_export': export_info,
+                }))
+    except Exception as exc:
+        print('WARN v26 preparatorio:', exc, flush=True)
+
+    out = _wa_v26_view_anterior()
+    try:
+        resp = out.get_json() if hasattr(out, 'get_json') else None
+        if isinstance(resp, dict):
+            resp['motor'] = str(resp.get('motor') or '') + ':v26_cantidades_del_codigo_pausas'
+            adv = resp.get('advertencias') or []
+            # Si detectamos items humanos, anotar internamente.
+            items, es_lista = _wa_v17_extraer_items_lista(texto_original)
+            if es_lista and any((it.get('fuente') or '').startswith('v26') for it in items):
+                adv.append('V26: se interpretó cantidad antes del código, por ejemplo "5 del 55" = 5 piezas del código 55.')
+                resp['items_lista_v26'] = items
+            resp['advertencias'] = adv
+            return jsonify(json_safe(resp))
+    except Exception:
+        pass
+    return out
+
+
+app.view_functions['whatsapp_ia_simular'] = whatsapp_ia_simular_v26
+
+# Silenciar /favicon.ico para que no ensucie logs con 500 cuando el navegador lo pida.
+@app.route('/favicon.ico')
+def favicon_v26():
+    try:
+        ruta = os.path.join(APP_DIR, 'icon-192.png')
+        if os.path.exists(ruta):
+            return send_file(ruta, mimetype='image/png')
+    except Exception:
+        pass
+    return ('', 204)
