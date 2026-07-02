@@ -79,7 +79,10 @@ COLOR_ALIASES = {
     "lila": ["lila", "lavanda"],
     "morado": ["morado", "uva"],
     "naranja": ["naranja", "mandarina", "coral"],
-    "beige": ["beige", "arena", "piel", "nude", "carne", "camel"],
+    # V35: camel debe ser tono exacto, no sinónimo genérico de arena/beige.
+    # Si la clienta pide camel, no debemos contestar Arena.
+    "camel": ["camel"],
+    "beige": ["beige", "arena", "piel", "nude", "carne"],
 }
 
 NORMALIZACIONES = [
@@ -884,6 +887,29 @@ def _color_explicit_match(color, desc):
 
 def _buscar_por_color(productos, desc):
     descn = _norm(desc)
+
+    # V35: primero buscamos coincidencias comerciales exactas por código/color
+    # dentro del hilo filtrado. Esto evita que "camel" termine resolviendo
+    # como "Arena" solo por pertenecer a la familia beige.
+    fam_ctx = ""
+    for _p in productos or []:
+        fam_ctx = _hilo_family((_p or {}).get("hilo") or "")
+        if fam_ctx:
+            break
+    fallback_codigo, fallback_color = _fallback_codigo_color_por_familia(fam_ctx, color=descn)
+    if fallback_codigo:
+        exactos = []
+        for _p in productos or []:
+            if not _no_combo(_p):
+                continue
+            cod = str((_p or {}).get("codigo") or "").strip()
+            col = _norm((_p or {}).get("color") or "")
+            if cod.lstrip("0") == fallback_codigo.lstrip("0") or col == _norm(fallback_color):
+                exactos.append(_p)
+        if exactos:
+            exactos.sort(key=lambda p: (-_stock(p), str(p.get("codigo") or "")))
+            return exactos[0], exactos[:6]
+
     scored = []
     for p in productos or []:
         if not _no_combo(p):
@@ -1577,6 +1603,11 @@ def _respuesta_pedido(resolucion, contexto):
             ok.append(p)
 
     partes = []
+    # V35: cuando es un pedido y todos los tonos están agotados/insuficientes,
+    # no contestamos solo con líneas de stock; damos contexto humano para que
+    # se entienda que sí revisamos la cotización/pedido.
+    if not ok and (agotados or insuficientes):
+        partes.append(f"Le revisé su pedido para cotización {EMOJI_OK}")
     if ok:
         total = sum(int(p.get("cantidad") or 1) for p in ok)
         lineas = [f"* {_linea_producto(p)} x{int(p.get('cantidad') or 1)}" for p in ok]
@@ -1703,7 +1734,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v34_motor_conversacional",
+            "motor": "v35_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -1752,7 +1783,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v34_motor_conversacional",
+        "motor": "v35_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
