@@ -238,6 +238,34 @@ def _extraer_total_esperado(texto):
     return None
 
 
+def _es_consulta_manejo(texto):
+    """Pregunta tipo: ¿manejan/tienen/venden Komfy Mini?"""
+    t = _norm(texto)
+    return bool(re.search(r"\b(manejan|maneja|tienen|tiene|hay|venden|vende|trabajan|trabaja)\b", t))
+
+
+def _pide_colores_disponibles(texto):
+    t = _norm(texto)
+    return bool(re.search(r"\b(colores|tonos|disponibles|stock|existencia|existencias)\b", t))
+
+
+def _pide_solo_existencia_hilo(texto):
+    t = _norm(texto)
+    return _es_consulta_manejo(t) and not _pide_colores_disponibles(t) and not re.search(r"\b(blanco|negro|rojo|rosa|azul|verde|amarillo|cafe|gris|morado|lila|naranja|beige|hueso|piel|cielo|marino|uva|canario|mandarina|turquesa|arena|camel|vino)\b", t)
+
+
+def _hay_color_en_texto(texto):
+    t = _norm(texto)
+    colores = []
+    for canon, aliases in COLOR_ALIASES.items():
+        for alias in aliases:
+            a = _norm(alias)
+            if a and re.search(rf"(?<!\w){re.escape(a)}(?!\w)", t):
+                colores.append(canon)
+                break
+    return colores
+
+
 def detectar_intencion(normalizado, memoria=None, productos=None):
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     hilos = detectar_hilos(texto, productos)
@@ -259,6 +287,9 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     elif re.search(r"\b(envio|envios|paqueteria|cuanto sale el envio|costo de envio)\b", texto):
         principal = "envio"
         estado = "esperando_cp"
+    elif hilos and _es_consulta_manejo(texto) and not _pide_colores_disponibles(texto):
+        principal = "consulta_stock"
+        secundaria = "consulta_manejan"
     elif (
         re.search(r"\b(gama|carta|catalogo)\b", texto)
         or re.search(r"\b(colores|tonos)\s+(?:disponibles|tienen|manejan|hay)\b", texto)
@@ -482,8 +513,13 @@ def _quitar_intro_lista(linea):
 
 def _limpiar_desc_color(desc):
     d = _norm(desc)
-    d = re.sub(r"\b(quiero|dame|deme|ponme|agregar|pedido|lista|color|tono|de|del|el|la|los|las|por favor|favor)\b", " ", d)
-    d = re.sub(r"\b(velluto|komfy mini|komfy|kurumi|kairo|trapillo)\b", " ", d)
+    # Si el cliente dice "blanco que no se vea tan amarillo", la intención principal es blanco,
+    # no amarillo. Quitamos colores negados para no sugerir el tono contrario.
+    d = re.sub(r"\bno\s+(?:se\s+)?(?:vea|sea|este)?\s*(?:tan|muy|mas)?\s*(amarillo|amarillento|rosa|rosado|oscuro|fuerte)\b", " ", d)
+    # Quita verbos/frases de venta para que "¿tienen Velluto blanco?" deje solo "blanco".
+    d = re.sub(r"\b(quiero|dame|deme|ponme|agregar|agregame|apartame|me|puede|podria|poner|apartar|pedido|lista|cotizar|cotiza|color|tono|de|del|el|la|los|las|por favor|favor|tiene|tienen|manejan|maneja|hay|busco|busca|necesito|ocupo|quiero|disponible|disponibles|en|un|una|unos|unas)\b", " ", d)
+    d = re.sub(r"\b(velluto|komfy mini|komfy|kurumi|kairo|trapillo|alize|karina|hilorama)\b", " ", d)
+    d = re.sub(r"\b(que|se|vea|tan|no|muy|mas|menos|como|para)\b", " ", d)
     d = re.sub(r"\s+", " ", d).strip()
     return d
 
@@ -585,9 +621,19 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
 
     matches = []
     if codigo:
-        matches = _code_map(productos_ctx).get(codigo_raw) or _code_map(productos_ctx).get(codigo) or []
-        if not matches and not hilo_ctx:
-            matches = _code_map(productos_all).get(codigo_raw) or _code_map(productos_all).get(codigo) or []
+        ctx_map = _code_map(productos_ctx)
+        all_map = _code_map(productos_all)
+        matches = ctx_map.get(codigo_raw) or ctx_map.get(codigo) or []
+        # Si hay contexto de hilo pero por marca/filtro no aparecio, buscamos en todo y
+        # preferimos el mismo hilo/familia antes de preguntar como ambiguo.
+        if not matches:
+            all_matches = all_map.get(codigo_raw) or all_map.get(codigo) or []
+            if hilo_ctx and all_matches:
+                fam = _hilo_family(hilo_ctx)
+                fam_matches = [p for p in all_matches if _hilo_family(p.get("hilo")) == fam]
+                matches = fam_matches or []
+            elif not hilo_ctx:
+                matches = all_matches
 
     prod = None
     if matches:
@@ -657,6 +703,20 @@ def _precio(p):
         return 0.0
 
 
+def _color_explicit_match(color, desc):
+    color = _norm(color)
+    desc = _norm(desc)
+    if not color or not desc:
+        return False
+    # Si el cliente dijo un color canonico/alias, preferimos tonos que realmente contengan ese color.
+    for canon, aliases in COLOR_ALIASES.items():
+        alias_norm = [_norm(a) for a in aliases]
+        if any(a and re.search(rf"(?<!\w){re.escape(a)}(?!\w)", desc) for a in alias_norm):
+            if canon in color or any(a and re.search(rf"(?<!\w){re.escape(a)}(?!\w)", color) for a in alias_norm):
+                return True
+    return False
+
+
 def _buscar_por_color(productos, desc):
     descn = _norm(desc)
     scored = []
@@ -667,12 +727,19 @@ def _buscar_por_color(productos, desc):
         if not color:
             continue
         score = _score_color(color, descn)
+        if _color_explicit_match(color, descn):
+            score = max(score, 115)
         if score > 0:
             scored.append((score + (_stock(p) > 0), p))
     scored.sort(key=lambda x: (-x[0], -_stock(x[1]), str(x[1].get("codigo") or "")))
     if not scored:
         return None, []
     opts = [p for _, p in scored[:6]]
+    # Si hay un color explicito claro (blanco, rojo, hueso, etc.), no lo tratamos como ambiguedad.
+    explicitos = [(score, p) for score, p in scored if _color_explicit_match(p.get("color") or "", descn)]
+    if explicitos:
+        explicitos.sort(key=lambda x: (-x[0], -_stock(x[1]), str(x[1].get("codigo") or "")))
+        return explicitos[0][1], opts
     if len(scored) == 1 or scored[0][0] >= 90 or (len(scored) > 1 and scored[0][0] - scored[1][0] >= 35):
         return scored[0][1], opts
     return None, opts
@@ -725,6 +792,8 @@ def _linea_producto(prod_or_pedido):
     hilo = _hilo_display((prod_or_pedido or {}).get("hilo") or "")
     codigo = str((prod_or_pedido or {}).get("codigo") or "").strip()
     color = str((prod_or_pedido or {}).get("color") or "").strip()
+    if color and color.isupper():
+        color = color.title()
     return " ".join(x for x in (hilo, codigo, color) if x).strip()
 
 
@@ -806,10 +875,10 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
         return _respuesta_precio(contexto, productos)
 
     if principal == "consulta_stock":
-        return _respuesta_stock_colores(contexto, productos, texto)
+        return _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, extraccion)
 
     if principal == "envio":
-        return f"Claro {EMOJI_OK} para decirle el costo exacto de envio necesito su codigo postal."
+        return f"Claro {EMOJI_OK} para decirle el costo exacto de envío necesito su código postal, por favor."
 
     if principal == "cp_envio":
         if envio.get("respuesta"):
@@ -826,21 +895,21 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     if principal == "iniciar_pedido" and not resolucion.get("pedidos"):
         hilo = _hilo_display(contexto.get("hilo_actual") or "")
         if contexto.get("total_esperado"):
-            return f"Claro {EMOJI_OK} le cotizo el pedido de {hilo or 'ese hilo'}. Mandeme los codigos o colores y se lo preparo."
+            return f"Claro {EMOJI_OK} le cotizo su pedido de {hilo or 'ese hilo'}. Mándeme los códigos o colores y se lo preparo."
         if hilo:
-            return f"Claro {EMOJI_OK} mandeme la lista cuando guste y se la cotizo en {hilo}."
-        return f"Claro {EMOJI_OK} mandeme la lista cuando guste y se la cotizo."
-
-    if resolucion.get("preguntas"):
-        return _respuesta_pregunta_corta(resolucion, contexto)
+            return f"Claro {EMOJI_OK} mándeme la lista cuando guste y se la cotizo en {hilo}."
+        return f"Claro {EMOJI_OK} mándeme la lista cuando guste y con gusto se la cotizo."
 
     if resolucion.get("pedidos"):
         return _respuesta_pedido(resolucion, contexto)
 
+    if resolucion.get("preguntas"):
+        return _respuesta_pregunta_corta(resolucion, contexto)
+
     if principal == "agradecimiento":
         return ""
 
-    return f"Claro {EMOJI_OK} digame que hilo, codigo o color busca y con gusto le ayudo."
+    return f"Con gusto {EMOJI_OK} ¿me indica qué hilo, color o código busca para revisarlo bien?"
 
 
 def _primer_codigo(texto):
@@ -851,21 +920,47 @@ def _primer_codigo(texto):
 def _respuesta_precio(contexto, productos):
     hilo = contexto.get("hilo_actual") or ""
     if not hilo:
-        return f"Claro {EMOJI_OK} me confirma que hilo o codigo quiere revisar para darle el precio exacto?"
+        return f"Claro {EMOJI_OK} ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?"
     ctx = _filtrar_contexto(productos, contexto)
     precios = [_precio(p) for p in ctx if _precio(p) > 0 and _no_combo(p)]
     nombre = _hilo_display(hilo)
     if not precios:
-        return f"Si manejo {nombre} {EMOJI_OK} me indica el codigo o color para revisarle precio exacto?"
+        return f"Sí manejamos {nombre} {EMOJI_OK} ¿me indica el código o color para revisarle el precio exacto?"
     mn, mx = min(precios), max(precios)
     precio = f"${mn:,.2f}" if abs(mn - mx) < 0.01 else f"desde ${mn:,.2f}"
-    return f"El {nombre} esta en {precio} por madeja {EMOJI_OK} Busca algun color o codigo en especial?"
+    return f"El {nombre} está en {precio} por madeja {EMOJI_OK} ¿busca algún color o código en especial?"
+
+
+def _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, extraccion):
+    hilo = contexto.get("hilo_actual") or ""
+    nombre = _hilo_display(hilo) if hilo else ""
+    pedidos = resolucion.get("pedidos") or []
+    preguntas = resolucion.get("preguntas") or []
+
+    # Pregunta sencilla: "¿Manejan Komfy Mini?"
+    if _pide_solo_existencia_hilo(texto) and hilo:
+        return f"Sí {EMOJI_OK} manejamos {nombre}. ¿Le comparto la gama de colores o busca algún tono en especial?"
+
+    # Pregunta de disponibilidad de color: "¿Tienen Velluto blanco?"
+    if pedidos:
+        p = pedidos[0]
+        linea = _linea_producto(p)
+        stock = int(p.get("stock") or 0)
+        if stock > 0:
+            return f"Sí {EMOJI_OK} tengo disponible {linea}. ¿Cuántas piezas le aparto?"
+        return f"Por el momento no me aparece disponible {linea} {EMOJI_SAD} Si gusta le muestro tonos parecidos."
+
+    if preguntas and _hay_color_en_texto(texto):
+        # Pregunta amable, sin lenguaje tecnico.
+        return _respuesta_pregunta_corta(resolucion, contexto)
+
+    return _respuesta_stock_colores(contexto, productos, texto)
 
 
 def _respuesta_stock_colores(contexto, productos, texto):
     hilo = contexto.get("hilo_actual") or ""
     if not hilo:
-        return f"Claro {EMOJI_OK} que hilo busca, Velluto, Komfy Mini u otro?"
+        return f"Claro {EMOJI_OK} ¿de qué hilo le reviso los tonos: Velluto, Komfy Mini u otro?"
     ctx = [p for p in _filtrar_contexto(productos, contexto) if _stock(p) > 0 and _no_combo(p)]
     nombre = _hilo_display(hilo)
     if not ctx:
@@ -893,23 +988,39 @@ def _respuesta_producto_no_manejado(texto, productos):
             alternativas.append(_hilo_display(fam))
     extra = ", ".join(alternativas[:3]) if alternativas else "otras opciones del catalogo"
     if "abuelita" in _norm(texto):
-        return f"La Abuelita por el momento no la manejamos {EMOJI_OK} pero puedo ofrecerle alternativas reales como {extra}. Para que proyecto lo ocuparia?"
-    return f"Por el momento no me aparece ese producto en almacen {EMOJI_OK} pero puedo revisarle alternativas reales como {extra}."
+        return f"La Abuelita por el momento no la manejamos {EMOJI_OK} pero puedo ofrecerle alternativas que sí tenemos, como {extra}. ¿Para qué proyecto lo ocuparía?"
+    return f"Por el momento no me aparece ese producto en almacén {EMOJI_OK} pero puedo revisarle alternativas que sí tenemos, como {extra}."
 
 
 def _respuesta_pregunta_corta(resolucion, contexto):
     q = resolucion["preguntas"][0]
-    q = _limpiar_pregunta_publica(q)
-    return f"Solo para agregarselo correcto {EMOJI_OK} {q}"
+    q = _limpiar_pregunta_publica(q, contexto)
+    return q
 
 
-def _limpiar_pregunta_publica(q):
-    q = str(q or "").strip()
-    q = re.sub(r"\b(confianza|parser|advertencia|interno)\b.*", "", q, flags=re.I).strip()
-    q = q.replace("El codigo", "El codigo")
+def _limpiar_pregunta_publica(q, contexto=None):
+    contexto = contexto or {}
+    original = str(q or "").strip()
+    qn = _norm(original)
+    hilo = _hilo_display(contexto.get("hilo_actual") or "")
+
+    if "aparece en varios hilos" in qn:
+        if hilo:
+            return f"Solo confirmo para agregárselo bien {EMOJI_OK} ¿lo quiere en {hilo}?"
+        return f"Solo para agregárselo correcto {EMOJI_OK} ¿lo busca en Velluto, Komfy Mini u otro hilo?"
+    if "no ubique bien" in qn or "me confirma codigo" in qn:
+        return f"Para no ponerle un tono incorrecto {EMOJI_OK} ¿me confirma el código o el color, por favor?"
+    if "confirmo el color" in qn:
+        return f"Solo para agregárselo correcto {EMOJI_OK} ¿me confirma ese tono, por favor?"
+    if "cuantas piezas" in qn:
+        return f"Claro {EMOJI_OK} ¿cuántas piezas le agrego?"
+    if "lo busca en velluto" in qn:
+        return f"Claro {EMOJI_OK} ¿lo busca en Velluto, Komfy Mini o algún otro hilo?"
+
+    q = re.sub(r"\b(confianza|parser|advertencia|interno)\b.*", "", original, flags=re.I).strip()
     if not q.endswith("?"):
         q += "?"
-    return q
+    return f"Solo para confirmarle bien {EMOJI_OK} {q}"
 
 
 def _respuesta_pedido(resolucion, contexto):
@@ -934,13 +1045,22 @@ def _respuesta_pedido(resolucion, contexto):
         partes.append(f"Claro {EMOJI_OK} le agrego:\n\n" + "\n".join(lineas))
         partes.append(f"Total: {total} pieza" + ("s." if total != 1 else "."))
         if contexto.get("total_esperado") and total != int(contexto.get("total_esperado") or 0):
-            partes.append(f"Me quedan {int(contexto.get('total_esperado') or 0) - total} piezas por completar de las que me indico.")
+            partes.append(f"Me quedan {int(contexto.get('total_esperado') or 0) - total} piezas por completar de las que me indicó.")
     for p in faltantes:
         partes.append(f"Cuantas piezas de {_linea_producto(p)} le agrego?")
     for p in agotados:
-        partes.append(f"{_linea_producto(p)} por el momento no me aparece disponible {EMOJI_SAD} Le muestro opciones parecidas?")
-    if ok and not faltantes and not agotados:
-        partes.append("Le preparo su cotizacion.")
+        partes.append(f"{_linea_producto(p)} por el momento no me aparece disponible {EMOJI_SAD} ¿Le muestro opciones parecidas?")
+    # Si hay productos correctos pero tambien dudas, no tapamos lo correcto: mostramos lo agregado y
+    # pedimos confirmar solo lo que falta.
+    pendientes = resolucion.get("preguntas") or []
+    errores = resolucion.get("errores") or []
+    if pendientes or errores:
+        if errores:
+            partes.append("Me faltan confirmar estos códigos para no agregarlos mal: " + ", ".join(str(e) for e in errores[:8]) + ".")
+        else:
+            partes.append(_limpiar_pregunta_publica(pendientes[0], contexto))
+    if ok and not faltantes and not agotados and not pendientes and not errores:
+        partes.append("Le preparo su cotización.")
     return "\n\n".join(partes).strip()
 
 
@@ -1043,7 +1163,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v27_motor_conversacional",
+            "motor": "v28_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -1084,7 +1204,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v27_motor_conversacional",
+        "motor": "v28_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,

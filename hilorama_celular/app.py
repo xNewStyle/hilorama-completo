@@ -12526,7 +12526,7 @@ def _wa_v27_parser_obj(resultado):
     contexto = resultado.get('contexto') or {}
     return {
         'ok': True,
-        'modo': 'v27_motor_conversacional',
+        'modo': 'v28_motor_conversacional',
         'pedidos': resolucion.get('pedidos') or [],
         'preguntas': resolucion.get('preguntas') or [],
         'errores': resolucion.get('errores') or [],
@@ -12691,7 +12691,7 @@ def whatsapp_ia_simular_v27():
                         texto_cliente,
                         '',
                         json.dumps(json_safe({
-                            'motor': 'v27_cierre_diferido',
+                            'motor': 'v28_cierre_diferido',
                             'cierre_programado': cierre_db,
                             'resultado': resultado,
                             'whatsapp_export': export_info,
@@ -12706,7 +12706,7 @@ def whatsapp_ia_simular_v27():
             return jsonify(json_safe({
                 'ok': True,
                 'conversacion_id': conversacion_id,
-                'motor': 'v27_motor_conversacional_cierre_diferido',
+                'motor': 'v28_motor_conversacional_cierre_diferido',
                 'mensaje_cliente': texto_cliente,
                 'mensaje_parser': texto_cliente,
                 'respuesta_sugerida': '',
@@ -12723,7 +12723,7 @@ def whatsapp_ia_simular_v27():
                 'memoria_usada': memoria_previa,
                 'memoria_actual': memoria_actual,
                 'whatsapp_export': export_info,
-                'v27': resultado,
+                'v28': resultado,
             }))
 
         try:
@@ -12748,7 +12748,7 @@ def whatsapp_ia_simular_v27():
                     json.dumps(json_safe({
                         'parsed': parsed,
                         'meta': meta,
-                        'motor': 'v27_motor_conversacional',
+                        'motor': 'v28_motor_conversacional',
                         'memoria_usada': memoria_previa,
                         'resultado': resultado,
                         'whatsapp_export': export_info,
@@ -12764,7 +12764,7 @@ def whatsapp_ia_simular_v27():
         return jsonify(json_safe({
             'ok': True,
             'conversacion_id': conversacion_id,
-            'motor': 'v27_motor_conversacional',
+            'motor': 'v28_motor_conversacional',
             'mensaje_cliente': texto_cliente,
             'mensaje_parser': texto_cliente,
             'respuesta_sugerida': respuesta,
@@ -12780,7 +12780,7 @@ def whatsapp_ia_simular_v27():
             'memoria_usada': memoria_previa,
             'memoria_actual': memoria_actual,
             'whatsapp_export': export_info,
-            'v27': resultado,
+            'v28': resultado,
         }))
     except Exception as exc:
         print('WARN v27 motor conversacional, se usa respaldo v26:', exc, flush=True)
