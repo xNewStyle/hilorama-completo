@@ -1,0 +1,83 @@
+# Guía rápida para subir Hilorama IA V38 a Render
+
+PASO 1. Copiar archivos
+
+Descomprime el ZIP y copia la carpeta:
+
+hilorama_celular/
+
+encima de la carpeta hilorama_celular de tu proyecto.
+
+Archivos principales que se reemplazan/agregan:
+
+hilorama_celular/whatsapp_ia_v27.py
+hilorama_celular/tools/whatsapp_ia_human_tester_v38.py
+hilorama_celular/tools/casos_tester_v38_complejos_hilorama.json
+hilorama_celular/tools/casos_tester_v38_complejos_hilorama.csv
+
+PASO 2. Revisar cambios en Git
+
+git status
+
+PASO 3. Guardar commit
+
+git add hilorama_celular/whatsapp_ia_v27.py hilorama_celular/tools/whatsapp_ia_human_tester_v38.py hilorama_celular/tools/casos_tester_v38_complejos_hilorama.json hilorama_celular/tools/casos_tester_v38_complejos_hilorama.csv hilorama_celular/README_WHATSAPP_IA_V38_TESTER_HUMANO_FALLOS.txt hilorama_celular/GUIA_SUBIR_RENDER_V38.txt
+
+git commit -m "Mejora WhatsApp IA V38 y tester humano complejo"
+
+PASO 4. Subir a GitHub
+
+Si tu rama es main:
+
+git push origin main
+
+Si tu rama es master:
+
+git push origin master
+
+PASO 5. Desplegar en Render
+
+Si tu servicio de Render está conectado a GitHub con Auto Deploy en On Commit, normalmente Render despliega cuando haces push a la rama conectada.
+
+Si no se actualiza solo:
+
+1. Entra a Render.
+2. Abre tu servicio.
+3. Clic en Manual Deploy.
+4. Selecciona Deploy latest commit.
+
+Si cambiaste dependencias o Render parece usar cosas viejas:
+
+Manual Deploy > Clear build cache & deploy
+
+PASO 6. Revisar comandos de Render
+
+Build Command común para Python:
+
+pip install -r requirements.txt
+
+Start Command depende de tu proyecto. Ejemplos:
+
+gunicorn app:app
+
+gunicorn main:app
+
+python app.py
+
+No cambies el Start Command si tu proyecto ya estaba funcionando. Solo revísalo si el deploy falla.
+
+PASO 7. Probar ya desplegado
+
+python hilorama_celular/tools/whatsapp_ia_human_tester_v38.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 50 --sleep 0.2
+
+Luego:
+
+python hilorama_celular/tools/whatsapp_ia_human_tester_v38.py --base-url https://hilorama-celular.onrender.com --pin TU_PIN --limit 100 --sleep 0.2
+
+QUÉ HACER SI FALLA
+
+- Si falla por import o syntax: revisa que copiaste whatsapp_ia_v27.py completo.
+- Si falla por pin: revisa TU_PIN.
+- Si falla por rutas: ejecuta el comando desde la raíz del proyecto.
+- Si Render sigue mostrando versión vieja: usa Manual Deploy > Clear build cache & deploy.
+- Si no quieres arriesgar producción, primero prueba local y luego sube.

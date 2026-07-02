@@ -59,6 +59,11 @@ HILO_ALIASES = {
     "KURUMI": ["kurumi"],
     "KAIRO": ["kairo"],
     "TRAPILLO": ["trapillo", "trapillo kraft", "kraft"],
+    # V38: hilos reales que antes se podían confundir con texto libre si venían con typo.
+    "KOTTON MILK": ["kotton milk", "cotton milk", "koton milk", "kotton", "cotton"],
+    "BABY BEST": ["baby best", "beby best", "baby", "bebe best"],
+    "DIVA": ["diva"],
+    "FIORentino MAXI".upper(): ["fiorentino maxi", "fiorentino", "fiorentino maxy"],
 }
 
 COLOR_ALIASES = {
@@ -89,7 +94,7 @@ COLOR_ALIASES = {
 
 NORMALIZACIONES = [
     (r"\bbuenas\s+trades\b", "buenas tardes"),
-    (r"\bpwdido\b", "pedido"),
+    (r"\bpwdido\b|\bpedio\b|\bpedidio\b|\bpeddo\b", "pedido"),
     (r"\bgamas\b", "gama"),
     (r"\bganas\s+de\s+colores\b", "gama de colores"),
     (r"\bvigenete\b", "vigente"),
@@ -217,6 +222,14 @@ def _hilo_family(hilo):
         return "KAIRO"
     if "trapillo" in h or "kraft" in h:
         return "TRAPILLO"
+    if "kotton" in h or "cotton" in h:
+        return "KOTTON MILK"
+    if "babybest" in h or h == "baby" or "bebebest" in h:
+        return "BABY BEST"
+    if "diva" in h:
+        return "DIVA"
+    if "fiorentino" in h:
+        return "FIORENTINO MAXI"
     return str(hilo or "").strip().upper()
 
 
@@ -284,6 +297,13 @@ def detectar_hilos(texto, productos=None):
         if any(re.search(rf"(?<!\w){re.escape(_norm(a))}(?!\w)", t) for a in aliases):
             familias.append(fam)
     hilos_reales = _producto_hilos(productos)
+    # V38: además de alias fijos, reconocer nombres reales del almacén.
+    # Ejemplo: "kotton milk" o "baby best" no deben convertirse en producto inventado.
+    for h in hilos_reales:
+        hn = _norm(h)
+        if hn and re.search(rf"(?<!\w){re.escape(hn)}(?!\w)", t):
+            if h not in encontrados:
+                encontrados.append(h)
     for fam in familias:
         elegido = ""
         for h in hilos_reales:
@@ -335,6 +355,15 @@ def _es_consulta_manejo(texto):
     return bool(re.search(r"\b(manejan|maneja|tienen|tiene|hay|venden|vende|trabajan|trabaja)\b", t))
 
 
+def _es_consulta_accesorio(texto):
+    """V38: preguntas por accesorios específicos: relleno, ojos, ganchos, agujas, etc."""
+    t = _norm(texto)
+    return bool(
+        _es_consulta_manejo(t)
+        and re.search(r"\b(relleno|delcron|guata|nube|ojo|ojos|seguridad|gancho|ganchos|aguja|agujas|crochet|ganchillo|alfiler|marcador|marcadores|tijera|silicon|silic[oó]n|fieltro|cinta|boton|botones|cierre)\b", t)
+    )
+
+
 def _pide_colores_disponibles(texto):
     t = _norm(texto)
     return bool(re.search(r"\b(colores|tonos|disponibles|stock|existencia|existencias)\b", t))
@@ -361,7 +390,8 @@ def _hay_color_en_texto(texto):
 
 def _es_saludo_simple(texto):
     t = _norm(texto)
-    return bool(re.fullmatch(r"(hola+|holaa+|buenas|buenas tardes|buen dia|buenos dias|buenas noches|oye|oye una pregunta)", t))
+    # V38: saludos/frases de apertura NO son productos.
+    return bool(re.fullmatch(r"(hola+|holaa+|buenas|buenas tardes|buen dia|buenos dias|buenas noches|oye|disculpa|hola una pregunta|oye una pregunta|disculpa una pregunta|buenas una pregunta)", t))
 
 
 def _es_consulta_catalogo_general(texto):
@@ -418,6 +448,8 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     if re.fullmatch(r"(gracias|muchas gracias|ok gracias|perfecto gracias|listo gracias)", texto):
         principal = "agradecimiento"
         estado = "conversacion_cerrada"
+    elif _es_saludo_simple(texto):
+        principal = "saludo"
     elif re.search(r"\b(comprobante|ya pague|ya pagado|ya quedo el pago|pago|transferencia|deposito|ticket|recibo)\b", texto):
         principal = "comprobante" if re.search(r"\b(comprobante|ticket|recibo|ya pague|ya quedo)\b", texto) else "pago"
         estado = "esperando_comprobante"
@@ -429,6 +461,9 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         estado = "esperando_cp"
     elif re.search(r"\b(descuento|rebaja|mejor\s+precio|mejora(?:r|me|s)?\s+(?:el\s+)?precio|mejorarme\s+precio|mejoras\s+precio|precio\s+especial|precio\s+final|menos\s+precio|bajar(?:le)?|ajustar\s+precio)\b", texto):
         principal = "decision_comercial"
+    elif _es_consulta_accesorio(texto):
+        principal = "catalogo_general"
+        secundaria = "accesorio_especifico"
     elif _es_consulta_catalogo_general(texto):
         principal = "catalogo_general"
     elif _es_consulta_recomendacion(texto):
@@ -440,7 +475,7 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         re.search(r"\b(gama|carta|catalogo)\b", texto)
         or re.search(r"\b(colores|tonos)\s+(?:disponibles|tienen|manejan|hay)\b", texto)
         or re.search(r"\b(?:que\s+)?(?:colores|tonos)\s+(?:tiene|tienen|hay|manejan)\b", texto)
-        or re.search(r"\b(?:tiene|tienen|hay|manejan)\b.*\b(?:colores|tonos)\b", texto)
+        or re.search(r"\b(?:tiene|tienen|tienes|hay|manejan|manejas)\b.*\b(?:colores|tonos)\b", texto)
     ):
         # "que colores tiene disponibles" puede ser stock; "manda la gama" es recurso.
         if re.search(r"\b(manda|mandeme|envia|pasa|pasame|comparte|gama|carta|catalogo)\b", texto):
@@ -453,7 +488,7 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         principal = "pregunta_precio"
     elif re.search(r"\b(manejan|maneja|tienen|tiene)\b.*\b(abuelita|sinfonia)\b", texto):
         principal = "producto_no_manejado"
-    elif re.search(r"\b(todo|todos|toda|todas)\s+(?:seria|serian|es|son)?\s*(?:de|en)?\s*(velluto|komfy|kurumi|kairo|trapillo)\b", texto):
+    elif re.search(r"\b(?:perdon\s+)?(?:todo|todos|toda|todas)\s+(?:eso\s+)?(?:seria|serian|es|son)?\s*(?:de|en)?\s*(velluto|komfy|kurumi|kairo|trapillo|kotton milk|baby best)\b", texto):
         principal = "confirmacion_contexto"
         estado = "preparando_cotizacion"
     elif re.search(r"\b(quita|quite|quitar|quitame|quítame|corrige|corregir|me equivoque|cambia)\b", texto):
@@ -495,7 +530,9 @@ def _parece_lista_o_pedido(texto, memoria=None):
     # V32: pedidos humanos tipo "quiero 4 blanco de komfy mini" o "ocupo 2 lila".
     if re.search(r"\b(quiero|ocupo|necesito|me\s+cotiza|cotiza|me\s+puede\s+poner|poner|agregar|dame|deme)\s+\d{1,3}\s+[a-z]", t):
         return True
-    if re.search(r"\b(agregar|quiero pedir|dame|deme|ponme|me puede poner|lista|cotizar|cotiza)\b", t):
+    if re.search(r"\b(agregar|quiero pedir|dame|deme|ponme|me puede poner|cotizar|cotiza)\b", t):
+        return True
+    if "lista" in t and re.search(r"\b\d{1,4}\b", t):
         return True
     estado = str((memoria or {}).get("estado_actual") or "")
     if estado in ("esperando_lista_de_colores", "preparando_cotizacion") and re.search(r"\b\d{1,4}\b", t):
@@ -550,13 +587,19 @@ def extraer_contexto_conversacion(normalizado, intencion, memoria=None, producto
         hilo = hilos[0]
         origen = "mensaje_actual"
     else:
-        inferido = _inferir_hilo_por_codigos_y_texto(texto, productos)
-        if inferido:
-            hilo = inferido
-            origen = "inferencia_codigos"
-        elif memoria.get("hilo_actual"):
+        # V38: si ya hay pedido/contexto activo, conservar el hilo anterior para mensajes
+        # como "y 4 del 99". Solo inferir por código cuando no haya memoria clara.
+        if memoria.get("hilo_actual") and intencion.get("principal") in ("pedido_lista", "consulta_stock", "pregunta_precio"):
             hilo = memoria.get("hilo_actual")
             origen = "memoria"
+        else:
+            inferido = _inferir_hilo_por_codigos_y_texto(texto, productos)
+            if inferido:
+                hilo = inferido
+                origen = "inferencia_codigos"
+            elif memoria.get("hilo_actual"):
+                hilo = memoria.get("hilo_actual")
+                origen = "memoria"
 
     if marca_ui and _norm(marca_ui) not in ("todo", "todos", "toda", "todas", "all"):
         marca = marca_ui
@@ -634,11 +677,21 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
         if m and not re.search(r"\d", m.group(1)):
             items.append(_item(cantidad=int(m.group(2)), desc=m.group(1), raw=linea, fuente="color_cantidad"))
 
-    # 3 rojos y 2 negros
+    # 3 rojos y 2 negros.
+    # V38: no convertir aperturas como "una pregunta" o typos como "un pedio" en productos inventados.
+    permitir_cantidad_color = (
+        intencion["principal"] in ("pedido_lista", "consulta_stock")
+        or bool(contexto.get("hilo_actual"))
+        or _es_pedido_real_por_texto(texto_sin_totales)
+    )
+    if _es_saludo_simple(texto_sin_totales) or _es_consulta_catalogo_general(texto_sin_totales) or _es_consulta_recomendacion(texto_sin_totales):
+        permitir_cantidad_color = False
     for m in re.finditer(r"(?<!\d)(\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+([a-z][a-z ]{2,}?)(?=\s+y\s+\d|\s*,|$)", texto_sin_totales):
+        if not permitir_cantidad_color:
+            continue
         qty = _qty(m.group(1))
         desc = _limpiar_desc_color(m.group(2))
-        if qty and desc and not re.search(r"\b(pedido|lista|total|piezas)\b", desc):
+        if qty and desc and not re.search(r"\b(pedido|pedio|pregunta|lista|total|piezas)\b", desc):
             items.append(_item(cantidad=qty, desc=desc, raw=m.group(0), fuente="cantidad_color"))
 
     # Listas puras de codigos.
@@ -662,6 +715,8 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
         else:
             desc = _limpiar_desc_color(texto_sin_totales)
         if intencion["principal"] == "consulta_stock" and not _hay_color_en_texto(desc):
+            desc = ""
+        if desc and intencion["principal"] == "pedido_lista" and not _hay_color_en_texto(desc) and not detectar_hilos(desc) and not re.search(r"\b(relleno|gancho|ojo|ojos|aguja|trapillo|kraft)\b", _norm(desc)):
             desc = ""
         if desc and re.search(r"[a-z]", desc) and not detectar_hilos(desc) and not _es_saludo_simple(desc) and not _es_consulta_catalogo_general(desc) and not _es_consulta_recomendacion(desc):
             items.append(_item(desc=desc, cantidad=None, raw=desc, fuente="color_suelto"))
@@ -716,8 +771,8 @@ def _limpiar_desc_color(desc):
     # no amarillo. Quitamos colores negados para no sugerir el tono contrario.
     d = re.sub(r"\bno\s+(?:se\s+)?(?:vea|sea|este)?\s*(?:tan|muy|mas)?\s*(amarillo|amarillento|rosa|rosado|oscuro|fuerte)\b", " ", d)
     # Quita verbos/frases de venta para que "¿tienen Velluto blanco?" deje solo "blanco".
-    d = re.sub(r"\b(quiero|dame|deme|ponme|agregar|agregame|apartame|me|puede|podria|poner|apartar|pedido|lista|cotizar|cotiza|color|tono|de|del|el|la|los|las|por favor|favor|tiene|tienen|manejan|maneja|hay|busco|busca|necesito|ocupo|quiero|disponible|disponibles|en|un|una|unos|unas)\b", " ", d)
-    d = re.sub(r"\b(velluto|komfy mini|komfy|komfi|konfy|comfy|mini|kurumi|kairo|trapillo|alize|karina|hilorama)\b", " ", d)
+    d = re.sub(r"\b(quiero|dame|deme|ponme|agregar|agregame|apartame|me|puede|podria|poner|apartar|pedido|pedio|pregunta|lista|cotizar|cotiza|color|tono|de|del|el|la|los|las|por favor|favor|tiene|tienen|tienes|manejan|maneja|manejas|hay|busco|busca|necesito|ocupo|quiero|disponible|disponibles|en|un|una|unos|unas|buenas|tardes|buen|dia|paso|pasar)\b", " ", d)
+    d = re.sub(r"\b(velluto|komfy mini|komfy|komfi|konfy|comfy|mini|kurumi|kairo|trapillo|kotton milk|kotton|cotton milk|baby best|diva|fiorentino maxi|alize|karina|hilorama)\b", " ", d)
     d = re.sub(r"\b(que|se|vea|tan|no|muy|mas|menos|como|para)\b", " ", d)
     d = re.sub(r"\s+", " ", d).strip()
     return d
@@ -1434,12 +1489,83 @@ def _uniq_lista(vals, limite=12):
     return out
 
 
+
+def _tokens_accesorio_texto(texto):
+    t = _norm(texto)
+    base = [
+        "relleno", "medio kilo", "kilo", "delcron", "guata", "nube",
+        "ojo", "ojos", "seguridad", "negro", "bolsa", "gancho", "ganchos", "aluminio",
+        "aguja", "agujas", "crochet", "ganchillo", "alfiler", "marcador", "tijera",
+        "silicon", "silicon", "fieltro", "cinta", "boton", "botones", "cierre",
+    ]
+    toks = [x for x in base if x in t]
+    for m in re.finditer(r"\b\d+(?:\.\d+)?\s*(?:mm|m|kilo|kg)?\b", t):
+        toks.append(m.group(0).strip())
+    return _uniq(toks)
+
+
+def _buscar_accesorios_texto(texto, productos, limite=5):
+    activos = _productos_activos(productos)
+    accesorios = [p for p in activos if _es_accesorio_producto(p)]
+    toks = _tokens_accesorio_texto(texto)
+    if not toks:
+        return []
+    scored = []
+    for p in accesorios:
+        pt = _norm(_campo_producto_texto(p))
+        score = 0
+        for tok in toks:
+            tn = _norm(tok)
+            if tn and tn in pt:
+                score += 3 if re.search(r"\d", tn) else 1
+        if score:
+            scored.append((score, _stock(p), p))
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [p for _, __, p in scored[:limite]]
+
+
+def _respuesta_accesorio_especifico(texto, productos, incluir_precio=False):
+    matches = _buscar_accesorios_texto(texto, productos)
+    t = _norm(texto)
+    if incluir_precio or re.search(r"\b(precio|cuanto|cuesta|sale|vale|costo)\b", t):
+        incluir_precio = True
+    if matches:
+        lineas = []
+        for p in matches[:4]:
+            linea = _linea_producto(p)
+            stock = _stock(p)
+            precio = _precio(p)
+            extra = []
+            if incluir_precio and precio > 0:
+                extra.append(f"${precio:,.2f}")
+            if stock > 0:
+                extra.append(f"stock {stock}")
+            elif p.get("es_inventariable", True):
+                extra.append("sin stock disponible")
+            if extra:
+                linea += " (" + ", ".join(extra) + ")"
+            lineas.append(linea)
+        return f"Sí {EMOJI_OK} manejamos " + "; ".join(lineas) + ". ¿Cuántas piezas necesita?"
+    if re.search(r"\brelleno\b", t):
+        return f"Sí {EMOJI_OK} manejamos relleno para amigurumi. Le reviso presentación, precio y stock disponible. ¿Lo busca por pieza o por paquete?"
+    if re.search(r"\b(ojo|ojos|seguridad)\b", t):
+        return f"Sí {EMOJI_OK} manejamos ojos de seguridad. ¿Qué medida necesita?"
+    if re.search(r"\b(gancho|ganchos|aguja|agujas|crochet)\b", t):
+        return f"Sí {EMOJI_OK} manejamos ganchos/agujas para tejer. ¿Qué medida busca?"
+    return ""
+
+
 def _respuesta_catalogo_general(texto, productos):
     t = _norm(texto)
     activos = _productos_activos(productos)
     marcas = _uniq_lista([p.get("marca") for p in activos if p.get("marca")], 8)
     hilos = _uniq_lista([_hilo_display(p.get("hilo")) for p in activos if p.get("hilo") and not _es_accesorio_producto(p)], 10)
     accesorios = _uniq_lista([p.get("hilo") or p.get("color") or p.get("nombre") or p.get("producto") for p in activos if _es_accesorio_producto(p)], 8)
+
+    if _es_consulta_accesorio(texto):
+        resp_acc = _respuesta_accesorio_especifico(texto, productos)
+        if resp_acc:
+            return resp_acc
 
     if re.search(r"\bde\s+karina\b|\bkarina\b", t):
         karina = [p for p in activos if "karina" in _norm(p.get("marca") or "")]
@@ -1493,7 +1619,7 @@ def _respuesta_recomendacion_producto(texto, productos):
         return f"Para amigurumi le recomendaría {opciones[0]} {EMOJI_OK}. También puedo mostrarle opciones por presupuesto: económica, suave o con más definición. ¿Qué tamaño de muñeco va a hacer?"
 
     if re.search(r"\b(chenille|suave|barato|economico|no salga tan caro)\b", t):
-        return f"Para algo suave tipo chenille y que no se vaya tan caro, le recomiendo revisar {opciones[0]} {EMOJI_OK}. Si quiere, le muestro colores disponibles y precio para comparar."
+        return f"Para algo suave tipo chenille y económico, le recomiendo revisar {opciones[0]} {EMOJI_OK}. Si quiere, le muestro colores disponibles y precio para comparar."
 
     return f"Con gusto {EMOJI_OK} le recomiendo según el proyecto: {', '.join(opciones[:3])}. ¿Qué va a tejer?"
 
@@ -1606,7 +1732,13 @@ def _primer_codigo(texto):
 def _respuesta_precio(contexto, productos):
     hilo = contexto.get("hilo_actual") or ""
     if not hilo:
-        return f"Claro {EMOJI_OK} ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?"
+        mem = contexto.get("memoria_previa") or {}
+        prev = _norm(mem.get("ultima_respuesta_enviada") or "")
+        if any(x in prev for x in ("relleno", "ojo", "ojos", "gancho", "agujas")):
+            resp_acc = _respuesta_accesorio_especifico(prev, productos, incluir_precio=True)
+            if resp_acc:
+                return resp_acc
+        return f"Claro {EMOJI_OK} ¿me confirma qué hilo, accesorio o código quiere revisar para darle el precio exacto?"
     ctx = _filtrar_contexto(productos, contexto)
     precios = [_precio(p) for p in ctx if _precio(p) > 0 and _no_combo(p)]
     nombre = _hilo_display(hilo)
@@ -1614,6 +1746,8 @@ def _respuesta_precio(contexto, productos):
         return f"Sí manejamos {nombre} {EMOJI_OK} ¿me indica el código o color para revisarle el precio exacto?"
     mn, mx = min(precios), max(precios)
     precio = f"${mn:,.2f}" if abs(mn - mx) < 0.01 else f"desde ${mn:,.2f}"
+    if ctx and all(_es_accesorio_producto(p) for p in ctx):
+        return f"El {nombre} está en {precio} {EMOJI_OK} ¿cuántas piezas necesita?"
     return f"El {nombre} está en {precio} por madeja {EMOJI_OK} ¿busca algún color o código en especial?"
 
 
@@ -1911,7 +2045,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v37_motor_conversacional",
+            "motor": "v38_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -1960,7 +2094,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v37_motor_conversacional",
+        "motor": "v38_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,

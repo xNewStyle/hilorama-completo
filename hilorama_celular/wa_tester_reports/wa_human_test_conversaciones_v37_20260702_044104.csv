@@ -1,0 +1,250 @@
+case_id,category,passed,turn_no,cliente,respuesta,intencion,confianza,accion,reasons
+00001_humano_catalogo_general_tambi_n_manejan_agujas_o_ganchos,humano_catalogo_general,True,1,Hola buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00001_humano_catalogo_general_tambi_n_manejan_agujas_o_ganchos,humano_catalogo_general,True,2,disculpa que más manejan aparte de velluto?,"Claro 😊 manejamos hilos como Baby Best, Diva, Puffy Fine Color, Velluto, Kotton Milk, Regalo Sorpresa, Fiorentino Maxi, Fosfo. También manejamos accesorios como GANCHO, ALFILER, GANCHOS DE 6, RELLENO. ¿Busca algo para amigurumi, ropa, cobija o decoración?",catalogo_general,alta,sugerir_respuesta,
+00001_humano_catalogo_general_tambi_n_manejan_agujas_o_ganchos,humano_catalogo_general,True,3,también manejan agujas o ganchos?,"Sí 😊 también manejamos accesorios para tejer, por ejemplo: GANCHO, ALFILER, GANCHOS DE 6, RELLENO, NARIZ FLOCK, OJO NEGRO. ¿Busca ganchos/agujas de alguna medida?",catalogo_general,alta,sugerir_respuesta,
+00002_humano_marcas_hilos_y_de_karina_que_tiene,humano_marcas_hilos,True,1,Hola,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00002_humano_marcas_hilos_y_de_karina_que_tiene,humano_marcas_hilos,True,2,que marcas de hilos maneja?,"Sí 😊 manejamos varias marcas/productos, entre ellas: ALIZE, GANCHO ALUMINIO, HILORAMA, KARINA, OJO SEGURIDAD. En hilos tenemos opciones como Baby Best, Diva, Puffy Fine Color, Velluto, Kotton Milk, Regalo Sorpresa. ¿Qué proyecto va a realizar?",catalogo_general,alta,sugerir_respuesta,
+00002_humano_marcas_hilos_y_de_karina_que_tiene,humano_marcas_hilos,True,3,y de karina que tiene?,"De Karina manejamos Fiorentino Maxi, Fosfo, Holandes, Kairo, Komfy Mini, Kotton Milk, Kurumi, Trapillo 😊 ¿busca algún color o tipo en especial?",catalogo_general,alta,sugerir_respuesta,
+00003_humano_amigurumi_recomendacion_algo_suave_y_que_no_salga_tan_caro,humano_amigurumi_recomendacion,False,1,holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,contiene algo que no debía: no sé | contiene algo que no debía: no se
+00003_humano_amigurumi_recomendacion_algo_suave_y_que_no_salga_tan_caro,humano_amigurumi_recomendacion,False,2,quiero hacer amigurumis pero no se que hilo me conviene,"Para amigurumi le recomendaría Komfy Mini si busca algo suave tipo chenille y rendidor 😊. También puedo mostrarle opciones por presupuesto: económica, suave o con más definición. ¿Qué tamaño de muñeco va a hacer?",recomendacion_producto,alta,sugerir_respuesta,contiene algo que no debía: no sé | contiene algo que no debía: no se
+00003_humano_amigurumi_recomendacion_algo_suave_y_que_no_salga_tan_caro,humano_amigurumi_recomendacion,False,3,algo suave y que no salga tan caro,"Para algo suave tipo chenille y que no se vaya tan caro, le recomiendo revisar Komfy Mini si busca algo suave tipo chenille y rendidor 😊. Si quiere, le muestro colores disponibles y precio para comparar.",recomendacion_producto,alta,sugerir_respuesta,contiene algo que no debía: no sé | contiene algo que no debía: no se
+00004_humano_pedido_envio_descuento_si_llevo_15_me_mejoras_precio,humano_pedido_envio_descuento,True,1,buenas trades,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00004_humano_pedido_envio_descuento_si_llevo_15_me_mejoras_precio,humano_pedido_envio_descuento,True,2,quiero cotisar velluto,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",pedido_lista,alta,sugerir_respuesta,
+00004_humano_pedido_envio_descuento_si_llevo_15_me_mejoras_precio,humano_pedido_envio_descuento,True,3,5 del 55 y 10 del 60,"Claro 😊 le agrego a su cotización:
+* Velluto 55 Blanco x5
+* Velluto 60 Negro x10
+Total agregado: 15 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00004_humano_pedido_envio_descuento_si_llevo_15_me_mejoras_precio,humano_pedido_envio_descuento,True,4,y cuanto sale envio al 97000,Con el CP 97000 necesito revisar el envio manualmente 😊 No me aparece una tarifa automatica segura en este momento.,cp_envio,baja,requiere_humano,
+00004_humano_pedido_envio_descuento_si_llevo_15_me_mejoras_precio,humano_pedido_envio_descuento,True,5,si llevo 15 me mejoras precio?,Claro 😊 déjeme revisarlo y le confirmo para darle la mejor opción.,decision_comercial,baja,requiere_humano,
+00005_humano_lista_rara_confirmacion_y_agregue_2_del_429,humano_lista_rara_confirmacion,True,1,buenas tardes le paso listita,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00005_humano_lista_rara_confirmacion_y_agregue_2_del_429,humano_lista_rara_confirmacion,True,2,"60
+310
+107
+329
+466
+26
+87","Claro 😊 le agrego a su cotización:
+* Velluto 60 Negro x1
+* Velluto 310 Trigo x1
+* Velluto 329 Tabaco x1
+* Velluto 466 Cafe Medio x1
+* Velluto 26 Cafe Chocolate x1
+* Velluto 87 Gris Oscuro x1
+Total agregado: 6 piezas.
+Velluto 107 Vino por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?",pedido_lista,media,revision_stock,
+00005_humano_lista_rara_confirmacion_y_agregue_2_del_429,humano_lista_rara_confirmacion,True,3,perdon todo eso seria de belluto,"Claro 😊 le cotizo:
+- Velluto Perdon Todo Eso Seria x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00005_humano_lista_rara_confirmacion_y_agregue_2_del_429,humano_lista_rara_confirmacion,True,4,y agregue 2 del 429,"Claro 😊 le agrego a su cotización:
+* Velluto 429 Tabaco Claro x2
+Total agregado: 2 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00006_humano_correccion_larga_y_agregue_negro_si_tiene,humano_correccion_larga,True,1,me puede poner 6 del 14 y 3 del 06 de komfi mini,"Le revisé su pedido para cotización 😊
+Komfy Mini 14 Rosa Bb por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?
+Komfy Mini 6 Cielo por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?",pedido_lista,media,revision_stock,
+00006_humano_correccion_larga_y_agregue_negro_si_tiene,humano_correccion_larga,True,2,perdon mejor quite el 14,Claro 😊 corrijo la cotización: quito el código 14. Le actualizo la lista para que quede correcto.,correccion_pedido,baja,preguntar,
+00006_humano_correccion_larga_y_agregue_negro_si_tiene,humano_correccion_larga,True,3,del 06 dejeme solo 2,"Claro 😊 le agrego a su cotización:
+* Komfy Mini 6 Cielo x1
+Total agregado: 1 pieza.
+Me faltan confirmar estos códigos para no agregarlos mal: 2.",pedido_lista,baja,preguntar,
+00006_humano_correccion_larga_y_agregue_negro_si_tiene,humano_correccion_larga,True,4,y agregue negro si tiene,"¿Cuántas piezas de Komfy Mini 99 Negro le agrego?
+Claro 😊 ¿cuántas piezas le agrego?",duda_general,baja,preguntar,
+00007_humano_pago_comprobante_me_confirma_si_le_llego,humano_pago_comprobante,True,1,ya quedo el pago,"Perfecto 😊 me puede mandar foto del comprobante para revisarlo, por favor.",comprobante,baja,requiere_humano,
+00007_humano_pago_comprobante_me_confirma_si_le_llego,humano_pago_comprobante,True,2,ahorita le mando comprobante,"Perfecto 😊 me puede mandar foto del comprobante para revisarlo, por favor.",comprobante,media,responder_revision,
+00007_humano_pago_comprobante_me_confirma_si_le_llego,humano_pago_comprobante,True,3,me confirma si le llego?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00008_humano_producto_no_manejado_si_no_tiene_cual_me_recomienda_parecido,humano_producto_no_manejado,True,1,manejas estambre la abuelita?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00008_humano_producto_no_manejado_si_no_tiene_cual_me_recomienda_parecido,humano_producto_no_manejado,True,2,si no tiene cual me recomienda parecido?,"Con gusto 😊 le recomiendo según el proyecto: Komfy Mini si busca algo suave tipo chenille y rendidor, Velluto si quiere un acabado más pachoncito y suave, Kurumi si lo necesita para amigurumi con más definición. ¿Qué va a tejer?",recomendacion_producto,alta,sugerir_respuesta,
+00009_humano_accesorio_real_almacen_y_me_lo_puede_agregar_con_mis_hilos,humano_accesorio_real_almacen,True,1,hola una pregunta,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,baja,preguntar,
+00009_humano_accesorio_real_almacen_y_me_lo_puede_agregar_con_mis_hilos,humano_accesorio_real_almacen,True,2,maneja MARCADOR DE PUNTOS SURTIDOS?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00009_humano_accesorio_real_almacen_y_me_lo_puede_agregar_con_mis_hilos,humano_accesorio_real_almacen,True,3,y me lo puede agregar con mis hilos?,"Claro 😊 le cotizo:
+- Y Lo Con Mis Hilos x1
+Total: 1 pieza.",pedido_lista,baja,preguntar,
+00010_generado_humano_producto_cuanto_cuesta_komfy_mini,generado_humano_producto,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00010_generado_humano_producto_cuanto_cuesta_komfy_mini,generado_humano_producto,True,2,cuanto cuesta Komfy Mini?,El Komfy Mini está en $52.00 por madeja 😊 ¿busca algún color o código en especial?,pregunta_precio,alta,sugerir_respuesta,
+00011_generado_humano_producto_maneja_karina,generado_humano_producto,True,1,Disculpa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00011_generado_humano_producto_maneja_karina,generado_humano_producto,True,2,maneja KARINA?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00012_generado_humano_catalogo_qu_hilos_tienes,generado_humano_catalogo,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00012_generado_humano_catalogo_qu_hilos_tienes,generado_humano_catalogo,True,2,qué hilos tienes?,"Claro 😊 manejamos hilos como Baby Best, Diva, Puffy Fine Color, Velluto, Kotton Milk, Regalo Sorpresa, Fiorentino Maxi, Fosfo. También manejamos accesorios como GANCHO, ALFILER, GANCHOS DE 6, RELLENO. ¿Busca algo para amigurumi, ropa, cobija o decoración?",catalogo_general,alta,sugerir_respuesta,
+00013_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,False,1,Oye una pregunta,"Claro 😊 le cotizo:
+- Pregunta x1
+Total: 1 pieza.",duda_general,baja,preguntar,respondió genérico; debía mencionar catálogo/productos/accesorios
+00013_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,False,2,maneja RELLENO MEDIO KILO?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,respondió genérico; debía mencionar catálogo/productos/accesorios
+00013_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,False,3,me puede decir precio o si hay?,Claro 😊 ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?,pregunta_precio,alta,sugerir_respuesta,respondió genérico; debía mencionar catálogo/productos/accesorios
+00014_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00014_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedido de Konfy Mini,Claro 😊 mándeme la lista cuando guste y se la cotizo en Komfy Mini.,iniciar_pedido,alta,esperar_lista,
+00014_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,3,7 del 104,"Le revisé su pedido para cotización 😊
+Komfy Mini 104 Gris Rata por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?",pedido_lista,media,revision_stock,
+00014_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,4,cuanto seria con envio al 97000?,Con el CP 97000 necesito revisar el envio manualmente 😊 No me aparece una tarifa automatica segura en este momento.,cp_envio,baja,requiere_humano,
+00015_generado_humano_producto_tiene_el_codigo_12_de_kairo,generado_humano_producto,True,1,buenas trades,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00015_generado_humano_producto_tiene_el_codigo_12_de_kairo,generado_humano_producto,True,2,tiene el codigo 12 de KAIRO?,Sí 😊 manejamos Kairo. ¿Le comparto la gama de colores o busca algún tono en especial?,consulta_stock,alta,sugerir_respuesta,
+00016_generado_humano_pedido_seguimiento_3_del_218,generado_humano_pedido_seguimiento,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00016_generado_humano_pedido_seguimiento_3_del_218,generado_humano_pedido_seguimiento,True,2,quiero hacer un pwdido de KURUMI,Claro 😊 mándeme la lista cuando guste y se la cotizo en Kurumi.,iniciar_pedido,alta,esperar_lista,
+00016_generado_humano_pedido_seguimiento_3_del_218,generado_humano_pedido_seguimiento,True,3,3 del 218,"Claro 😊 le agrego a su cotización:
+* Velluto 218 Azul Cielo x3
+Total agregado: 3 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00017_generado_humano_mixto_si_ya_pago_como_le_hago,generado_humano_mixto,True,1,Buen día,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00017_generado_humano_mixto_si_ya_pago_como_le_hago,generado_humano_mixto,True,2,me puedes cotizar 1 del 24 de KOMFY MINI,"Le revisé su pedido para cotización 😊
+Komfy Mini 24 Bugambilia por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?",pedido_lista,media,revision_stock,
+00017_generado_humano_mixto_si_ya_pago_como_le_hago,generado_humano_mixto,True,3,tambien maneja agujas?,"Sí 😊 también manejamos accesorios para tejer, por ejemplo: GANCHO, ALFILER, GANCHOS DE 6, RELLENO, NARIZ FLOCK, OJO NEGRO. ¿Busca ganchos/agujas de alguna medida?",catalogo_general,alta,sugerir_respuesta,
+00017_generado_humano_mixto_si_ya_pago_como_le_hago,generado_humano_mixto,True,4,si ya pago como le hago?,"Perfecto 😊 me puede mandar foto del comprobante para revisarlo, por favor.",pago,media,responder_revision,
+00018_generado_humano_pedido_seguimiento_y_3_del_104,generado_humano_pedido_seguimiento,True,1,buenas trades,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00018_generado_humano_pedido_seguimiento_y_3_del_104,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedido de TRAPILLO KRAFT,Claro 😊 mándeme la lista cuando guste y se la cotizo en Trapillo.,iniciar_pedido,baja,preguntar,
+00018_generado_humano_pedido_seguimiento_y_3_del_104,generado_humano_pedido_seguimiento,True,3,7 del 23,"Le revisé su pedido para cotización 😊
+De Trapillo 23 Fucsia me aparecen 1 pieza(s) disponibles y usted pidió 7. ¿Le agrego las disponibles o le muestro otra opción?",pedido_lista,media,revision_stock,
+00018_generado_humano_pedido_seguimiento_y_3_del_104,generado_humano_pedido_seguimiento,True,4,y 3 del 104,"Claro 😊 le cotizo:
+- Trapillo 104 x3
+Total: 3 piezas.",pedido_lista,baja,preguntar,
+00019_generado_humano_catalogo_qu_m_s_manejan_aparte_de_vellluto,generado_humano_catalogo,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00019_generado_humano_catalogo_qu_m_s_manejan_aparte_de_vellluto,generado_humano_catalogo,True,2,qué más manejan aparte de Vellluto?,"Claro 😊 manejamos hilos como Baby Best, Diva, Puffy Fine Color, Velluto, Kotton Milk, Regalo Sorpresa, Fiorentino Maxi, Fosfo. También manejamos accesorios como GANCHO, ALFILER, GANCHOS DE 6, RELLENO. ¿Busca algo para amigurumi, ropa, cobija o decoración?",catalogo_general,alta,sugerir_respuesta,
+00020_generado_humano_pedido_seguimiento_y_1_del_132,generado_humano_pedido_seguimiento,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00020_generado_humano_pedido_seguimiento_y_1_del_132,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedio de OJO NEGRO,"Claro 😊 le cotizo:
+- Pedio Ojo Negro x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00020_generado_humano_pedido_seguimiento_y_1_del_132,generado_humano_pedido_seguimiento,True,3,8 del 10,"Claro 😊 le agrego a su cotización:
+* Ojo Negro 10 Diez Mm x8
+Total agregado: 8 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00020_generado_humano_pedido_seguimiento_y_1_del_132,generado_humano_pedido_seguimiento,True,4,y 1 del 132,"Claro 😊 le cotizo:
+- 132 x1
+Total: 1 pieza.",pedido_lista,baja,preguntar,
+00021_generado_humano_producto_maneja_karina,generado_humano_producto,True,1,buenas trades,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00021_generado_humano_producto_maneja_karina,generado_humano_producto,True,2,maneja KARINA?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00022_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,1,Oye una pregunta,"Claro 😊 le cotizo:
+- Pregunta x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00022_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedido de Komfy Mini,Claro 😊 mándeme la lista cuando guste y se la cotizo en Komfy Mini.,iniciar_pedido,alta,esperar_lista,
+00022_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,3,2 del 1,"Claro 😊 le agrego a su cotización:
+* Komfy Mini 1 Blanco x2
+Total agregado: 2 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00022_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,4,cuanto seria con envio al 97000?,Con el CP 97000 necesito revisar el envio manualmente 😊 No me aparece una tarifa automatica segura en este momento.,cp_envio,baja,requiere_humano,
+00023_generado_humano_producto_cuanto_cuesta_velluto,generado_humano_producto,True,1,Disculpa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00023_generado_humano_producto_cuanto_cuesta_velluto,generado_humano_producto,True,2,cuanto cuesta Velluto?,El Velluto está en $59.99 por madeja 😊 ¿busca algún color o código en especial?,pregunta_precio,alta,sugerir_respuesta,
+00024_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,1,Buen día,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00024_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,2,me puedes cotizar 4 del 54 de KOMFY,"Le revisé su pedido para cotización 😊
+De Komfy Mini 54 Camello me aparecen 2 pieza(s) disponibles y usted pidió 4. ¿Le agrego las disponibles o le muestro otra opción?",pedido_lista,media,revision_stock,
+00024_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,3,y que otras marcas tiene?,"Claro 😊 le cotizo:
+- Komfy Mini Y Otras Marcas x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00024_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,4,mejora precio si llevo más?,Claro 😊 déjeme revisarlo y le confirmo para darle la mejor opción.,decision_comercial,baja,requiere_humano,
+00025_generado_humano_producto_cuanto_cuesta_kotton_milk,generado_humano_producto,True,1,Disculpa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00025_generado_humano_producto_cuanto_cuesta_kotton_milk,generado_humano_producto,True,2,cuanto cuesta KOTTON MILK?,Claro 😊 ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?,pregunta_precio,alta,sugerir_respuesta,
+00026_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00026_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,2,maneja OJO NEGRO CATORCE MM?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00026_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,3,me puede decir precio o si hay?,Claro 😊 ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?,pregunta_precio,alta,sugerir_respuesta,
+00027_generado_humano_catalogo_manejan_otras_marcas_de_hilos,generado_humano_catalogo,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00027_generado_humano_catalogo_manejan_otras_marcas_de_hilos,generado_humano_catalogo,True,2,manejan otras marcas de hilos?,"Sí 😊 manejamos varias marcas/productos, entre ellas: ALIZE, GANCHO ALUMINIO, HILORAMA, KARINA, OJO SEGURIDAD. En hilos tenemos opciones como Baby Best, Diva, Puffy Fine Color, Velluto, Kotton Milk, Regalo Sorpresa. ¿Qué proyecto va a realizar?",catalogo_general,alta,sugerir_respuesta,
+00028_generado_humano_recomendacion_busco_hilo_para_beb_algo_suave,generado_humano_recomendacion,True,1,Oye una pregunta,"Claro 😊 le cotizo:
+- Pregunta x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00028_generado_humano_recomendacion_busco_hilo_para_beb_algo_suave,generado_humano_recomendacion,True,2,"busco hilo para bebé, algo suave","Para algo suave tipo chenille y que no se vaya tan caro, le recomiendo revisar Komfy Mini si busca algo suave tipo chenille y rendidor 😊. Si quiere, le muestro colores disponibles y precio para comparar.",recomendacion_producto,alta,sugerir_respuesta,
+00029_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00029_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,2,me puedes cotizar 3 del 103 de KOTTON MILK,"Claro 😊 le cotizo:
+- 103 x3
+- Kotton Milk x103
+Total: 106 piezas.",pedido_lista,baja,preguntar,
+00029_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,3,tambien tiene ojos de seguridad?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00029_generado_humano_mixto_mejora_precio_si_llevo_m_s,generado_humano_mixto,True,4,mejora precio si llevo más?,Claro 😊 déjeme revisarlo y le confirmo para darle la mejor opción.,decision_comercial,baja,requiere_humano,
+00030_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,1,Hola,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00030_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedio de TRAPILLO KRAFT,"Claro 😊 le cotizo:
+- Trapillo Pedio Kraft x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00030_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,3,2 del 15,"Claro 😊 le agrego a su cotización:
+* Trapillo 15 Palo De Rosa x2
+Total agregado: 2 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00030_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,4,y 4 del 20,"Claro 😊 le agrego a su cotización:
+* Komfy Mini 20 Lila x4
+Total agregado: 4 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00030_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,5,cuanto seria con envio al 97000?,Con el CP 97000 necesito revisar el envio manualmente 😊 No me aparece una tarifa automatica segura en este momento.,cp_envio,baja,requiere_humano,
+00031_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,1,Buen día,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00031_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,2,maneja KOMFY MINI ROJO ESCOLAR?,Por el momento no me aparece disponible Komfy Mini 78 Rojo Escolar 😔.,consulta_stock,baja,preguntar,
+00031_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,3,me puede decir precio o si hay?,El Komfy Mini está en $52.00 por madeja 😊 ¿busca algún color o código en especial?,pregunta_precio,alta,sugerir_respuesta,
+00032_generado_humano_catalogo_qu_m_s_manejan_aparte_de_velluto,generado_humano_catalogo,True,1,Oye una pregunta,"Claro 😊 le cotizo:
+- Pregunta x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00032_generado_humano_catalogo_qu_m_s_manejan_aparte_de_velluto,generado_humano_catalogo,True,2,qué más manejan aparte de velluto?,"Claro 😊 manejamos hilos como Baby Best, Diva, Puffy Fine Color, Velluto, Kotton Milk, Regalo Sorpresa, Fiorentino Maxi, Fosfo. También manejamos accesorios como GANCHO, ALFILER, GANCHOS DE 6, RELLENO. ¿Busca algo para amigurumi, ropa, cobija o decoración?",catalogo_general,alta,sugerir_respuesta,
+00033_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00033_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedio de KOTTON MILK,"Claro 😊 le cotizo:
+- Pedio Kotton Milk x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00033_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,3,8 del 106,"Claro 😊 le cotizo:
+- 106 x8
+Total: 8 piezas.",pedido_lista,baja,preguntar,
+00033_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,4,y 4 del 99,"Le revisé su pedido para cotización 😊
+De Komfy Mini 99 Negro me aparecen 1 pieza(s) disponibles y usted pidió 4. ¿Le agrego las disponibles o le muestro otra opción?",pedido_lista,media,revision_stock,
+00033_generado_humano_pedido_seguimiento_cuanto_seria_con_envio_al_97000,generado_humano_pedido_seguimiento,True,5,cuanto seria con envio al 97000?,Con el CP 97000 necesito revisar el envio manualmente 😊 No me aparece una tarifa automatica segura en este momento.,cp_envio,baja,requiere_humano,
+00034_generado_humano_pedido_seguimiento_y_1_del_199,generado_humano_pedido_seguimiento,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00034_generado_humano_pedido_seguimiento_y_1_del_199,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedido de KAIRO,Claro 😊 mándeme la lista cuando guste y se la cotizo en Kairo.,iniciar_pedido,alta,esperar_lista,
+00034_generado_humano_pedido_seguimiento_y_1_del_199,generado_humano_pedido_seguimiento,True,3,3 del 12,"Le revisé su pedido para cotización 😊
+Kairo 12 Pizarra por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?",pedido_lista,media,revision_stock,
+00034_generado_humano_pedido_seguimiento_y_1_del_199,generado_humano_pedido_seguimiento,True,4,y 1 del 199,"Claro 😊 le cotizo:
+- Kairo 199 x1
+Total: 1 pieza.",pedido_lista,baja,preguntar,
+00035_generado_humano_producto_cuanto_cuesta_kotton_milk,generado_humano_producto,True,1,buenas trades,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00035_generado_humano_producto_cuanto_cuesta_kotton_milk,generado_humano_producto,True,2,cuanto cuesta KOTTON MILK?,Claro 😊 ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?,pregunta_precio,alta,sugerir_respuesta,
+00036_generado_humano_producto_maneja_alize,generado_humano_producto,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00036_generado_humano_producto_maneja_alize,generado_humano_producto,True,2,maneja ALIZE?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00037_generado_humano_recomendacion_quiero_hacer_mu_ecos_amigurumi_que_me_recomienda,generado_humano_recomendacion,True,1,Buen día,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00037_generado_humano_recomendacion_quiero_hacer_mu_ecos_amigurumi_que_me_recomienda,generado_humano_recomendacion,True,2,"quiero hacer muñecos amigurumi, que me recomienda?","Para amigurumi le recomendaría Komfy Mini si busca algo suave tipo chenille y rendidor 😊. También puedo mostrarle opciones por presupuesto: económica, suave o con más definición. ¿Qué tamaño de muñeco va a hacer?",recomendacion_producto,alta,sugerir_respuesta,
+00038_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,1,Buen día,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00038_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,2,maneja KURUMI ROJO ESCOLAR?,Sí 😊 tengo disponible Kurumi 78 Rojo Escolar. ¿Cuántas piezas le agrego a su cotización?,consulta_stock,baja,preguntar,
+00038_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,3,me puede decir precio o si hay?,El Kurumi está en $25.99 por madeja 😊 ¿busca algún color o código en especial?,pregunta_precio,alta,sugerir_respuesta,
+00039_generado_humano_catalogo_manejan_accesorios_para_tejer,generado_humano_catalogo,True,1,Oye una pregunta,"Claro 😊 le cotizo:
+- Pregunta x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00039_generado_humano_catalogo_manejan_accesorios_para_tejer,generado_humano_catalogo,True,2,manejan accesorios para tejer?,"Sí 😊 también manejamos accesorios para tejer, por ejemplo: GANCHO, ALFILER, GANCHOS DE 6, RELLENO, NARIZ FLOCK, OJO NEGRO. ¿Busca ganchos/agujas de alguna medida?",catalogo_general,alta,sugerir_respuesta,
+00040_generado_humano_recomendacion_ocupo_algo_tipo_chenille_pero_barato,generado_humano_recomendacion,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00040_generado_humano_recomendacion_ocupo_algo_tipo_chenille_pero_barato,generado_humano_recomendacion,True,2,ocupo algo tipo chenille pero barato,"Para algo suave tipo chenille y que no se vaya tan caro, le recomiendo revisar Komfy Mini si busca algo suave tipo chenille y rendidor 😊. Si quiere, le muestro colores disponibles y precio para comparar.",recomendacion_producto,alta,sugerir_respuesta,
+00041_generado_humano_pedido_seguimiento_y_2_del_425,generado_humano_pedido_seguimiento,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00041_generado_humano_pedido_seguimiento_y_2_del_425,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedio de KOTTON MILK,"Claro 😊 le cotizo:
+- Pedio Kotton Milk x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00041_generado_humano_pedido_seguimiento_y_2_del_425,generado_humano_pedido_seguimiento,True,3,6 del 59,"Claro 😊 le cotizo:
+- 59 x6
+Total: 6 piezas.",pedido_lista,baja,preguntar,
+00041_generado_humano_pedido_seguimiento_y_2_del_425,generado_humano_pedido_seguimiento,True,4,y 2 del 425,"Le revisé su pedido para cotización 😊
+Kairo 425 Hielo por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?",pedido_lista,media,revision_stock,
+00042_generado_humano_pedido_seguimiento_2_del_26,generado_humano_pedido_seguimiento,True,1,Oye una pregunta,"Claro 😊 le cotizo:
+- Pregunta x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00042_generado_humano_pedido_seguimiento_2_del_26,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedido de KOTTON MILK,Claro 😊 mándeme la lista cuando guste y con gusto se la cotizo.,iniciar_pedido,baja,preguntar,
+00042_generado_humano_pedido_seguimiento_2_del_26,generado_humano_pedido_seguimiento,True,3,2 del 26,"Claro 😊 le agrego a su cotización:
+* Velluto 26 Cafe Chocolate x2
+Total agregado: 2 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00043_generado_humano_pedido_seguimiento_7_del_132,generado_humano_pedido_seguimiento,True,1,buenas trades,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00043_generado_humano_pedido_seguimiento_7_del_132,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedidio de KURUMI,"Claro 😊 le cotizo:
+- Kurumi Pedidio x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00043_generado_humano_pedido_seguimiento_7_del_132,generado_humano_pedido_seguimiento,True,3,7 del 132,"Claro 😊 le agrego a su cotización:
+* Kurumi 132 Limon x7
+Total agregado: 7 piezas.
+Le preparo su cotización del pedido.",pedido_lista,alta,sugerir_respuesta,
+00044_generado_humano_pedido_seguimiento_y_5_del_59,generado_humano_pedido_seguimiento,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00044_generado_humano_pedido_seguimiento_y_5_del_59,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedio de TRAPILLO KRAFT,"Claro 😊 le cotizo:
+- Trapillo Pedio Kraft x1
+Total: 1 pieza.",duda_general,baja,preguntar,
+00044_generado_humano_pedido_seguimiento_y_5_del_59,generado_humano_pedido_seguimiento,True,3,5 del 101,"Le revisé su pedido para cotización 😊
+De Trapillo 101 Gris Perla me aparecen 1 pieza(s) disponibles y usted pidió 5. ¿Le agrego las disponibles o le muestro otra opción?",pedido_lista,media,revision_stock,
+00044_generado_humano_pedido_seguimiento_y_5_del_59,generado_humano_pedido_seguimiento,True,4,y 5 del 59,"Le revisé su pedido para cotización 😊
+De Trapillo 59 Mentita me aparecen 1 pieza(s) disponibles y usted pidió 5. ¿Le agrego las disponibles o le muestro otra opción?",pedido_lista,media,revision_stock,
+00045_generado_humano_pedido_seguimiento_2_del_75,generado_humano_pedido_seguimiento,True,1,Disculpa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00045_generado_humano_pedido_seguimiento_2_del_75,generado_humano_pedido_seguimiento,True,2,quiero hacer un pedido de KAIRO,Claro 😊 mándeme la lista cuando guste y se la cotizo en Kairo.,iniciar_pedido,alta,esperar_lista,
+00045_generado_humano_pedido_seguimiento_2_del_75,generado_humano_pedido_seguimiento,True,3,2 del 75,"Le revisé su pedido para cotización 😊
+Kairo 75 Palo De Rosa por el momento no me aparece disponible 😔 ¿Le muestro una opción parecida?",pedido_lista,media,revision_stock,
+00046_generado_humano_producto_cuanto_cuesta_kurumi,generado_humano_producto,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00046_generado_humano_producto_cuanto_cuesta_kurumi,generado_humano_producto,True,2,cuanto cuesta KURUMI?,El Kurumi está en $25.99 por madeja 😊 ¿busca algún color o código en especial?,pregunta_precio,alta,sugerir_respuesta,
+00047_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,1,Buen día,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00047_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,2,maneja OJO NEGRO SEIS MM?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00047_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,3,me puede decir precio o si hay?,Claro 😊 ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?,pregunta_precio,alta,sugerir_respuesta,
+00048_generado_humano_producto_maneja_karina,generado_humano_producto,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00048_generado_humano_producto_maneja_karina,generado_humano_producto,True,2,maneja KARINA?,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00049_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,1,Buenas tardes,"Hola 😊 con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?",saludo,alta,sugerir_respuesta,
+00049_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,2,maneja GANCHO SIETE MM?,"Sí 😊 también manejamos accesorios para tejer, por ejemplo: GANCHO, ALFILER, GANCHOS DE 6, RELLENO, NARIZ FLOCK, OJO NEGRO. ¿Busca ganchos/agujas de alguna medida?",catalogo_general,alta,sugerir_respuesta,
+00049_generado_humano_accesorio_me_puede_decir_precio_o_si_hay,generado_humano_accesorio,True,3,me puede decir precio o si hay?,Claro 😊 ¿me confirma qué hilo o código quiere revisar para darle el precio exacto?,pregunta_precio,alta,sugerir_respuesta,
+00050_generado_humano_recomendacion_ocupo_algo_tipo_chenille_pero_barato,generado_humano_recomendacion,True,1,Holaa,"Con gusto 😊 ¿me indica qué hilo, color o código busca para revisarlo bien?",duda_general,baja,revision_humana,
+00050_generado_humano_recomendacion_ocupo_algo_tipo_chenille_pero_barato,generado_humano_recomendacion,True,2,ocupo algo tipo chenille pero barato,"Para algo suave tipo chenille y que no se vaya tan caro, le recomiendo revisar Komfy Mini si busca algo suave tipo chenille y rendidor 😊. Si quiere, le muestro colores disponibles y precio para comparar.",recomendacion_producto,alta,sugerir_respuesta,
