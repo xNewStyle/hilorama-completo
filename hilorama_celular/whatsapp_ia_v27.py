@@ -31,6 +31,8 @@ INTENCIONES = {
     "pregunta_horario",
     "pregunta_promocion",
     "decision_comercial",
+    "catalogo_general",
+    "recomendacion_producto",
 }
 
 ESTADOS_PEDIDO = {
@@ -355,6 +357,55 @@ def _hay_color_en_texto(texto):
     return colores
 
 
+
+
+def _es_saludo_simple(texto):
+    t = _norm(texto)
+    return bool(re.fullmatch(r"(hola+|holaa+|buenas|buenas tardes|buen dia|buenos dias|buenas noches|oye|oye una pregunta)", t))
+
+
+def _es_consulta_catalogo_general(texto):
+    """Preguntas de catalogo: no son pedidos ni colores sueltos.
+    Ejemplos: que hilos tienes, que marcas manejan, accesorios, ganchos, agujas.
+    """
+    t = _norm(texto)
+    if _es_saludo_simple(t):
+        return False
+    patrones = [
+        r"\bque\s+mas\s+(?:manejan|maneja|tienen|venden)\b",
+        r"\bque\s+(?:hilos|estambres|productos|cosas|materiales|articulos|artículos)\s+(?:tienes|tienen|manejan|venden|hay)\b",
+        r"\b(?:manejan|maneja|tienen|tiene|venden|vende)\s+(?:otras\s+)?(?:marcas|hilos|estambres|accesorios|agujas|ganchos|gancho|crochet|ganchillo)\b",
+        r"\b(?:marcas\s+de\s+hilos|marcas\s+manejan|otras\s+marcas\s+de\s+hilos)\b",
+        r"\b(?:accesorios\s+para\s+tejer|agujas\s+o\s+ganchos|ganchos\s+o\s+agujas)\b",
+        r"\b(?:y\s+)?de\s+(?:karina|alize|hilorama)\s+(?:que\s+)?(?:tiene|tienen|maneja|manejan|hay)\b",
+        r"\b(?:que\s+)?(?:tiene|tienen|manejan|hay)\s+de\s+(?:karina|alize|hilorama)\b",
+    ]
+    return any(re.search(p, t) for p in patrones)
+
+
+def _es_consulta_recomendacion(texto):
+    """Dudas donde la clienta pide consejo, no una cotizacion literal."""
+    t = _norm(texto)
+    if _es_saludo_simple(t):
+        return False
+    return bool(
+        re.search(r"\b(recomienda|recomiendas|recomendacion|conviene|sirve\s+para|cual\s+me\s+sirve|que\s+hilo\s+uso|que\s+hilo\s+me\s+conviene)\b", t)
+        or re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos)\b", t)
+        or re.search(r"\b(tipo\s+chenille|chenille|suave|barato|economico|económico|no\s+salga\s+tan\s+caro)\b", t)
+    )
+
+
+def _es_pedido_real_por_texto(texto):
+    t = _norm(texto)
+    if _es_saludo_simple(t) or _es_consulta_catalogo_general(t) or _es_consulta_recomendacion(t):
+        return False
+    if re.search(r"\b(cotiza|cotizar|pedido|lista|poner|agregar|quiero|ocupo|necesito|dame|deme|ponme)\b", t):
+        # Recomendaciones tipo "quiero hacer amigurumis" no son pedido de producto.
+        if _es_consulta_recomendacion(t) and not re.search(r"\b\d{1,3}\s*(?:del|de|x|\*)\b", t):
+            return False
+        return True
+    return False
+
 def detectar_intencion(normalizado, memoria=None, productos=None):
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     hilos = detectar_hilos(texto, productos)
@@ -376,6 +427,12 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     elif re.search(r"\b(envio|envios|paqueteria|cuanto sale el envio|costo de envio)\b", texto):
         principal = "envio"
         estado = "esperando_cp"
+    elif re.search(r"\b(descuento|rebaja|mejor\s+precio|mejora(?:r|me|s)?\s+(?:el\s+)?precio|mejorarme\s+precio|mejoras\s+precio|precio\s+especial|precio\s+final|menos\s+precio|bajar(?:le)?|ajustar\s+precio)\b", texto):
+        principal = "decision_comercial"
+    elif _es_consulta_catalogo_general(texto):
+        principal = "catalogo_general"
+    elif _es_consulta_recomendacion(texto):
+        principal = "recomendacion_producto"
     elif hilos and _es_consulta_manejo(texto) and not _pide_colores_disponibles(texto):
         principal = "consulta_stock"
         secundaria = "consulta_manejan"
@@ -427,6 +484,8 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
 
 def _parece_lista_o_pedido(texto, memoria=None):
     t = _norm(texto)
+    if _es_saludo_simple(t) or _es_consulta_catalogo_general(t) or _es_consulta_recomendacion(t):
+        return False
     if re.search(r"\b\d{1,3}\s*(?:del|de|codigo|cod|tono)\s*\d{1,4}\b", t):
         return True
     if re.search(r"\b\d{1,4}\s*x\s*\d{1,3}\b", t):
@@ -594,11 +653,17 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
                 items.append(_item(codigo=n, cantidad=cantidad_lista, raw=n, fuente="codigo_suelto"))
 
     # Color suelto como "azul cielo" o "rojo".
+    # V37: no convertir preguntas generales/recomendaciones en productos inventados
+    # como "Hilos Tienes x1", "Holaa x1" o "Accesorios Tejer x1".
     if not items and intencion["principal"] in ("pedido_lista", "consulta_stock", "duda_general"):
-        desc = _limpiar_desc_color(texto_sin_totales)
+        permitir_color_suelto = intencion["principal"] in ("pedido_lista", "consulta_stock") or bool(contexto.get("hilo_actual")) or _es_pedido_real_por_texto(texto_sin_totales)
+        if not permitir_color_suelto:
+            desc = ""
+        else:
+            desc = _limpiar_desc_color(texto_sin_totales)
         if intencion["principal"] == "consulta_stock" and not _hay_color_en_texto(desc):
             desc = ""
-        if desc and re.search(r"[a-z]", desc) and not detectar_hilos(desc):
+        if desc and re.search(r"[a-z]", desc) and not detectar_hilos(desc) and not _es_saludo_simple(desc) and not _es_consulta_catalogo_general(desc) and not _es_consulta_recomendacion(desc):
             items.append(_item(desc=desc, cantidad=None, raw=desc, fuente="color_suelto"))
 
     return {
@@ -1069,7 +1134,7 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
             "respuesta_provisional": respuesta_provisional or RESPUESTA_REVISION_HUMANA,
         }
 
-    if re.search(r"\b(descuento|rebaja|mejor precio|mejora(?:r|me)? el precio|precio especial|precio final|menos precio|bajar(?:le)?|ajustar precio)\b", texto):
+    if re.search(r"\b(descuento|rebaja|mejor\s+precio|mejora(?:r|me|s)?\s+(?:el\s+)?precio|mejorarme\s+precio|mejoras\s+precio|precio\s+especial|precio\s+final|menos\s+precio|bajar(?:le)?|ajustar\s+precio)\b", texto):
         return decision(
             "descuento",
             _resumen_descuento(texto, contexto, productos),
@@ -1332,6 +1397,106 @@ def _respuesta_confirmacion_contexto_previo(contexto):
     return intro + "\n\n" + "\n".join(lineas) + f"\n\nTotal: {total} pieza" + ("s." if total != 1 else ".") + "\n\nLe preparo su cotización del pedido."
 
 
+
+
+def _campo_producto_texto(p):
+    partes = []
+    for k in ("marca", "hilo", "codigo", "color", "nombre", "producto", "descripcion", "categoria", "tipo"):
+        v = p.get(k) if isinstance(p, dict) else ""
+        if v:
+            partes.append(str(v))
+    return " ".join(partes)
+
+
+def _es_accesorio_producto(p):
+    t = _norm(_campo_producto_texto(p))
+    return bool(re.search(r"\b(gancho|ganchos|aguja|agujas|crochet|ganchillo|ojo|ojos|seguridad|alfiler|marcador|tijera|relleno|silicon|fieltro|cinta|boton|botones|cierre|aluminio)\b", t))
+
+
+def _productos_activos(productos):
+    return [p for p in (productos or []) if isinstance(p, dict) and _no_combo(p)]
+
+
+def _uniq_lista(vals, limite=12):
+    out = []
+    seen = set()
+    for v in vals:
+        vv = str(v or "").strip()
+        if not vv:
+            continue
+        key = _norm(vv)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(vv)
+        if len(out) >= limite:
+            break
+    return out
+
+
+def _respuesta_catalogo_general(texto, productos):
+    t = _norm(texto)
+    activos = _productos_activos(productos)
+    marcas = _uniq_lista([p.get("marca") for p in activos if p.get("marca")], 8)
+    hilos = _uniq_lista([_hilo_display(p.get("hilo")) for p in activos if p.get("hilo") and not _es_accesorio_producto(p)], 10)
+    accesorios = _uniq_lista([p.get("hilo") or p.get("color") or p.get("nombre") or p.get("producto") for p in activos if _es_accesorio_producto(p)], 8)
+
+    if re.search(r"\bde\s+karina\b|\bkarina\b", t):
+        karina = [p for p in activos if "karina" in _norm(p.get("marca") or "")]
+        khilos = _uniq_lista([_hilo_display(p.get("hilo")) for p in karina if p.get("hilo")], 10)
+        if khilos:
+            return f"De Karina manejamos {', '.join(khilos[:8])} {EMOJI_OK} ¿busca algún color o tipo en especial?"
+        return f"De Karina no me aparece una lista clara en este momento {EMOJI_OK}, pero puedo revisarle por nombre, hilo o código."
+
+    if re.search(r"\b(agujas|ganchos|gancho|accesorios|crochet|ganchillo)\b", t):
+        if accesorios:
+            return f"Sí {EMOJI_OK} también manejamos accesorios para tejer, por ejemplo: {', '.join(accesorios[:6])}. ¿Busca ganchos/agujas de alguna medida?"
+        return f"Sí {EMOJI_OK} también manejamos accesorios como ganchos, agujas y ojitos de seguridad. ¿Qué medida busca?"
+
+    if re.search(r"\b(marcas|otras marcas)\b", t):
+        if marcas:
+            return f"Sí {EMOJI_OK} manejamos varias marcas/productos, entre ellas: {', '.join(marcas[:8])}. En hilos tenemos opciones como {', '.join(hilos[:6]) if hilos else 'varios hilos'}. ¿Qué proyecto va a realizar?"
+        return f"Sí {EMOJI_OK} manejamos varias marcas e hilos. ¿Busca algo tipo chenille, algodón/amigurumi o trapillo?"
+
+    if re.search(r"\b(que hilos|hilos tienes|estambres|que mas|productos|materiales)\b", t):
+        if hilos:
+            extra = f" También manejamos accesorios como {', '.join(accesorios[:4])}." if accesorios else ""
+            return f"Claro {EMOJI_OK} manejamos hilos como {', '.join(hilos[:8])}.{extra} ¿Busca algo para amigurumi, ropa, cobija o decoración?"
+        return f"Claro {EMOJI_OK} manejamos varios hilos y accesorios. ¿Busca algo para amigurumi, ropa, cobija o decoración?"
+
+    resumen = []
+    if hilos:
+        resumen.append("hilos como " + ", ".join(hilos[:6]))
+    if accesorios:
+        resumen.append("accesorios como " + ", ".join(accesorios[:4]))
+    if marcas:
+        resumen.append("marcas como " + ", ".join(marcas[:5]))
+    return f"Sí {EMOJI_OK} manejamos " + ("; ".join(resumen) if resumen else "hilos y accesorios para tejer") + ". ¿Qué proyecto quiere hacer?"
+
+
+def _respuesta_recomendacion_producto(texto, productos):
+    t = _norm(texto)
+    activos = _productos_activos(productos)
+    familias_stock = { _hilo_family(p.get("hilo")) for p in activos if _stock(p) > 0 and not _es_accesorio_producto(p) }
+
+    opciones = []
+    if "KOMFY MINI" in familias_stock:
+        opciones.append("Komfy Mini si busca algo suave tipo chenille y rendidor")
+    if "VELLUTO" in familias_stock:
+        opciones.append("Velluto si quiere un acabado más pachoncito y suave")
+    if "KURUMI" in familias_stock:
+        opciones.append("Kurumi si lo necesita para amigurumi con más definición")
+    if not opciones:
+        opciones = ["Komfy Mini o Velluto para algo suave", "Kurumi para amigurumi con más detalle"]
+
+    if re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos)\b", t):
+        return f"Para amigurumi le recomendaría {opciones[0]} {EMOJI_OK}. También puedo mostrarle opciones por presupuesto: económica, suave o con más definición. ¿Qué tamaño de muñeco va a hacer?"
+
+    if re.search(r"\b(chenille|suave|barato|economico|no salga tan caro)\b", t):
+        return f"Para algo suave tipo chenille y que no se vaya tan caro, le recomiendo revisar {opciones[0]} {EMOJI_OK}. Si quiere, le muestro colores disponibles y precio para comparar."
+
+    return f"Con gusto {EMOJI_OK} le recomiendo según el proyecto: {', '.join(opciones[:3])}. ¿Qué va a tejer?"
+
 def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, resolucion, confianza, productos=None, recursos=None, envio=None):
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     principal = intencion["principal"]
@@ -1359,6 +1524,15 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
             return recursos["respuesta"]
         codigo = _primer_codigo(texto)
         return f"Claro {EMOJI_OK} le reviso la foto del tono {codigo}."
+
+    if principal == "decision_comercial":
+        return RESPUESTA_REVISION_HUMANA
+
+    if principal == "catalogo_general":
+        return _respuesta_catalogo_general(texto, productos)
+
+    if principal == "recomendacion_producto":
+        return _respuesta_recomendacion_producto(texto, productos)
 
     if principal == "pregunta_precio":
         return _respuesta_precio(contexto, productos)
@@ -1388,6 +1562,9 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
         if hilo:
             return f"Claro {EMOJI_OK} mándeme la lista cuando guste y se la cotizo en {hilo}."
         return f"Claro {EMOJI_OK} mándeme la lista cuando guste y con gusto se la cotizo."
+
+    if principal == "saludo":
+        return f"Hola {EMOJI_OK} con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?"
 
     if principal == "correccion_pedido":
         nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)
@@ -1734,7 +1911,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v35_motor_conversacional",
+            "motor": "v37_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -1783,7 +1960,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v35_motor_conversacional",
+        "motor": "v37_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
