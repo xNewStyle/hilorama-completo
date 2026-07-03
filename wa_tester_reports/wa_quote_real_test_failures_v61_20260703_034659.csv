@@ -1,0 +1,247 @@
+case_id,category,reasons,expected_tramo_kg,expected_manual,cp,final_response,debug_kg,debug_tramo,match_stats
+00013_v61_cotizacion_mixta_larga_con_envio_y_envio_para_29000_como_quedaria,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 10/26 (38.5%) | detectó poca cantidad total: 17/49 (34.7%),,False,29000,"Con el CP 29000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $898.84 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $1,008.84 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,097.84 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $1,277.84 MXN - 3-5 días
+- DHL: envío $269.00 MXN | total con productos: $1,167.84 MXN - 1-4 días
+¿Cuál le gustaría usar?",10,10,"{""expected_unique"": 26, ""actual_unique"": 10, ""matched_unique"": 10, ""expected_qty"": 49, ""matched_qty"": 17, ""unique_ratio"": 0.38461538461538464, ""qty_ratio"": 0.3469387755102041}"
+00014_v61_cotizacion_larga_velluto_con_envio_y_envio_para_52140_como_quedaria,v61_cotizacion_larga_velluto_con_envio,"mandó a revisión manual pero el tramo esperado era automático | no muestra opciones de paquetería | no muestra precios de envío/total | respuesta menciona kg volumétricos demasiado altos [20.0, 15.0]; esperado tramo 15",15,False,52140,"Con el CP 52140, este pedido queda en aproximadamente 20 kg volumétricos. Como pasa de 15 kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. También reviso si su zona trae reexpedición y le confirmo el costo final.",15,15,"{""expected_unique"": 30, ""actual_unique"": 30, ""matched_unique"": 30, ""expected_qty"": 95, ""matched_qty"": 95, ""unique_ratio"": 1.0, ""qty_ratio"": 1.0}"
+00015_v61_tramos_velluto_5_10_15_manual_ya_con_envio_al_cp_86000_cuanto_queda,v61_tramos_velluto_5_10_15_manual,detectó poca cantidad total: 1/70 (1.4%) | no parece mencionar el tramo esperado de 15 kg volumétricos,15,False,86000,"Con el CP 86000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $59.99 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $169.99 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $258.99 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $438.99 MXN - 4-6 días
+- DHL: envío $269.00 MXN | total con productos: $328.99 MXN - 1-4 días
+¿Cuál le gustaría usar?",15,15,"{""expected_unique"": 1, ""actual_unique"": 1, ""matched_unique"": 1, ""expected_qty"": 70, ""matched_qty"": 1, ""unique_ratio"": 1.0, ""qty_ratio"": 0.014285714285714285}"
+00018_v61_cotizacion_mixta_larga_con_envio_ya_con_envio_al_cp_76000_cuanto_queda,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 23/39 (59.0%) | detectó poca cantidad total: 53/87 (60.9%),,False,76000,"Con el CP 76000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,478.59 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,698.59 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $2,767.59 MXN - 2-4 días
+- FedEx: envío $459.00 MXN | total con productos: $2,937.59 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $2,975.59 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",10,10,"{""expected_unique"": 39, ""actual_unique"": 18, ""matched_unique"": 23, ""expected_qty"": 87, ""matched_qty"": 53, ""unique_ratio"": 0.5897435897435898, ""qty_ratio"": 0.6091954022988506}"
+00023_v61_cotizacion_larga_velluto_con_envio_cuanto_seria_con_envio_al_codigo_postal_78174,v61_cotizacion_larga_velluto_con_envio,detectó pocos códigos/productos: 27/35 (77.1%) | detectó poca cantidad total: 50/75 (66.7%) | no parece mencionar el tramo esperado de 15 kg volumétricos,15,False,78174,"Con el CP 78174, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,999.50 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $3,219.50 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $3,288.50 MXN - 2-3 días
+- FedEx: envío $459.00 MXN | total con productos: $3,458.50 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $3,496.50 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 35, ""actual_unique"": 27, ""matched_unique"": 27, ""expected_qty"": 75, ""matched_qty"": 50, ""unique_ratio"": 0.7714285714285715, ""qty_ratio"": 0.6666666666666666}"
+00024_v61_lista_80_renglones_con_envio_ya_con_envio_al_cp_45000_cuanto_queda,v61_lista_80_renglones_con_envio,detectó pocos códigos/productos: 39/64 (60.9%) | detectó poca cantidad total: 69/118 (58.5%),,False,45000,"Con el CP 45000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $3,997.69 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $4,217.69 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $4,286.69 MXN
+- FedEx: envío $459.00 MXN | total con productos: $4,456.69 MXN
+¿Cuál le gustaría usar?",15,15,"{""expected_unique"": 64, ""actual_unique"": 33, ""matched_unique"": 39, ""expected_qty"": 118, ""matched_qty"": 69, ""unique_ratio"": 0.609375, ""qty_ratio"": 0.5847457627118644}"
+00025_v61_tramos_velluto_5_10_15_manual_y_envio_para_80000_como_quedaria,v61_tramos_velluto_5_10_15_manual,detectó poca cantidad total: 3/71 (4.2%) | no parece mencionar el tramo esperado de 15 kg volumétricos | no parece dar total/subtotal real con envío,15,False,80000,"Con el CP 80000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos:
+- Correos de México: envío $110.00 MXN
+- Estafeta: envío $199.00 MXN - 4-6 días
+- FedEx: envío $379.00 MXN - 3-5 días
+- DHL: envío $430.00 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 1, ""actual_unique"": 4, ""matched_unique"": 1, ""expected_qty"": 71, ""matched_qty"": 3, ""unique_ratio"": 1.0, ""qty_ratio"": 0.04225352112676056}"
+00026_v61_cotizacion_mixta_larga_con_envio_mi_cp_es_64000_cuanto_seria_con_envio,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 33/57 (57.9%) | detectó poca cantidad total: 69/135 (51.1%),,False,64000,"Con el CP 64000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $4,244.51 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $4,464.51 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $4,533.51 MXN - 3-5 días
+- FedEx: envío $459.00 MXN | total con productos: $4,703.51 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $4,741.51 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",20,20,"{""expected_unique"": 57, ""actual_unique"": 30, ""matched_unique"": 33, ""expected_qty"": 135, ""matched_qty"": 69, ""unique_ratio"": 0.5789473684210527, ""qty_ratio"": 0.5111111111111111}"
+00029_v61_cotizacion_larga_velluto_con_envio_cuanto_me_sale_todo_con_envio_al_97000,v61_cotizacion_larga_velluto_con_envio,no parece mencionar el tramo esperado de 10 kg volumétricos,10,False,97000,"Con el CP 97000, estas son las opciones de paqueteria para tramo de hasta 15 kg volumétricos. Subtotal de productos: $4,499.25 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $4,719.25 MXN
+- Estafeta: envío $389.00 MXN | total con productos: $4,888.25 MXN - 3-5 días
+- FedEx: envío $520.00 MXN | total con productos: $5,019.25 MXN - 4-6 días
+- DHL: envío $662.00 MXN | total con productos: $5,161.25 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",10,10,"{""expected_unique"": 19, ""actual_unique"": 19, ""matched_unique"": 19, ""expected_qty"": 39, ""matched_qty"": 39, ""unique_ratio"": 1.0, ""qty_ratio"": 1.0}"
+00031_v61_cotizacion_mixta_larga_con_envio_y_envio_para_86000_como_quedaria,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 8/23 (34.8%) | detectó poca cantidad total: 16/48 (33.3%),,False,86000,"Con el CP 86000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $821.84 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $931.84 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,020.84 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $1,200.84 MXN - 4-6 días
+- DHL: envío $269.00 MXN | total con productos: $1,090.84 MXN - 1-4 días
+¿Cuál le gustaría usar?",10,10,"{""expected_unique"": 23, ""actual_unique"": 8, ""matched_unique"": 8, ""expected_qty"": 48, ""matched_qty"": 16, ""unique_ratio"": 0.34782608695652173, ""qty_ratio"": 0.3333333333333333}"
+00032_v61_cotizacion_mixta_larga_con_envio_mi_cp_es_57000_cuanto_seria_con_envio,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 13/47 (27.7%) | detectó poca cantidad total: 28/107 (26.2%) | respuesta final no menciona CP 57000 | respuesta final no habla del envío | respuesta final no menciona kg/tramo volumétrico | no muestra opciones de paquetería | no parece dar total/subtotal real con envío,,False,57000,"Sí 😊 le reviso nariz flock y ojos de seguridad. En ojos me aparece: Nariz Flock 20 Negra ($9.60, sin stock disponible); Nariz Flock 21 Cafe ($9.60, sin stock disponible); Ojo Negro 10 Diez Mm ($3.00, stock 186); Ojo Negro 12 Doce Mm ($4.00, stock 112). ¿Qué medida y cuántas piezas necesita?",15,15,"{""expected_unique"": 47, ""actual_unique"": 12, ""matched_unique"": 13, ""expected_qty"": 107, ""matched_qty"": 28, ""unique_ratio"": 0.2765957446808511, ""qty_ratio"": 0.2616822429906542}"
+00033_v61_cotizacion_mixta_larga_con_envio_ya_con_envio_al_cp_44100_cuanto_queda,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 23/33 (69.7%) | detectó poca cantidad total: 46/65 (70.8%),,False,44100,"Con el CP 44100, estas son las opciones de paqueteria para tramo de hasta 15 kg volumétricos. Subtotal de productos: $2,201.56 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,421.56 MXN
+- Estafeta: envío $389.00 MXN | total con productos: $2,590.56 MXN - 3-5 días
+- FedEx: envío $520.00 MXN | total con productos: $2,721.56 MXN - 2-4 días
+- DHL: envío $578.00 MXN | total con productos: $2,779.56 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",10,10,"{""expected_unique"": 33, ""actual_unique"": 22, ""matched_unique"": 23, ""expected_qty"": 65, ""matched_qty"": 46, ""unique_ratio"": 0.696969696969697, ""qty_ratio"": 0.7076923076923077}"
+00034_v61_tramos_velluto_5_10_15_manual_cuanto_seria_con_envio_al_codigo_postal_22000,v61_tramos_velluto_5_10_15_manual,detectó poca cantidad total: 1/105 (1.0%),20,True,22000,"Con el CP 22000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $59.99 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $169.99 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $258.99 MXN - 8-10 días
+- FedEx: envío $379.00 MXN | total con productos: $438.99 MXN - 5-7 días
+- DHL: envío $514.00 MXN | total con productos: $573.99 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",20,20,"{""expected_unique"": 1, ""actual_unique"": 1, ""matched_unique"": 1, ""expected_qty"": 105, ""matched_qty"": 1, ""unique_ratio"": 1.0, ""qty_ratio"": 0.009523809523809525}"
+00036_v61_tramos_velluto_5_10_15_manual_cuanto_seria_con_envio_al_codigo_postal_45000,v61_tramos_velluto_5_10_15_manual,detectó poca cantidad total: 3/71 (4.2%) | no parece mencionar el tramo esperado de 15 kg volumétricos | no parece dar total/subtotal real con envío,15,False,45000,"Con el CP 45000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos:
+- Correos de México: envío $110.00 MXN
+- Estafeta: envío $199.00 MXN
+- FedEx: envío $379.00 MXN
+¿Cuál le gustaría usar?",15,15,"{""expected_unique"": 1, ""actual_unique"": 4, ""matched_unique"": 1, ""expected_qty"": 71, ""matched_qty"": 3, ""unique_ratio"": 1.0, ""qty_ratio"": 0.04225352112676056}"
+00037_v61_correccion_larga_con_envio_ya_con_envio_al_cp_44100_cuanto_queda,v61_correccion_larga_con_envio,"mandó a revisión manual pero el tramo esperado era automático | no muestra opciones de paquetería | no muestra precios de envío/total | respuesta menciona kg volumétricos demasiado altos [20.0, 15.0]; esperado tramo 10",10,False,44100,"Con el CP 44100, este pedido queda en aproximadamente 20 kg volumétricos. Como pasa de 15 kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. También reviso si su zona trae reexpedición y le confirmo el costo final.",10,10,"{""expected_unique"": 25, ""actual_unique"": 25, ""matched_unique"": 25, ""expected_qty"": 47, ""matched_qty"": 47, ""unique_ratio"": 1.0, ""qty_ratio"": 1.0}"
+00039_v61_cotizacion_mixta_larga_con_envio_y_envio_para_44100_como_quedaria,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 16/32 (50.0%) | detectó poca cantidad total: 27/61 (44.3%),,False,44100,"Con el CP 44100, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $993.73 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $1,103.73 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,192.73 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $1,372.73 MXN - 2-4 días
+- DHL: envío $269.00 MXN | total con productos: $1,262.73 MXN - 1-4 días
+¿Cuál le gustaría usar?",10,10,"{""expected_unique"": 32, ""actual_unique"": 16, ""matched_unique"": 16, ""expected_qty"": 61, ""matched_qty"": 27, ""unique_ratio"": 0.5, ""qty_ratio"": 0.4426229508196721}"
+00041_v61_cotizacion_mixta_larga_con_envio_mi_cp_es_80000_cuanto_seria_con_envio,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 20/37 (54.1%) | detectó poca cantidad total: 37/84 (44.0%),,False,80000,"Con el CP 80000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $1,448.80 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $1,558.80 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,647.80 MXN - 4-6 días
+- FedEx: envío $379.00 MXN | total con productos: $1,827.80 MXN - 3-5 días
+- DHL: envío $430.00 MXN | total con productos: $1,878.80 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 37, ""actual_unique"": 16, ""matched_unique"": 20, ""expected_qty"": 84, ""matched_qty"": 37, ""unique_ratio"": 0.5405405405405406, ""qty_ratio"": 0.44047619047619047}"
+00042_v61_lista_80_renglones_con_envio_ya_con_envio_al_cp_52140_cuanto_queda,v61_lista_80_renglones_con_envio,detectó pocos códigos/productos: 10/63 (15.9%) | detectó poca cantidad total: 21/118 (17.8%),,False,52140,"Con el CP 52140, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $544.81 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $654.81 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $743.81 MXN - 2-4 días
+- FedEx: envío $379.00 MXN | total con productos: $923.81 MXN - 2-4 días
+- DHL: envío $269.00 MXN | total con productos: $813.81 MXN - 1-4 días
+¿Cuál le gustaría usar?",15,15,"{""expected_unique"": 63, ""actual_unique"": 9, ""matched_unique"": 10, ""expected_qty"": 118, ""matched_qty"": 21, ""unique_ratio"": 0.15873015873015872, ""qty_ratio"": 0.17796610169491525}"
+00043_v61_tramos_velluto_5_10_15_manual_y_envio_para_64600_como_quedaria,v61_tramos_velluto_5_10_15_manual,detectó poca cantidad total: 3/120 (2.5%) | debía mandar revisión manual por volumétrico alto y no lo hizo,20,True,64600,"Con el CP 64600, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos:
+- Correos de México: envío $110.00 MXN
+- Estafeta: envío $199.00 MXN - 3-5 días
+- FedEx: envío $379.00 MXN - 2-4 días
+- DHL: envío $269.00 MXN - 1-4 días
+¿Cuál le gustaría usar?",20,20,"{""expected_unique"": 1, ""actual_unique"": 4, ""matched_unique"": 1, ""expected_qty"": 120, ""matched_qty"": 3, ""unique_ratio"": 1.0, ""qty_ratio"": 0.025}"
+00044_v61_lista_80_renglones_con_envio_me_agregas_envio_a_20000_por_favor,v61_lista_80_renglones_con_envio,detectó pocos códigos/productos: 14/60 (23.3%) | detectó poca cantidad total: 39/115 (33.9%),,False,20000,"Con el CP 20000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,559.41 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,779.41 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $2,848.41 MXN - 3-5 días
+- FedEx: envío $459.00 MXN | total con productos: $3,018.41 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $3,056.41 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 60, ""actual_unique"": 12, ""matched_unique"": 14, ""expected_qty"": 115, ""matched_qty"": 39, ""unique_ratio"": 0.23333333333333334, ""qty_ratio"": 0.3391304347826087}"
+00045_v61_cotizacion_mixta_larga_con_envio_y_envio_para_29000_como_quedaria,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 8/41 (19.5%) | detectó poca cantidad total: 18/93 (19.4%),,False,29000,"Con el CP 29000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $473.94 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $583.94 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $672.94 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $852.94 MXN - 3-5 días
+- DHL: envío $269.00 MXN | total con productos: $742.94 MXN - 1-4 días
+¿Cuál le gustaría usar?",15,15,"{""expected_unique"": 41, ""actual_unique"": 5, ""matched_unique"": 8, ""expected_qty"": 93, ""matched_qty"": 18, ""unique_ratio"": 0.1951219512195122, ""qty_ratio"": 0.1935483870967742}"
+00048_v61_cotizacion_mixta_larga_con_envio_cuanto_seria_con_envio_al_codigo_postal_64600,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 2/32 (6.2%) | detectó poca cantidad total: 3/70 (4.3%),,False,64600,"Con el CP 64600, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $132.99 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $242.99 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $331.99 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $511.99 MXN - 2-4 días
+- DHL: envío $269.00 MXN | total con productos: $401.99 MXN - 1-4 días
+¿Cuál le gustaría usar?",10,10,"{""expected_unique"": 32, ""actual_unique"": 2, ""matched_unique"": 2, ""expected_qty"": 70, ""matched_qty"": 3, ""unique_ratio"": 0.0625, ""qty_ratio"": 0.04285714285714286}"
+00050_v61_cotizacion_mixta_larga_con_envio_mi_cp_es_97000_cuanto_seria_con_envio,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 23/33 (69.7%) | detectó poca cantidad total: 39/63 (61.9%),,False,97000,"Con el CP 97000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,428.64 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,648.64 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $2,717.64 MXN - 3-5 días
+- FedEx: envío $459.00 MXN | total con productos: $2,887.64 MXN - 4-6 días
+- DHL: envío $547.00 MXN | total con productos: $2,975.64 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",10,10,"{""expected_unique"": 33, ""actual_unique"": 20, ""matched_unique"": 23, ""expected_qty"": 63, ""matched_qty"": 39, ""unique_ratio"": 0.696969696969697, ""qty_ratio"": 0.6190476190476191}"
+00056_v61_lista_80_renglones_con_envio_me_agregas_envio_a_22000_por_favor,v61_lista_80_renglones_con_envio,no hay pedido acumulado en memoria ni productos detectados | no parece dar total/subtotal real con envío,,False,22000,"Con el CP 22000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos:
+- Correos de México: envío $110.00 MXN
+- Estafeta: envío $199.00 MXN - 8-10 días
+- FedEx: envío $379.00 MXN - 5-7 días
+- DHL: envío $514.00 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 65, ""actual_unique"": 0, ""matched_unique"": 0, ""expected_qty"": 112, ""matched_qty"": 0, ""unique_ratio"": 0.0, ""qty_ratio"": 0.0}"
+00058_v61_cotizacion_mixta_larga_con_envio_cuanto_seria_con_envio_al_codigo_postal_72000,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 30/55 (54.5%) | detectó poca cantidad total: 69/128 (53.9%),,False,72000,"Con el CP 72000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $3,045.75 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $3,265.75 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $3,334.75 MXN - 2-4 días
+- FedEx: envío $459.00 MXN | total con productos: $3,504.75 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $3,542.75 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 55, ""actual_unique"": 23, ""matched_unique"": 30, ""expected_qty"": 128, ""matched_qty"": 69, ""unique_ratio"": 0.5454545454545454, ""qty_ratio"": 0.5390625}"
+00060_v61_cotizacion_mixta_larga_con_envio_me_agregas_envio_a_78174_por_favor,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 13/34 (38.2%) | detectó poca cantidad total: 29/77 (37.7%),,False,78174,"Con el CP 78174, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,533.86 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,753.86 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $2,822.86 MXN - 2-3 días
+- FedEx: envío $459.00 MXN | total con productos: $2,992.86 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $3,030.86 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",10,10,"{""expected_unique"": 34, ""actual_unique"": 13, ""matched_unique"": 13, ""expected_qty"": 77, ""matched_qty"": 29, ""unique_ratio"": 0.38235294117647056, ""qty_ratio"": 0.37662337662337664}"
+00061_v61_cotizacion_mixta_larga_con_envio_cuanto_me_sale_todo_con_envio_al_57000,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 21/51 (41.2%) | detectó poca cantidad total: 63/137 (46.0%) | mandó a revisión manual pero el tramo esperado era automático | no muestra opciones de paquetería | no muestra precios de envío/total,,False,57000,"Con el CP 57000, este pedido queda en aproximadamente 25 kg volumétricos. Como pasa de 15 kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. También reviso si su zona trae reexpedición y le confirmo el costo final.",20,20,"{""expected_unique"": 51, ""actual_unique"": 20, ""matched_unique"": 21, ""expected_qty"": 137, ""matched_qty"": 63, ""unique_ratio"": 0.4117647058823529, ""qty_ratio"": 0.45985401459854014}"
+00063_v61_cotizacion_larga_velluto_con_envio_mi_cp_es_77500_cuanto_seria_con_envio,v61_cotizacion_larga_velluto_con_envio,"mandó a revisión manual pero el tramo esperado era automático | no muestra opciones de paquetería | no muestra precios de envío/total | respuesta menciona kg volumétricos demasiado altos [20.0, 15.0]; esperado tramo 15",15,False,77500,"Con el CP 77500, este pedido queda en aproximadamente 20 kg volumétricos. Como pasa de 15 kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. También reviso si su zona trae reexpedición y le confirmo el costo final.",15,15,"{""expected_unique"": 29, ""actual_unique"": 31, ""matched_unique"": 29, ""expected_qty"": 81, ""matched_qty"": 81, ""unique_ratio"": 1.0, ""qty_ratio"": 1.0}"
+00064_v61_cotizacion_mixta_larga_con_envio_cuanto_me_sale_todo_con_envio_al_37000,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 28/51 (54.9%) | detectó poca cantidad total: 65/121 (53.7%),,False,37000,"Con el CP 37000, estas son las opciones de paqueteria para tramo de hasta 15 kg volumétricos. Subtotal de productos: $4,039.24 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $4,259.24 MXN
+- Estafeta: envío $389.00 MXN | total con productos: $4,428.24 MXN - 2-4 días
+- FedEx: envío $520.00 MXN | total con productos: $4,559.24 MXN - 2-4 días
+- DHL: envío $578.00 MXN | total con productos: $4,617.24 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 51, ""actual_unique"": 28, ""matched_unique"": 28, ""expected_qty"": 121, ""matched_qty"": 65, ""unique_ratio"": 0.5490196078431373, ""qty_ratio"": 0.5371900826446281}"
+00065_v61_cotizacion_mixta_larga_con_envio_y_envio_para_22000_como_quedaria,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 12/30 (40.0%) | detectó poca cantidad total: 18/63 (28.6%),,False,22000,"Con el CP 22000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,715.56 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,935.56 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $3,004.56 MXN - 8-10 días
+- FedEx: envío $459.00 MXN | total con productos: $3,174.56 MXN - 5-7 días
+- DHL: envío $631.00 MXN | total con productos: $3,346.56 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",10,10,"{""expected_unique"": 30, ""actual_unique"": 13, ""matched_unique"": 12, ""expected_qty"": 63, ""matched_qty"": 18, ""unique_ratio"": 0.4, ""qty_ratio"": 0.2857142857142857}"
+00068_v61_lista_80_renglones_con_envio_cuanto_me_sale_todo_con_envio_al_94300,v61_lista_80_renglones_con_envio,detectó pocos códigos/productos: 33/62 (53.2%) | detectó poca cantidad total: 60/117 (51.3%) | mandó a revisión manual pero el tramo esperado era automático | no muestra opciones de paquetería | no muestra precios de envío/total,,False,94300,"Con el CP 94300, este pedido queda en aproximadamente 25 kg volumétricos. Como pasa de 15 kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. También reviso si su zona trae reexpedición y le confirmo el costo final.",15,15,"{""expected_unique"": 62, ""actual_unique"": 31, ""matched_unique"": 33, ""expected_qty"": 117, ""matched_qty"": 60, ""unique_ratio"": 0.532258064516129, ""qty_ratio"": 0.5128205128205128}"
+00069_v61_lista_80_renglones_con_envio_mi_cp_es_94300_cuanto_seria_con_envio,v61_lista_80_renglones_con_envio,detectó pocos códigos/productos: 37/59 (62.7%) | detectó poca cantidad total: 63/110 (57.3%),,False,94300,"Con el CP 94300, estas son las opciones de paqueteria para tramo de hasta 15 kg volumétricos. Subtotal de productos: $4,267.40 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $4,487.40 MXN
+- Estafeta: envío $389.00 MXN | total con productos: $4,656.40 MXN - 2-4 días
+- FedEx: envío $520.00 MXN | total con productos: $4,787.40 MXN - 4-6 días
+- DHL: envío $578.00 MXN | total con productos: $4,845.40 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 59, ""actual_unique"": 32, ""matched_unique"": 37, ""expected_qty"": 110, ""matched_qty"": 63, ""unique_ratio"": 0.6271186440677966, ""qty_ratio"": 0.5727272727272728}"
+00070_v61_cotizacion_larga_velluto_con_envio_ya_con_envio_al_cp_44100_cuanto_queda,v61_cotizacion_larga_velluto_con_envio,no parece mencionar el tramo esperado de 15 kg volumétricos,15,False,44100,"Con el CP 44100, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $3,959.34 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $4,179.34 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $4,248.34 MXN - 3-5 días
+- FedEx: envío $459.00 MXN | total con productos: $4,418.34 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $4,456.34 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",15,15,"{""expected_unique"": 31, ""actual_unique"": 31, ""matched_unique"": 31, ""expected_qty"": 67, ""matched_qty"": 66, ""unique_ratio"": 1.0, ""qty_ratio"": 0.9850746268656716}"
+00073_v61_cotizacion_larga_velluto_con_envio_ya_con_envio_al_cp_37000_cuanto_queda,v61_cotizacion_larga_velluto_con_envio,detectó pocos códigos/productos: 15/19 (78.9%),10,False,37000,"Con el CP 37000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $1,919.68 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $2,029.68 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $2,118.68 MXN - 2-4 días
+- FedEx: envío $379.00 MXN | total con productos: $2,298.68 MXN - 2-4 días
+- DHL: envío $269.00 MXN | total con productos: $2,188.68 MXN - 1-4 días
+¿Cuál le gustaría usar?",10,10,"{""expected_unique"": 19, ""actual_unique"": 15, ""matched_unique"": 15, ""expected_qty"": 40, ""matched_qty"": 32, ""unique_ratio"": 0.7894736842105263, ""qty_ratio"": 0.8}"
+00075_v61_cotizacion_mixta_larga_con_envio_mi_cp_es_94300_cuanto_seria_con_envio,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 12/22 (54.5%) | detectó poca cantidad total: 21/46 (45.7%),,False,94300,"Con el CP 94300, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $2,375.88 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $2,485.88 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $2,574.88 MXN - 2-4 días
+- FedEx: envío $379.00 MXN | total con productos: $2,754.88 MXN - 4-6 días
+- DHL: envío $269.00 MXN | total con productos: $2,644.88 MXN - 1-4 días
+¿Cuál le gustaría usar?",10,10,"{""expected_unique"": 22, ""actual_unique"": 13, ""matched_unique"": 12, ""expected_qty"": 46, ""matched_qty"": 21, ""unique_ratio"": 0.5454545454545454, ""qty_ratio"": 0.45652173913043476}"
+00076_v61_lista_80_renglones_con_envio_ya_con_envio_al_cp_37000_cuanto_queda,v61_lista_80_renglones_con_envio,no hay pedido acumulado en memoria ni productos detectados | respuesta final no menciona CP 37000 | respuesta final no habla del envío | respuesta final no menciona kg/tramo volumétrico | no muestra opciones de paquetería | no parece dar total/subtotal real con envío,,False,37000,"Sí 😊 le reviso nariz flock y ojos de seguridad. En ojos me aparece: Nariz Flock 20 Negra ($9.60, sin stock disponible); Nariz Flock 21 Cafe ($9.60, sin stock disponible); Ojo Negro 10 Diez Mm ($3.00, stock 186); Ojo Negro 12 Doce Mm ($4.00, stock 112). ¿Qué medida y cuántas piezas necesita?",15,15,"{""expected_unique"": 59, ""actual_unique"": 0, ""matched_unique"": 0, ""expected_qty"": 113, ""matched_qty"": 0, ""unique_ratio"": 0.0, ""qty_ratio"": 0.0}"
+00077_v61_cotizacion_mixta_larga_con_envio_cuanto_me_sale_todo_con_envio_al_29000,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 11/21 (52.4%) | detectó poca cantidad total: 24/42 (57.1%),,False,29000,"Con el CP 29000, estas son las opciones de paqueteria para tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,251.59 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,471.59 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $2,540.59 MXN - 3-5 días
+- FedEx: envío $459.00 MXN | total con productos: $2,710.59 MXN - 3-5 días
+- DHL: envío $497.00 MXN | total con productos: $2,748.59 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",5,5,"{""expected_unique"": 21, ""actual_unique"": 12, ""matched_unique"": 11, ""expected_qty"": 42, ""matched_qty"": 24, ""unique_ratio"": 0.5238095238095238, ""qty_ratio"": 0.5714285714285714}"
+00078_v61_cotizacion_larga_velluto_con_envio_cuanto_me_sale_todo_con_envio_al_78174,v61_cotizacion_larga_velluto_con_envio,"mandó a revisión manual pero el tramo esperado era automático | no muestra opciones de paquetería | no muestra precios de envío/total | respuesta menciona kg volumétricos demasiado altos [20.0, 15.0]; esperado tramo 15",15,False,78174,"Con el CP 78174, este pedido queda en aproximadamente 20 kg volumétricos. Como pasa de 15 kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. También reviso si su zona trae reexpedición y le confirmo el costo final.",15,15,"{""expected_unique"": 40, ""actual_unique"": 40, ""matched_unique"": 40, ""expected_qty"": 90, ""matched_qty"": 90, ""unique_ratio"": 1.0, ""qty_ratio"": 1.0}"
+00082_v61_cotizacion_mixta_larga_con_envio_me_agregas_envio_a_86000_por_favor,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 10/54 (18.5%) | detectó poca cantidad total: 19/115 (16.5%),,False,86000,"Con el CP 86000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $1,779.94 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $1,889.94 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,978.94 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $2,158.94 MXN - 4-6 días
+- DHL: envío $269.00 MXN | total con productos: $2,048.94 MXN - 1-4 días
+¿Cuál le gustaría usar?",15,15,"{""expected_unique"": 54, ""actual_unique"": 9, ""matched_unique"": 10, ""expected_qty"": 115, ""matched_qty"": 19, ""unique_ratio"": 0.18518518518518517, ""qty_ratio"": 0.16521739130434782}"
+00086_v61_cotizacion_mixta_larga_con_envio_cuanto_me_sale_todo_con_envio_al_50000,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 19/41 (46.3%) | detectó poca cantidad total: 38/82 (46.3%) | mandó a revisión manual pero el tramo esperado era automático | no muestra opciones de paquetería | no muestra precios de envío/total,,False,50000,"Con el CP 50000, este pedido queda en aproximadamente 25 kg volumétricos. Como pasa de 15 kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. También reviso si su zona trae reexpedición y le confirmo el costo final.",10,10,"{""expected_unique"": 41, ""actual_unique"": 18, ""matched_unique"": 19, ""expected_qty"": 82, ""matched_qty"": 38, ""unique_ratio"": 0.4634146341463415, ""qty_ratio"": 0.4634146341463415}"
+00087_v61_cotizacion_mixta_larga_con_envio_y_envio_para_03910_como_quedaria,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 36/55 (65.5%) | detectó poca cantidad total: 98/155 (63.2%),,False,03910,"Con el CP 03910, estas son las opciones de paqueteria para tramo de hasta 15 kg volumétricos. Subtotal de productos: $6,060.37 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $6,280.37 MXN
+- Estafeta: envío $389.00 MXN | total con productos: $6,449.37 MXN - 2-3 días
+- FedEx: envío $520.00 MXN | total con productos: $6,580.37 MXN - 2-4 días
+- DHL: envío $578.00 MXN | total con productos: $6,638.37 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",20,20,"{""expected_unique"": 55, ""actual_unique"": 32, ""matched_unique"": 36, ""expected_qty"": 155, ""matched_qty"": 98, ""unique_ratio"": 0.6545454545454545, ""qty_ratio"": 0.632258064516129}"
+00089_v61_lista_80_renglones_con_envio_cuanto_seria_con_envio_al_codigo_postal_50000,v61_lista_80_renglones_con_envio,detectó pocos códigos/productos: 29/61 (47.5%) | detectó poca cantidad total: 60/116 (51.7%) | respuesta final no menciona CP 50000 | respuesta final no habla del envío | respuesta final no menciona kg/tramo volumétrico | no muestra opciones de paquetería | no parece dar total/subtotal real con envío,,False,50000,"Sí 😊 manejamos ojos de seguridad: Ojo Negro 10 Diez Mm ($3.00, stock 186); Ojo Negro 12 Doce Mm ($4.00, stock 112); Ojo Negro 18 Dieciocho Mm ($6.00, stock 80); Ojo Negro 16 Dieciseis Mm ($4.00, stock 72). ¿Cuántas piezas necesita?",15,15,"{""expected_unique"": 61, ""actual_unique"": 24, ""matched_unique"": 29, ""expected_qty"": 116, ""matched_qty"": 60, ""unique_ratio"": 0.47540983606557374, ""qty_ratio"": 0.5172413793103449}"
+00091_v61_cotizacion_mixta_larga_con_envio_cuanto_me_sale_todo_con_envio_al_57000,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 11/19 (57.9%) | detectó poca cantidad total: 18/35 (51.4%),,False,57000,"Con el CP 57000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $943.82 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $1,053.82 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,142.82 MXN - 2-3 días
+- FedEx: envío $379.00 MXN | total con productos: $1,322.82 MXN - 2-4 días
+- DHL: envío $269.00 MXN | total con productos: $1,212.82 MXN - 1-4 días
+¿Cuál le gustaría usar?",5,5,"{""expected_unique"": 19, ""actual_unique"": 11, ""matched_unique"": 11, ""expected_qty"": 35, ""matched_qty"": 18, ""unique_ratio"": 0.5789473684210527, ""qty_ratio"": 0.5142857142857142}"
+00093_v61_cotizacion_mixta_larga_con_envio_cuanto_seria_con_envio_al_codigo_postal_64000,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 15/26 (57.7%) | detectó poca cantidad total: 31/56 (55.4%),,False,64000,"Con el CP 64000, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $1,412.72 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $1,522.72 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,611.72 MXN - 3-5 días
+- FedEx: envío $379.00 MXN | total con productos: $1,791.72 MXN - 2-4 días
+- DHL: envío $269.00 MXN | total con productos: $1,681.72 MXN - 1-4 días
+¿Cuál le gustaría usar?",10,10,"{""expected_unique"": 26, ""actual_unique"": 14, ""matched_unique"": 15, ""expected_qty"": 56, ""matched_qty"": 31, ""unique_ratio"": 0.5769230769230769, ""qty_ratio"": 0.5535714285714286}"
+00097_v61_cotizacion_mixta_larga_con_envio_ya_con_envio_al_cp_29000_cuanto_queda,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 34/62 (54.8%) | detectó poca cantidad total: 74/144 (51.4%),,False,29000,"Con el CP 29000, estas son las opciones de paqueteria para tramo de hasta 15 kg volumétricos. Subtotal de productos: $3,642.17 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $3,862.17 MXN
+- Estafeta: envío $389.00 MXN | total con productos: $4,031.17 MXN - 3-5 días
+- FedEx: envío $520.00 MXN | total con productos: $4,162.17 MXN - 3-5 días
+- DHL: envío $578.00 MXN | total con productos: $4,220.17 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",20,20,"{""expected_unique"": 62, ""actual_unique"": 31, ""matched_unique"": 34, ""expected_qty"": 144, ""matched_qty"": 74, ""unique_ratio"": 0.5483870967741935, ""qty_ratio"": 0.5138888888888888}"
+00098_v61_cotizacion_mixta_larga_con_envio_mi_cp_es_52140_cuanto_seria_con_envio,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 9/56 (16.1%) | detectó poca cantidad total: 23/135 (17.0%) | respuesta final no menciona CP 52140 | respuesta final no habla del envío | respuesta final no menciona kg/tramo volumétrico | no muestra opciones de paquetería | no parece dar total/subtotal real con envío,,False,52140,"Sí 😊 le reviso nariz flock y ojos de seguridad. En ojos me aparece: Nariz Flock 20 Negra ($9.60, sin stock disponible); Nariz Flock 21 Cafe ($9.60, sin stock disponible); Ojo Negro 10 Diez Mm ($3.00, stock 186); Ojo Negro 12 Doce Mm ($4.00, stock 112). ¿Qué medida y cuántas piezas necesita?",15,15,"{""expected_unique"": 56, ""actual_unique"": 9, ""matched_unique"": 9, ""expected_qty"": 135, ""matched_qty"": 23, ""unique_ratio"": 0.16071428571428573, ""qty_ratio"": 0.17037037037037037}"
+00099_v61_cotizacion_mixta_larga_con_envio_mi_cp_es_78174_cuanto_seria_con_envio,v61_cotizacion_mixta_larga_con_envio,detectó pocos códigos/productos: 12/40 (30.0%) | detectó poca cantidad total: 24/88 (27.3%),,False,78174,"Con el CP 78174, estas son las opciones de paqueteria para tramo de hasta 5 kg volumétricos. Subtotal de productos: $1,529.77 MXN:
+- Correos de México: envío $110.00 MXN | total con productos: $1,639.77 MXN
+- Estafeta: envío $199.00 MXN | total con productos: $1,728.77 MXN - 2-4 días
+- FedEx: envío $379.00 MXN | total con productos: $1,908.77 MXN - 2-4 días
+- DHL: envío $269.00 MXN | total con productos: $1,798.77 MXN - 1-4 días
+¿Cuál le gustaría usar?",15,15,"{""expected_unique"": 40, ""actual_unique"": 10, ""matched_unique"": 12, ""expected_qty"": 88, ""matched_qty"": 24, ""unique_ratio"": 0.3, ""qty_ratio"": 0.2727272727272727}"
+00100_v61_cotizacion_mixta_larga_con_envio_cuanto_me_sale_todo_con_envio_al_20000,v61_cotizacion_mixta_larga_con_envio,no hay pedido acumulado en memoria ni productos detectados | respuesta final no menciona CP 20000 | respuesta final no habla del envío | respuesta final no menciona kg/tramo volumétrico | no muestra opciones de paquetería | no parece dar total/subtotal real con envío,,False,20000,"Sí 😊 le reviso nariz flock y ojos de seguridad. En ojos me aparece: Nariz Flock 20 Negra ($9.60, sin stock disponible); Nariz Flock 21 Cafe ($9.60, sin stock disponible); Ojo Negro 10 Diez Mm ($3.00, stock 186); Ojo Negro 12 Doce Mm ($4.00, stock 112). ¿Qué medida y cuántas piezas necesita?",15,15,"{""expected_unique"": 41, ""actual_unique"": 0, ""matched_unique"": 0, ""expected_qty"": 88, ""matched_qty"": 0, ""unique_ratio"": 0.0, ""qty_ratio"": 0.0}"

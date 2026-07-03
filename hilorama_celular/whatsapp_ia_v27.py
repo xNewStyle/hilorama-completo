@@ -351,13 +351,15 @@ def _extraer_total_esperado(texto):
     patrones = [
         r"\b(?:son|serian|seria|total|en total)\s+(\d{1,3})\s*(?:piezas|madejas|pzas|pz)?\b",
         r"\b(\d{1,3})\s*(?:piezas|madejas|pzas|pz)\s+(?:en\s+)?total\b",
-        r"\b(\d{1,3})\s*(?:piezas|madejas|pzas|pz)\b",
     ]
+    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", t)
+    if len(nums) <= 1 and not re.search(r"\b(?:del|de|d|codigo|cod|tono|x)\b|\*", t):
+        patrones.append(r"\b(\d{1,3})\s*(?:piezas|madejas|pzas|pz)\b")
     for pat in patrones:
         m = re.search(pat, t)
         if m:
             after = t[m.end():m.end() + 24]
-            if re.match(r"\s*(?:del|de|codigo|cod|tono)\b", after):
+            if re.match(r"\s*(?:del|de|d|codigo|cod|tono|\d{1,4}\b)", after):
                 continue
             return int(m.group(1))
     return None
@@ -640,6 +642,17 @@ def _es_pedido_real_por_texto(texto):
         return True
     return False
 
+
+def _es_lista_larga_cruda(normalizado, texto):
+    lineas = (normalizado or {}).get("lineas") if isinstance(normalizado, dict) else []
+    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", _norm(texto))
+    if len(lineas or []) >= 4 and len(nums) >= 4:
+        return True
+    if len(nums) >= 8 and re.search(r"\b(?:x|del|de|d|piezas|otra parte|tambien|también)\b", _norm(texto)):
+        return True
+    return False
+
+
 def detectar_intencion(normalizado, memoria=None, productos=None):
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     hilos = detectar_hilos(texto, productos)
@@ -683,6 +696,9 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     elif re.search(r"\b(foto|imagen|muestra|muestras|muestres|mostrar|ver|enseña|ensena|enseñas|ensenas)\b", texto) and re.search(r"\b(ojo|ojos|seguridad|nariz|narices|flock|gancho|ganchos|aguja|agujas|relleno)\b", texto):
         principal = "catalogo_general"
         secundaria = "foto_accesorio"
+    elif _es_lista_larga_cruda(normalizado if isinstance(normalizado, dict) else {}, texto):
+        principal = "pedido_lista"
+        estado = "preparando_cotizacion"
     elif _consulta_seguimiento_accesorio(texto, memoria):
         # V40: no tratar medidas o bolsas de accesorios como códigos de hilo.
         principal = "pregunta_precio" if re.search(r"\b(precio|cuanto|cuesta|costo|vale|sale)\b", texto) else "catalogo_general"
@@ -744,7 +760,7 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     elif _parece_lista_o_pedido(texto, memoria):
         principal = "pedido_lista"
         estado = "preparando_cotizacion"
-    elif re.search(r"\b(pedido|cotizar|cotiza|hacer pedido|agregar al pedido|quiero pedir|lista)\b", texto):
+    elif re.search(r"\b(pedido|cotizar|cotiza|cotizacion|cotización|hacer pedido|agregar al pedido|quiero pedir|lista)\b", texto):
         principal = "iniciar_pedido"
         estado = "esperando_lista_de_colores"
     elif re.search(r"\b(hola|buenas tardes|buen dia|buenos dias|buenas noches)\b", texto):
@@ -785,7 +801,7 @@ def _parece_lista_o_pedido(texto, memoria=None):
     # V32: pedidos humanos tipo "quiero 4 blanco de komfy mini" o "ocupo 2 lila".
     if re.search(r"\b(quiero|ocupo|necesito|me\s+cotiza|cotiza|me\s+puede\s+poner|poner|agregar|dame|deme|me\s+llevo|llevare|llevaria)\s+\d{1,3}\s+[a-z]", t):
         return True
-    if re.search(r"\b(agregar|quiero pedir|dame|deme|ponme|me puede poner|cotizar|cotiza|me\s+llevo|llevare|llevaria)\b", t):
+    if re.search(r"\b(agregar|quiero pedir|dame|deme|ponme|me puede poner|cotizar|cotiza|me\s+llevo|llevare|llevaria|ocupo|necesito|quiero)\b", t):
         return True
     if "lista" in t and re.search(r"\b\d{1,4}\b", t):
         return True
@@ -831,10 +847,30 @@ def _hilo_real_para_familia(productos, familia):
     return ""
 
 
+def _contexto_lista_larga_mixta(texto, normalizado, intencion, memoria, hilos):
+    if (intencion or {}).get("principal") != "pedido_lista":
+        return {"lista_larga": False, "lista_mixta": False, "resolver_global": False}
+    lineas = (normalizado or {}).get("lineas") or []
+    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)
+    familias = {_hilo_family(h) for h in (hilos or []) if _hilo_family(h)}
+    texto_n = _norm(texto)
+    continuacion = bool(re.search(r"\b(tambien|también|otra parte|va otra|sigue|continuo|continua|faltan|estos tambien)\b", texto_n))
+    lista_larga = len(lineas) >= 4 or len(nums) >= 8
+    lista_mixta = len(familias) >= 2
+    resolver_global = lista_mixta or (continuacion and bool((memoria or {}).get("lista_mixta_activa")))
+    return {
+        "lista_larga": bool(lista_larga),
+        "lista_mixta": bool(lista_mixta),
+        "resolver_global": bool(resolver_global),
+        "hilos_familia_mencionados": sorted(familias),
+    }
+
+
 def extraer_contexto_conversacion(normalizado, intencion, memoria=None, productos=None, marca_ui="", hilo_ui=""):
     memoria = dict(memoria or {})
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     hilos = intencion.get("hilos_mencionados") or detectar_hilos(texto, productos)
+    info_lista = _contexto_lista_larga_mixta(texto, normalizado if isinstance(normalizado, dict) else {}, intencion, memoria, hilos)
     hilo = ""
     marca = ""
     origen = "sin_contexto"
@@ -894,6 +930,10 @@ def extraer_contexto_conversacion(normalizado, intencion, memoria=None, producto
         "total_esperado": total,
         "cp_actual": intencion.get("cp") or memoria.get("cp_actual") or "",
         "memoria_previa": memoria,
+        "lista_larga": info_lista.get("lista_larga"),
+        "lista_mixta": info_lista.get("lista_mixta"),
+        "resolver_global_en_lista": info_lista.get("resolver_global"),
+        "hilos_familia_mencionados": info_lista.get("hilos_familia_mencionados") or [],
     }
 
 
@@ -960,6 +1000,12 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # Guardamos el hilo en el item para que el código se resuelva contra
     # esa familia y no contra el contexto previo de la conversación.
     hilo_pat_v62 = r"velluto|veluto|belluto|komfy mini|komfy|komfi|konfy|comfy|kurumi|kairo|trapillo(?: kraft)?|kotton milk|cotton milk|baby best|diva|fiorentino maxi"
+    codigo_alpha_pat = r"\d{1,4}[a-z]{1,4}"
+    for m in re.finditer(rf"\b({hilo_pat_v62})\s+#?({codigo_alpha_pat})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
+        qty = _qty(m.group(3))
+        fam = _hilo_family(m.group(1))
+        if qty and fam:
+            items.append(_item(codigo=m.group(2), cantidad=qty, raw=m.group(0), fuente="hilo_codigo_x_cantidad", hilo=fam))
     for m in re.finditer(rf"\b({hilo_pat_v62})\s+#?(\d{{1,4}})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
         qty = _qty(m.group(3))
         fam = _hilo_family(m.group(1))
@@ -986,11 +1032,20 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             for m in re.finditer(rf"\b({qty_pat})\s+(?:piezas?\s*)?(?:el\s+)?#?(\d{{1,4}})(?!\d)", bloque):
                 qty = _qty(m.group(1))
                 verbo_cercano = bool(re.search(r"\b(ponme|agrega|agregame|dame|deme|quiero|ocupo|necesito|cotiza|cotizar|me\s+llevo)\b", bloque[:m.start()], re.I))
-                if qty and qty <= 100 and (qty <= 30 or verbo_cercano):
+                tiene_piezas = bool(re.search(r"\bpiezas?\b", m.group(0)))
+                if (
+                    qty and qty <= 300
+                    and not tiene_piezas
+                    and not verbo_cercano
+                    and qty > 5
+                    and len((m.group(2).lstrip("0") or m.group(2))) <= 2
+                ):
+                    continue
+                if qty and qty <= 300 and (qty <= 30 or verbo_cercano or tiene_piezas):
                     items.append(_item(codigo=m.group(2), cantidad=qty, raw=m.group(0), fuente="cantidad_codigo_sin_del"))
             for m in re.finditer(rf"\b(?:el\s+)?#?(\d{{1,4}})\s+({qty_pat})(?!\w)", bloque):
                 qty = _qty(m.group(2))
-                if qty and qty <= 100:
+                if qty and qty <= 300:
                     items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_cantidad_sin_x"))
 
     # el 55 son dos / 60 es cinco
@@ -1000,6 +1055,10 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_cantidad_texto"))
 
     # 55 x2 / 55 x dos / 55 * 3
+    for m in re.finditer(rf"(?<!\w)({codigo_alpha_pat})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
+        qty = _qty(m.group(2))
+        if qty:
+            items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_x_cantidad"))
     for m in re.finditer(rf"(?<!\d)(\d{{1,4}})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
         qty = _qty(m.group(2))
         if qty:
@@ -1033,7 +1092,7 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # Pares raros de WhatsApp:
     # "55 2 60 5 429 1" = codigo/cantidad
     # "2 55 3 60 1 429" = cantidad/codigo
-    if not re.search(r"\b(?:del|de|d|codigo|cod|tono)\b|(?:x|\*)", texto_sin_totales):
+    if not re.search(r"\b(?:del|de|d|codigo|cod|tono|piezas)\b|(?:x|\*)", texto_sin_totales):
         nums_pair = re.findall(r"(?<!\d)(\d{1,4})(?!\d)", texto_sin_totales)
         if len(nums_pair) >= 4 and len(nums_pair) % 2 == 0:
             pairs = list(zip(nums_pair[0::2], nums_pair[1::2]))
@@ -1232,6 +1291,8 @@ def _codigo_probable(codigo):
     c = str(codigo or "").strip().lstrip("0") or str(codigo or "").strip()
     if not c:
         return False
+    if re.fullmatch(r"\d{1,4}[a-z]{1,4}", _norm(c)):
+        return True
     if c in VELLUTO_CODE_COLORS:
         return True
     if c.zfill(2) in KOMFY_MINI_CODE_COLORS:
@@ -1276,6 +1337,7 @@ def resolver_productos_con_almacen(extraccion, productos, contexto):
     errores = []
     sugerencias = []
     internos = []
+    pendientes = []
 
     for item in extraccion.get("items") or []:
         res = _resolver_item(item, productos, productos_ctx, contexto)
@@ -1285,6 +1347,7 @@ def resolver_productos_con_almacen(extraccion, productos, contexto):
         errores.extend(res.get("errores") or [])
         sugerencias.extend(res.get("sugerencias") or [])
         internos.extend(res.get("internos") or [])
+        pendientes.extend(res.get("pendientes") or [])
 
     pedidos = _merge_pedidos(pedidos)
     return {
@@ -1293,6 +1356,7 @@ def resolver_productos_con_almacen(extraccion, productos, contexto):
         "errores": _uniq(errores),
         "sugerencias": sugerencias,
         "internos": internos,
+        "pendientes_items": pendientes[:80],
         "productos_contexto": len(productos_ctx),
     }
 
@@ -1325,10 +1389,44 @@ def _code_map(productos):
             raw = str(key or "").strip()
             if not raw:
                 continue
-            keys = {raw, raw.lstrip("0") or raw}
+            keys = {raw, raw.lstrip("0") or raw, raw.lower(), raw.upper()}
+            keys.add((raw.lstrip("0") or raw).lower())
+            keys.add((raw.lstrip("0") or raw).upper())
             for k in keys:
                 mp.setdefault(k, []).append(p)
     return mp
+
+
+def _pendiente_resolucion(item, motivo, contexto=None):
+    return {
+        "codigo": str((item or {}).get("codigo_raw") or (item or {}).get("codigo") or "").strip(),
+        "desc": str((item or {}).get("desc") or "").strip(),
+        "cantidad": (item or {}).get("cantidad"),
+        "raw": str((item or {}).get("raw") or "").strip(),
+        "fuente": str((item or {}).get("fuente") or "").strip(),
+        "hilo_contexto": str((contexto or {}).get("hilo_actual") or "").strip(),
+        "motivo": motivo,
+    }
+
+
+def _score_producto_codigo(p, contexto=None, codigo_raw=""):
+    score = 0.0
+    if _no_combo(p):
+        score += 40
+    stock = _stock(p)
+    if stock > 0:
+        score += 100 + min(stock, 200) / 10.0
+    fam = _hilo_family((p or {}).get("hilo") or "")
+    cod = str(codigo_raw or (p or {}).get("codigo") or "").strip()
+    if fam == "KOMFY MINI" and (cod.zfill(2) in KOMFY_MINI_CODE_COLORS or cod in KOMFY_MINI_CODE_COLORS):
+        score += 15
+    if fam == "VELLUTO" and (cod in VELLUTO_CODE_COLORS or cod.lstrip("0") in VELLUTO_CODE_COLORS):
+        score += 15
+    if fam == _hilo_family((contexto or {}).get("hilo_actual") or "") and not (contexto or {}).get("resolver_global_en_lista"):
+        score += 12
+    if _precio(p) > 0:
+        score += 2
+    return score
 
 
 def _resolver_item(item, productos_all, productos_ctx, contexto):
@@ -1337,7 +1435,9 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
     desc = str(item.get("desc") or "").strip()
     qty = item.get("cantidad")
     hilo_ctx = contexto.get("hilo_actual") or ""
-    out = {"preguntas": [], "errores": [], "sugerencias": [], "internos": []}
+    resolver_global = bool((contexto or {}).get("resolver_global_en_lista"))
+    fallback_global_lista = resolver_global or bool((contexto or {}).get("lista_larga"))
+    out = {"preguntas": [], "errores": [], "sugerencias": [], "internos": [], "pendientes": []}
 
     prod_por_desc = None
     if desc and hilo_ctx:
@@ -1358,7 +1458,10 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
         else:
             ctx_map = _code_map(productos_ctx)
             all_map = _code_map(productos_all)
-            matches = ctx_map.get(codigo_raw) or ctx_map.get(codigo) or []
+            if resolver_global:
+                matches = all_map.get(codigo_raw) or all_map.get(codigo) or []
+            else:
+                matches = ctx_map.get(codigo_raw) or ctx_map.get(codigo) or []
             # Si hay contexto de hilo pero por marca/filtro no aparecio, buscamos en todo y
             # preferimos el mismo hilo/familia antes de preguntar como ambiguo.
             if not matches:
@@ -1366,7 +1469,7 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
                 if hilo_ctx and all_matches:
                     fam = _hilo_family(hilo_ctx)
                     fam_matches = [p for p in all_matches if _hilo_family(p.get("hilo")) == fam]
-                    matches = fam_matches or []
+                    matches = fam_matches or (all_matches if fallback_global_lista else [])
                 elif not hilo_ctx:
                     matches = all_matches
 
@@ -1375,7 +1478,7 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
         normales = [p for p in matches if _no_combo(p)]
         matches = normales or matches
         fams = sorted({_hilo_family(p.get("hilo")) for p in matches})
-        if not hilo_ctx and len(fams) > 1:
+        if not resolver_global and not hilo_ctx and len(fams) > 1:
             # Heurística comercial: muchos códigos cortos de Komfy Mini (01,06,08,14,20,99)
             # aparecen en varios catálogos, pero si hay stock claro en Komfy Mini lo preferimos
             # para evitar mandar todo a revisión cuando la clienta sí dio una lista normal.
@@ -1390,30 +1493,37 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
             else:
                 opciones = ", ".join(_hilo_display(f) for f in fams[:4])
                 out["preguntas"].append(f"El codigo {codigo_raw or codigo} aparece en varios hilos. Lo busca en {opciones}?")
+                out["pendientes"].append(_pendiente_resolucion(item, "codigo_ambiguo", contexto))
                 return out
-        prod_codigo = sorted(matches, key=lambda p: _stock(p), reverse=True)[0]
+        if resolver_global and len(fams) > 1:
+            out["internos"].append(f"codigo_ambiguo_resuelto_lista_mixta:{codigo_raw or codigo}")
+        prod_codigo = sorted(matches, key=lambda p: (_score_producto_codigo(p, contexto, codigo_raw), _stock(p)), reverse=True)[0]
         if desc and not _desc_compatible(prod_codigo, desc):
             if prod_por_desc:
                 prod = prod_por_desc
                 out["internos"].append("color_priorizado_sobre_codigo")
             else:
                 out["preguntas"].append(f"Para {item.get('raw')}, confirmo el color antes de agregarlo?")
+                out["pendientes"].append(_pendiente_resolucion(item, "color_no_compatible_con_codigo", contexto))
                 return out
         else:
             prod = prod_codigo
     elif desc:
         if not hilo_ctx:
             out["preguntas"].append(f"Lo busca en Velluto, Komfy Mini o algun otro hilo?")
+            out["pendientes"].append(_pendiente_resolucion(item, "falta_hilo_para_color", contexto))
             return out
         prod, opts_desc = _buscar_por_color(productos_ctx, desc)
         if not prod and opts_desc:
             out["sugerencias"].append({"tipo": "color_parecido", "texto": desc, "opciones": opts_desc[:5]})
             out["preguntas"].append(f"Le muestro opciones parecidas para {desc}?")
+            out["pendientes"].append(_pendiente_resolucion(item, "color_parecido_pendiente", contexto))
             return out
         if not prod:
             # V32: si no se resolvió en almacén, no generamos error técnico.
             # Dejamos una pregunta humana que conserva hilo/color para que la respuesta sea útil.
             out["preguntas"].append(f"Me confirma si quiere {desc} en {_hilo_display(hilo_ctx)}?")
+            out["pendientes"].append(_pendiente_resolucion(item, "color_no_resuelto", contexto))
             return out
     elif codigo:
         # V32: códigos típicos pueden inferirse por familia para dar respuesta humana,
@@ -1422,13 +1532,16 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
         if fam_ctx == "KOMFY MINI" and (codigo_raw.zfill(2) in KOMFY_MINI_CODE_COLORS or codigo in KOMFY_MINI_CODE_COLORS):
             color = KOMFY_MINI_CODE_COLORS.get(codigo_raw.zfill(2)) or KOMFY_MINI_CODE_COLORS.get(codigo) or ""
             out["preguntas"].append(f"Me confirma Komfy Mini {codigo_raw.zfill(2)} {color}?")
+            out["pendientes"].append(_pendiente_resolucion(item, "codigo_inferido_sin_producto", contexto))
             return out
         if fam_ctx == "VELLUTO" and (codigo_raw in VELLUTO_CODE_COLORS or codigo in VELLUTO_CODE_COLORS):
             color = VELLUTO_CODE_COLORS.get(codigo_raw) or VELLUTO_CODE_COLORS.get(codigo) or ""
             out["preguntas"].append(f"Me confirma Velluto {codigo_raw or codigo} {color}?")
+            out["pendientes"].append(_pendiente_resolucion(item, "codigo_inferido_sin_producto", contexto))
             return out
         out["errores"].append(codigo_raw or codigo)
         out["preguntas"].append("Me confirma ese codigo para revisarlo bien?")
+        out["pendientes"].append(_pendiente_resolucion(item, "codigo_no_resuelto", contexto))
         return out
 
     if not prod:
@@ -1571,7 +1684,7 @@ def _desc_compatible(prod, desc):
 
 def _producto_a_pedido(prod, cantidad):
     return {
-        "producto_id": prod.get("id"),
+        "producto_id": prod.get("id") or prod.get("producto_id"),
         "codigo": prod.get("codigo"),
         "marca": prod.get("marca") or "",
         "hilo": prod.get("hilo") or "",
@@ -1656,6 +1769,7 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
     preguntas = resolucion.get("preguntas") or []
     errores = resolucion.get("errores") or []
     sugerencias = resolucion.get("sugerencias") or []
+    pendientes_items = resolucion.get("pendientes_items") or []
     envio = envio or {}
 
     def decision(tipo, resumen, opciones=None, prioridad="media", respuesta_provisional=None):
@@ -1774,8 +1888,17 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
             "alta",
         )
 
-    if _requiere_humano_por_ambiguedad(preguntas, errores, sugerencias):
+    if _requiere_humano_por_ambiguedad(preguntas, errores, sugerencias) or pendientes_items:
         qtxt = " ".join(preguntas or [])
+        if errores or pendientes_items:
+            codigos = errores or [x.get("codigo") or x.get("raw") or x.get("desc") for x in pendientes_items[:8]]
+            return decision(
+                "codigo_color_ambiguo",
+                "La IA no pudo resolver con seguridad estos renglones del pedido: "
+                + ", ".join(str(x) for x in codigos if x)[:240],
+                ["Revisar codigo/color en almacen", "Pedir confirmacion a la clienta", "Responder manualmente"],
+                "media",
+            )
         tiene_ambiguedad_real = (
             any((s or {}).get("tipo") == "color_parecido" for s in sugerencias or [])
             or any(x in _norm(qtxt) for x in ("varios hilos", "confirmo el color", "opciones parecidas"))
@@ -2171,7 +2294,13 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
 
     # V40: seguimiento de accesorios. Ej.: después de "ganchos de aluminio",
     # "ocupo del 4.5 y del 5" debe responder sobre ganchos, no cotizar "Si x5".
-    if intencion.get("secundaria") == "accesorio_especifico" or _consulta_seguimiento_accesorio(texto, (contexto or {}).get("memoria_previa") or {}):
+    if (
+        intencion.get("secundaria") == "accesorio_especifico"
+        or (
+            principal not in ("pedido_lista", "cp_envio", "envio", "iniciar_pedido", "confirmacion_contexto", "correccion_pedido")
+            and _consulta_seguimiento_accesorio(texto, (contexto or {}).get("memoria_previa") or {})
+        )
+    ):
         mem = (contexto or {}).get("memoria_previa") or {}
         texto_acc = _texto_accesorio_con_memoria(texto, mem)
         resp_acc = _respuesta_accesorio_especifico(texto_acc, productos, incluir_precio=bool(re.search(r"\b(precio|cuanto|cuesta|costo|vale|sale)\b", texto)))
@@ -2607,7 +2736,7 @@ def _respuesta_pedido(resolucion, contexto):
         subtotal = sum(int(p.get("cantidad") or 1) * _precio(p) for p in ok)
         if subtotal > 0:
             partes.append(f"Subtotal productos: ${subtotal:,.2f} MXN")
-        if contexto.get("total_esperado") and total != int(contexto.get("total_esperado") or 0):
+        if contexto.get("total_esperado") and int(contexto.get("total_esperado") or 0) > total:
             partes.append(f"Me quedan {int(contexto.get('total_esperado') or 0) - total} piezas por completar de las que me indicó.")
     for p in faltantes:
         partes.append(f"Cuantas piezas de {_linea_producto(p)} le agrego?")
@@ -2799,7 +2928,12 @@ def guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extr
         "cp_actual": extraccion.get("cp") or contexto.get("cp_actual") or nueva.get("cp_actual") or "",
         "total_esperado": total_esperado,
         "pedido_en_proceso": pedido_en_proceso,
+        "lista_mixta_activa": bool(contexto.get("resolver_global_en_lista") or nueva.get("lista_mixta_activa")),
     })
+    if resolucion.get("pendientes_items"):
+        nueva["items_pendientes_resolver"] = json.dumps((resolucion.get("pendientes_items") or [])[:80], ensure_ascii=False)
+    elif not (resolucion.get("preguntas") or resolucion.get("errores")):
+        nueva["items_pendientes_resolver"] = ""
     inferido_sin_hilo_explicito = (
         items
         and contexto.get("origen_contexto") == "inferencia_codigos"

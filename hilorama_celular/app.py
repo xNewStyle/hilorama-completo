@@ -13209,6 +13209,8 @@ def _wa_v27_memoria_schema():
                 "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS cp_actual TEXT",
                 "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS pago_pendiente BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS cotizacion_activa BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS lista_mixta_activa BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS items_pendientes_resolver TEXT",
                 "ALTER TABLE whatsapp_contexto_cliente ADD COLUMN IF NOT EXISTS fecha_ultima_actividad TIMESTAMP",
             ]:
                 db.execute(col_sql)
@@ -13467,6 +13469,8 @@ def _wa_v27_actualizar_memoria_db(conversacion_id, telefono, cliente_nombre, tex
                     cp_actual=%s,
                     pago_pendiente=%s,
                     cotizacion_activa=%s,
+                    lista_mixta_activa=%s,
+                    items_pendientes_resolver=%s,
                     pedido_en_proceso=%s,
                     ultimo_codigo=%s,
                     ultimo_color=%s,
@@ -13484,6 +13488,8 @@ def _wa_v27_actualizar_memoria_db(conversacion_id, telefono, cliente_nombre, tex
                 memoria_v27.get('cp_actual') or '',
                 _wa_v27_bool(memoria_v27.get('pago_pendiente')),
                 _wa_v27_bool(memoria_v27.get('cotizacion_activa')),
+                _wa_v27_bool(memoria_v27.get('lista_mixta_activa')),
+                memoria_v27.get('items_pendientes_resolver') or '',
                 memoria_v27.get('pedido_en_proceso') or '[]',
                 memoria_v27.get('ultimo_codigo') or '',
                 memoria_v27.get('ultimo_color') or '',
@@ -14329,15 +14335,24 @@ def _envia_v50_plan_volumetrico(items=None, nota_id=None, piezas=None):
             })
             origen = 'piezas_estimadas'
 
-    kg_raw = round(float(total), 6) if total > 0 else 1.0
-    kg_facturable = int(math.ceil(kg_raw)) if kg_raw > 0 else 1
-    kg_facturable = max(1, kg_facturable)
-    tramo = int(math.ceil(kg_facturable / 5.0) * 5)
+    puntos_raw = round(float(total), 6) if total > 0 else 0.0
+    puntos_por_5kg = _envia_v50_float_env('ENVIA_VOL_UNIDADES_POR_PAQUETE_5KG', 50.0)
+    if puntos_por_5kg <= 0:
+        puntos_por_5kg = 50.0
+    if puntos_raw <= 0:
+        paquetes_5kg = 1
+    else:
+        paquetes_5kg = max(1, int(math.ceil(puntos_raw / float(puntos_por_5kg))))
+    kg_facturable = int(paquetes_5kg * 5)
+    tramo = kg_facturable or 5
     max_auto = _envia_v50_int_env('ENVIA_MAX_AUTO_VOLUMETRIC_KG', 15)
     return {
         'origen': origen,
         'items_detalle': detalle,
-        'volumetrico_total_raw': kg_raw,
+        'volumetrico_total_raw': puntos_raw,
+        'volumetrico_unidades_raw': puntos_raw,
+        'unidades_por_paquete_5kg': puntos_por_5kg,
+        'paquetes_5kg': paquetes_5kg,
         'peso_volumetrico_kg': kg_facturable,
         'tramo_kg': tramo,
         'max_auto_kg': max_auto,
@@ -14508,7 +14523,7 @@ def api_envios_debug_volumetrico_v50():
 def _envia_v50_formato_publico(cp, cotizacion):
     cotizacion = cotizacion or {}
     if cotizacion.get('alerta_envio_mayor_15kg'):
-        kg = cotizacion.get('peso_volumetrico_kg') or (cotizacion.get('volumetrico') or {}).get('peso_volumetrico_kg')
+        kg = (cotizacion.get('volumetrico') or {}).get('peso_volumetrico_kg') or cotizacion.get('peso_volumetrico_kg')
         max_auto = (cotizacion.get('volumetrico') or {}).get('max_auto_kg') or 15
         return (
             f"Con el CP {cp}, este pedido queda en aproximadamente {kg:g} kg volumétricos. "
@@ -14958,7 +14973,7 @@ def _envia_v50_formato_publico(cp, cotizacion):
             " Así evitamos cobrarle mal."
         )
     if cotizacion.get('alerta_envio_mayor_15kg'):
-        kg = cotizacion.get('peso_volumetrico_kg') or vol.get('peso_volumetrico_kg')
+        kg = vol.get('peso_volumetrico_kg') or cotizacion.get('peso_volumetrico_kg')
         max_auto = vol.get('max_auto_kg') or 15
         return (
             f"Con el CP {cp}, este pedido queda en aproximadamente {kg:g} kg volumétricos. "
@@ -15221,7 +15236,7 @@ def _envia_v52_formato_publico(cp, cotizacion):
             " Así evitamos cobrarle mal."
         )
     if cotizacion.get('alerta_envio_mayor_15kg'):
-        kg = cotizacion.get('peso_volumetrico_kg') or vol.get('peso_volumetrico_kg')
+        kg = vol.get('peso_volumetrico_kg') or cotizacion.get('peso_volumetrico_kg')
         max_auto = vol.get('max_auto_kg') or 15
         return (
             f"Con el CP {cp}, este pedido queda en aproximadamente {kg:g} kg volumétricos. "
@@ -15231,7 +15246,7 @@ def _envia_v52_formato_publico(cp, cotizacion):
     opciones = cotizacion.get('opciones') or []
     if not opciones:
         return f"Con el CP {cp} necesito revisar el envío manualmente 😊 No me aparecen opciones automáticas seguras en este momento."
-    kg = cotizacion.get('peso_volumetrico_kg') or vol.get('peso_volumetrico_kg') or 5
+    kg = vol.get('peso_volumetrico_kg') or cotizacion.get('peso_volumetrico_kg') or 5
     tramo = vol.get('tramo_kg') or int(math.ceil(float(kg or 5) / 5.0) * 5)
     subtotal = float(cotizacion.get('subtotal_productos') or 0)
     lineas = []
