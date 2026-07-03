@@ -41,11 +41,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 DEFAULT_PRODUCTS = [
-    {"producto_id": 33, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "429", "color": "TABACO CLARO", "stock": 110, "precio_venta": 59.99, "volumetrico": 5/35},
-    {"producto_id": 6, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "60", "color": "NEGRO", "stock": 74, "precio_venta": 59.99, "volumetrico": 5/35},
-    {"producto_id": 7, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "56", "color": "ROJO", "stock": 135, "precio_venta": 59.99, "volumetrico": 5/35},
-    {"producto_id": 10, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "55", "color": "BLANCO", "stock": 50, "precio_venta": 59.99, "volumetrico": 5/35},
-    {"producto_id": 1001, "marca": "KARINA", "hilo": "KOMFY MINI", "codigo": "99", "color": "NEGRO", "stock": 50, "precio_venta": 26.99, "volumetrico": 0.07},
+    {"producto_id": 33, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "429", "color": "TABACO CLARO", "stock": 110, "precio_venta": 59.99, "volumetrico": 1.5},
+    {"producto_id": 6, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "60", "color": "NEGRO", "stock": 74, "precio_venta": 59.99, "volumetrico": 1.5},
+    {"producto_id": 7, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "56", "color": "ROJO", "stock": 135, "precio_venta": 59.99, "volumetrico": 1.5},
+    {"producto_id": 10, "marca": "ALIZE", "hilo": "VELLUTO", "codigo": "55", "color": "BLANCO", "stock": 50, "precio_venta": 59.99, "volumetrico": 1.5},
+    {"producto_id": 1001, "marca": "KARINA", "hilo": "KOMFY MINI", "codigo": "99", "color": "NEGRO", "stock": 50, "precio_venta": 26.99, "volumetrico": 1.0},
 ]
 
 CP_POOL = [

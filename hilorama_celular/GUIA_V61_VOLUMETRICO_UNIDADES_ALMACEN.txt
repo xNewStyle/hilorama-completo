@@ -1,0 +1,36 @@
+V61 - Corrección de volumétrico de envíos
+
+Problema encontrado:
+- El campo productos.volumetrico del almacén NO representa kilos.
+- Representa puntos/unidades de espacio.
+- Antes el sistema tomaba Velluto=1.5 como 1.5 kg por pieza, por eso 35 Vellutos daban 52.5 kg.
+
+Regla correcta:
+- 50 puntos/unidades de almacén = tramo de 5 kg volumétricos.
+- Kurumi=1 significa que caben 50 madejas en tramo 5 kg.
+- Velluto=1.5 significa que caben aproximadamente 33 piezas en tramo 5 kg.
+
+Fórmula:
+  puntos = SUM(cantidad * productos.volumetrico)
+  paquetes_5kg = CEIL(puntos / 50)
+  tramo_kg = paquetes_5kg * 5
+
+Ejemplos con Velluto=1.5:
+- 33 Vellutos = 49.5 puntos => 5 kg
+- 34 Vellutos = 51 puntos => 10 kg si se usa regla estricta de 50 puntos
+- 35 Vellutos = 52.5 puntos => 10 kg
+- 70 Vellutos = 105 puntos => 15 kg
+- 101 Vellutos = 151.5 puntos => revisión manual porque pasa de 15 kg
+
+Variable opcional en Render:
+ENVIA_VOL_UNIDADES_POR_PAQUETE_5KG=50
+
+Si deseas dar más tolerancia para que 34 o 35 Vellutos sigan entrando en 5 kg, puedes subir esa variable, por ejemplo:
+ENVIA_VOL_UNIDADES_POR_PAQUETE_5KG=52.5
+
+También se corrigió la lectura de envios_config.json para que use la tabla del programa:
+"tabla": {"50": 199, "100": 289, "150": 389}
+Cuando las llaves empiezan en 50, se interpretan como puntos de almacén:
+50 puntos => 5 kg
+100 puntos => 10 kg
+150 puntos => 15 kg

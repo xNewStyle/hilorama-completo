@@ -14109,15 +14109,15 @@ def _envia_v50_unidad_volumetrica_por_item(item):
     texto = ' '.join(str(item.get(k) or '') for k in ('marca', 'hilo', 'color', 'codigo', 'nombre')).lower()
     # 35 Velluto = 5 kg volumétricos -> 0.142857 kg volumétricos por madeja.
     if 'velluto' in texto or 'veluto' in texto or 'belluto' in texto:
-        return _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0), 'fallback_velluto_35pzas_5kg'
+        return _envia_v50_float_env('ENVIA_VOL_VELLUTO', 1.5), 'fallback_velluto_puntos'
     if 'komfy' in texto or 'comfy' in texto or 'komfi' in texto:
         # Con este valor: 34 Velluto + 2 Komfy Mini sigue cayendo en 5 kg.
-        return _envia_v50_float_env('ENVIA_VOL_KOMFY_MINI', 0.07), 'fallback_komfy_mini'
+        return _envia_v50_float_env('ENVIA_VOL_KOMFY_MINI', 1.0), 'fallback_komfy_mini_puntos'
     if 'trapillo' in texto:
         return _envia_v50_float_env('ENVIA_VOL_TRAPILLO', 0.50), 'fallback_trapillo'
     if 'relleno' in texto:
         return _envia_v50_float_env('ENVIA_VOL_RELLENO', 0.50), 'fallback_relleno'
-    return _envia_v50_float_env('ENVIA_VOL_DEFAULT', 0.10), 'fallback_default'
+    return _envia_v50_float_env('ENVIA_VOL_DEFAULT', 1.0), 'fallback_default_puntos'
 
 
 def _envia_v50_cantidad_item(item):
@@ -14282,7 +14282,7 @@ def _envia_v50_plan_volumetrico(items=None, nota_id=None, piezas=None):
         except Exception:
             piezas_i = 0
         if piezas_i > 0:
-            unidad = _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0)
+            unidad = _envia_v50_float_env('ENVIA_VOL_VELLUTO', 1.5)
             total = piezas_i * unidad
             detalle.append({
                 'codigo': '', 'marca': '', 'hilo': 'estimado', 'color': '',
@@ -14457,12 +14457,12 @@ def api_envios_debug_volumetrico_v50():
         precios_tramo[carrier] = _envia_v49_precio_base_publico(carrier, plan.get('peso_volumetrico_kg'))
     return jsonify(json_safe({
         'ok': True,
-        'modo': 'V50_DEBUG_VOLUMETRICO_NO_GUIAS',
+        'modo': 'V61_DEBUG_VOLUMETRICO_UNIDADES_A_KG_NO_GUIAS',
         'plan_volumetrico': plan,
         'tabla_precios': tabla,
         'precios_para_tramo': precios_tramo,
         'ejemplos': {
-            '35_vellutos': '/api/envios/debug-volumetrico?velluto=35&pin=TU_PIN',
+            '35_vellutos': '/api/envios/debug-volumetrico?velluto=35&pin=TU_PIN',  # con Velluto=1.5 puntos suele caer en 10 kg si rebasa 50 puntos,
             '34_vellutos_2_komfy': '/api/envios/debug-volumetrico?velluto=34&komfy=2&pin=TU_PIN',
             'cotizar_nota': '/api/envios/cotizar?cp=97000&nota_id=COT-XXX&pin=TU_PIN',
         }
@@ -14657,6 +14657,29 @@ def _envia_v51_tabla_precios_desde_json_file():
                                 continue
                             if max_kg > 0 and precio > 0:
                                 tiers.append({'max_kg': max_kg, 'precio': precio, 'fuente': f'archivo:{path.name}'})
+                    # V61: también aceptar la forma histórica del programa:
+                    # {"tabla": {"50": 199, "100": 289, "150": 389}}
+                    # En esa tabla, cuando la llave mínima es 50 o mayor, la llave representa
+                    # puntos/unidades volumétricas del almacén. 50 puntos = tramo 5 kg.
+                    tabla_map = cfg.get('tabla') or cfg.get('tabla_precios') or cfg.get('costos') or {}
+                    if isinstance(tabla_map, dict):
+                        claves_num = []
+                        for kk in tabla_map.keys():
+                            try:
+                                claves_num.append(float(str(kk).strip()))
+                            except Exception:
+                                pass
+                        usar_puntos = bool(claves_num and min(claves_num) >= 30)
+                        for kk, vv in tabla_map.items():
+                            try:
+                                limite = float(str(kk).strip())
+                                precio = float(vv or 0)
+                            except Exception:
+                                continue
+                            if limite <= 0 or precio <= 0:
+                                continue
+                            max_kg = (limite / 10.0) if usar_puntos else limite
+                            tiers.append({'max_kg': max_kg, 'precio': precio, 'fuente': f'archivo:{path.name}:tabla'})
                     if not tiers:
                         base = cfg.get('base') or cfg.get('precio') or cfg.get('precio_publico')
                         try:
@@ -14665,6 +14688,10 @@ def _envia_v51_tabla_precios_desde_json_file():
                             base = 0
                         if base > 0:
                             tiers.append({'max_kg': 5, 'precio': base, 'fuente': f'archivo:{path.name}:base'})
+                            # V61: si solo hay precio base y no existe tabla de 10/15 kg,
+                            # se generan tramos de emergencia para no cobrar tramo 5 en paquetes grandes.
+                            tiers.append({'max_kg': 10, 'precio': round(base * 2, 2), 'fuente': f'archivo:{path.name}:base_x2'})
+                            tiers.append({'max_kg': 15, 'precio': round(base * 3, 2), 'fuente': f'archivo:{path.name}:base_x3'})
                 elif isinstance(cfg, (int, float)):
                     if float(cfg) > 0:
                         tiers.append({'max_kg': 5, 'precio': float(cfg), 'fuente': f'archivo:{path.name}:numero'})
@@ -14739,10 +14766,10 @@ def _envia_v50_unidad_volumetrica_por_item(item):
     if _envia_v51_item_es_prueba_o_estimado(item):
         texto = ' '.join(str(item.get(k) or '') for k in ('marca', 'hilo', 'color', 'codigo', 'nombre')).lower()
         if 'velluto' in texto or 'veluto' in texto or 'belluto' in texto:
-            return _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0), 'estimado_debug_velluto'
+            return _envia_v50_float_env('ENVIA_VOL_VELLUTO', 1.5), 'estimado_debug_velluto_puntos'
         if 'komfy' in texto or 'comfy' in texto or 'komfi' in texto:
-            return _envia_v50_float_env('ENVIA_VOL_KOMFY_MINI', 0.07), 'estimado_debug_komfy'
-        return _envia_v50_float_env('ENVIA_VOL_DEFAULT', 0.10), 'estimado_debug_default'
+            return _envia_v50_float_env('ENVIA_VOL_KOMFY_MINI', 1.0), 'estimado_debug_komfy_puntos'
+        return _envia_v50_float_env('ENVIA_VOL_DEFAULT', 1.0), 'estimado_debug_default_puntos'
     return None, 'sin_volumetrico_en_almacen'
 
 
@@ -14795,7 +14822,7 @@ def _envia_v50_plan_volumetrico(items=None, nota_id=None, piezas=None):
         # Solo consultas generales sin carrito: se puede dar precio base hasta 5 kg.
         # No se usa para pedidos reales.
         if piezas_i > 0:
-            unidad = _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0)
+            unidad = _envia_v50_float_env('ENVIA_VOL_VELLUTO', 1.5)
             total = piezas_i * unidad
             detalle.append({
                 'codigo': '', 'marca': '', 'hilo': 'estimado_consulta_general', 'color': '',
@@ -14806,13 +14833,22 @@ def _envia_v50_plan_volumetrico(items=None, nota_id=None, piezas=None):
             })
             origen = 'piezas_estimadas_sin_carrito'
 
-    kg_raw = round(float(total), 6) if total > 0 else 0.0
-    if kg_raw <= 0 and not faltantes:
-        kg_raw = 5.0  # consulta general de envío sin pedido: mostrar tramo base.
-    kg_facturable = int(math.ceil(kg_raw)) if kg_raw > 0 else 0
-    if kg_facturable > 0:
-        kg_facturable = max(1, kg_facturable)
-    tramo = int(math.ceil(max(kg_facturable, 1) / 5.0) * 5)
+    # V61: productos.volumetrico NO es kg.
+    # Es una unidad/punto de espacio del almacén.
+    # Regla del programa principal: una caja/tramo base de 5 kg equivale a 50 puntos.
+    # Ejemplo: Kurumi=1 -> caben 50 piezas en 5 kg. Velluto=1.5 -> caben aprox. 33 piezas en 5 kg.
+    puntos_raw = round(float(total), 6) if total > 0 else 0.0
+    puntos_por_5kg = _envia_v49_float_env('ENVIA_VOL_UNIDADES_POR_PAQUETE_5KG', 50.0)
+    if puntos_por_5kg <= 0:
+        puntos_por_5kg = 50.0
+    if puntos_raw <= 0 and not faltantes:
+        paquetes_5kg = 1
+    else:
+        paquetes_5kg = int(math.ceil(max(puntos_raw, 0.000001) / float(puntos_por_5kg))) if puntos_raw > 0 else 0
+        if paquetes_5kg > 0:
+            paquetes_5kg = max(1, paquetes_5kg)
+    kg_facturable = int(paquetes_5kg * 5) if paquetes_5kg else 0
+    tramo = kg_facturable or 5
     max_auto = _envia_v50_int_env('ENVIA_MAX_AUTO_VOLUMETRIC_KG', 15)
     requiere_humano = bool(faltantes) or (kg_facturable > max_auto)
     motivo = ''
@@ -14824,7 +14860,10 @@ def _envia_v50_plan_volumetrico(items=None, nota_id=None, piezas=None):
         'origen': origen,
         'items_detalle': detalle,
         'items_sin_volumetrico': faltantes,
-        'volumetrico_total_raw': kg_raw,
+        'volumetrico_total_raw': puntos_raw,
+        'volumetrico_unidades_raw': puntos_raw,
+        'unidades_por_paquete_5kg': puntos_por_5kg,
+        'paquetes_5kg': paquetes_5kg or 1,
         'peso_volumetrico_kg': kg_facturable or 5,
         'tramo_kg': tramo,
         'max_auto_kg': max_auto,
@@ -14853,7 +14892,7 @@ def api_envios_debug_tablas_v51():
         muestras = [{'error': str(exc)}]
     return jsonify(json_safe({
         'ok': True,
-        'modo': 'V51_DEBUG_TABLAS_ENVIO',
+        'modo': 'V61_DEBUG_TABLAS_ENVIO_UNIDADES_VOLUMETRICAS',
         'tabla_precios_usada': tabla,
         'fuente_db_detectada': fuente_db,
         'hay_tabla_db_detectada': bool(db_tabla),
