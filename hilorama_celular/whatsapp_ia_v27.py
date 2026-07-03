@@ -939,6 +939,23 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # V42: entiende abreviaturas y mala escritura ya normalizada:
     # "4 d 60", "sinco del 60", "55 x dos", "429 x uno".
     qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
+
+    # V62: listas mixtas por hilo en una sola línea.
+    # Ejemplos reales: "velluto 429 x34 y komfy 99 x2",
+    # "kurumi 12 x5 y velluto 429 x2".
+    # Guardamos el hilo en el item para que el código se resuelva contra
+    # esa familia y no contra el contexto previo de la conversación.
+    hilo_pat_v62 = r"velluto|veluto|belluto|komfy mini|komfy|komfi|konfy|comfy|kurumi|kairo|trapillo(?: kraft)?|kotton milk|cotton milk|baby best|diva|fiorentino maxi"
+    for m in re.finditer(rf"\b({hilo_pat_v62})\s+#?(\d{{1,4}})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
+        qty = _qty(m.group(3))
+        fam = _hilo_family(m.group(1))
+        if qty and fam:
+            items.append(_item(codigo=m.group(2), cantidad=qty, raw=m.group(0), fuente="hilo_codigo_x_cantidad", hilo=fam))
+    for m in re.finditer(rf"\b({hilo_pat_v62})\s+({qty_pat})\s+(?:del|de|d|codigo|cod|tono)?\s*#?(\d{{1,4}})(?!\d)", texto_sin_totales):
+        qty = _qty(m.group(2))
+        fam = _hilo_family(m.group(1))
+        if qty and fam:
+            items.append(_item(codigo=m.group(3), cantidad=qty, raw=m.group(0), fuente="hilo_cantidad_codigo", hilo=fam))
     for m in re.finditer(rf"(?<!\w)({qty_pat})\s*(?:piezas?\s*)?(?:del|de|d|codigo|cod|tono)\s*#?(\d{{1,4}})(?!\d)", texto_sin_totales):
         qty = _qty(m.group(1))
         if qty:
@@ -1117,10 +1134,10 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     }
 
 
-def _item(codigo="", cantidad=None, desc="", raw="", fuente=""):
+def _item(codigo="", cantidad=None, desc="", raw="", fuente="", hilo=""):
     codigo_raw = str(codigo or "").strip()
     codigo_norm = codigo_raw.lstrip("0") or codigo_raw
-    return {
+    out = {
         "codigo": codigo_norm,
         "codigo_raw": codigo_raw,
         "cantidad": cantidad,
@@ -1128,6 +1145,9 @@ def _item(codigo="", cantidad=None, desc="", raw="", fuente=""):
         "raw": _compact(raw),
         "fuente": fuente,
     }
+    if hilo:
+        out["hilo"] = _hilo_family(hilo) or str(hilo).strip().upper()
+    return out
 
 
 def _qty(token):
@@ -1200,10 +1220,27 @@ def _codigo_probable(codigo):
 
 
 def _dedup_items(items):
+    # V62: si una lista trae mezcla de hilos, por ejemplo
+    # "velluto 429 x34 y komfy 99 x2", primero se detecta el item
+    # con hilo forzado y después el regex genérico puede volver a detectar
+    # "99 x2" sin hilo. En ese caso conservamos el item con hilo para que
+    # no se resuelva usando el contexto anterior (Velluto).
     out = []
     seen = set()
-    for it in items:
-        key = (it.get("codigo_raw") or it.get("codigo") or "", it.get("desc") or "", it.get("cantidad"), it.get("raw") or "")
+    preferidos = {}
+    for idx, it in enumerate(items or []):
+        code = it.get("codigo_raw") or it.get("codigo") or ""
+        key_base = (code, it.get("desc") or "", it.get("cantidad"))
+        hilo = it.get("hilo") or ""
+        if key_base not in preferidos or (hilo and not (preferidos[key_base].get("hilo") or "")):
+            preferidos[key_base] = it
+    for it in items or []:
+        code = it.get("codigo_raw") or it.get("codigo") or ""
+        key_base = (code, it.get("desc") or "", it.get("cantidad"))
+        elegido = preferidos.get(key_base)
+        if elegido is not it and (elegido or {}).get("hilo"):
+            continue
+        key = (code, it.get("desc") or "", it.get("cantidad"), it.get("hilo") or "")
         if key not in seen:
             seen.add(key)
             out.append(it)
@@ -1288,20 +1325,29 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
         opts_desc = []
 
     matches = []
+    hilo_forzado = item.get("hilo") or ""
     if codigo:
-        ctx_map = _code_map(productos_ctx)
-        all_map = _code_map(productos_all)
-        matches = ctx_map.get(codigo_raw) or ctx_map.get(codigo) or []
-        # Si hay contexto de hilo pero por marca/filtro no aparecio, buscamos en todo y
-        # preferimos el mismo hilo/familia antes de preguntar como ambiguo.
-        if not matches:
-            all_matches = all_map.get(codigo_raw) or all_map.get(codigo) or []
-            if hilo_ctx and all_matches:
-                fam = _hilo_family(hilo_ctx)
-                fam_matches = [p for p in all_matches if _hilo_family(p.get("hilo")) == fam]
-                matches = fam_matches or []
-            elif not hilo_ctx:
-                matches = all_matches
+        # V62: cuando el item viene con hilo explícito en la misma línea
+        # ("komfy 99 x2"), se resuelve contra esa familia y no contra
+        # el hilo memorizado de turnos anteriores.
+        if hilo_forzado:
+            productos_forzados = [p for p in productos_all if _hilo_family(p.get("hilo")) == _hilo_family(hilo_forzado)]
+            force_map = _code_map(productos_forzados)
+            matches = force_map.get(codigo_raw) or force_map.get(codigo) or []
+        else:
+            ctx_map = _code_map(productos_ctx)
+            all_map = _code_map(productos_all)
+            matches = ctx_map.get(codigo_raw) or ctx_map.get(codigo) or []
+            # Si hay contexto de hilo pero por marca/filtro no aparecio, buscamos en todo y
+            # preferimos el mismo hilo/familia antes de preguntar como ambiguo.
+            if not matches:
+                all_matches = all_map.get(codigo_raw) or all_map.get(codigo) or []
+                if hilo_ctx and all_matches:
+                    fam = _hilo_family(hilo_ctx)
+                    fam_matches = [p for p in all_matches if _hilo_family(p.get("hilo")) == fam]
+                    matches = fam_matches or []
+                elif not hilo_ctx:
+                    matches = all_matches
 
     prod = None
     if matches:
@@ -2689,7 +2735,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v53_motor_conversacional",
+            "motor": "v62_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -2740,7 +2786,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v53_motor_conversacional",
+        "motor": "v62_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,

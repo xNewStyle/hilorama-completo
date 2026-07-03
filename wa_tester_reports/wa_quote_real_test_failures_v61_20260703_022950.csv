@@ -1,0 +1,8 @@
+case_id,category,reasons,expected_tramo_kg,expected_manual,cp,final_response,debug_kg,debug_tramo,match_stats
+00008_v61_invariante_34_velluto_2_komfy_5kg,v61_invariante_volumetrico_mixto,detectó pocos códigos/productos: 1/2 (50.0%) | detectó poca cantidad total: 34/36 (94.4%),10,False,44100,"Con el CP 44100, su pedido queda en tramo de hasta 10 kg volumétricos. Subtotal de productos: $2,039.66 MXN:
+- Correos de México: envío $220.00 MXN | total con productos: $2,259.66 MXN
+- Estafeta: envío $289.00 MXN | total con productos: $2,328.66 MXN - 3-5 días
+- FedEx: envío $459.00 MXN | total con productos: $2,498.66 MXN - 2-4 días
+- DHL: envío $497.00 MXN | total con productos: $2,536.66 MXN (posible reexpedición, confirmar antes de cerrar)
+¿Cuál le gustaría usar?
+Ojo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final.",10,10,"{""expected_unique"": 2, ""actual_unique"": 1, ""matched_unique"": 1, ""expected_qty"": 36, ""matched_qty"": 34, ""unique_ratio"": 0.5, ""qty_ratio"": 0.9444444444444444}"
