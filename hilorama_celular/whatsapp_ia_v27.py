@@ -699,6 +699,13 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     elif _es_lista_larga_cruda(normalizado if isinstance(normalizado, dict) else {}, texto):
         principal = "pedido_lista"
         estado = "preparando_cotizacion"
+    elif _es_pedido_cantidad_codigo_texto(texto) and (
+        (memoria or {}).get("hilo_actual")
+        or str((memoria or {}).get("estado_actual") or "") in ("esperando_lista_de_colores", "preparando_cotizacion")
+        or re.search(r"\b(tambien|también|estos|otra parte|va otra)\b", texto)
+    ):
+        principal = "pedido_lista"
+        estado = "preparando_cotizacion"
     elif _consulta_seguimiento_accesorio(texto, memoria):
         # V40: no tratar medidas o bolsas de accesorios como códigos de hilo.
         principal = "pregunta_precio" if re.search(r"\b(precio|cuanto|cuesta|costo|vale|sale)\b", texto) else "catalogo_general"
@@ -1035,8 +1042,8 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
                 tiene_piezas = bool(re.search(r"\bpiezas?\b", m.group(0)))
                 parece_codigo_cantidad = (
                     str(m.group(1)).isdigit()
-                    and _codigo_probable(m.group(1))
-                    and qty and qty > 30
+                    and qty
+                    and (qty > 30 or (str(m.group(2)).isdigit() and int(m.group(2)) <= 30))
                     and _qty(m.group(2)) is not None
                     and not tiene_piezas
                 )
@@ -1160,6 +1167,15 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
         desc = _limpiar_desc_color(m.group(2))
         if qty and qty <= 100 and desc and not desc.startswith(("x ", "y ", "son ", "es ", "todo", "todos", "toda", "todas")) and not re.search(r"\b(pedido|pedio|pregunta|lista|total|piezas)\b", desc):
             items.append(_item(cantidad=qty, desc=desc, raw=m.group(0), fuente="cantidad_color"))
+
+    for linea in normalizado.get("lineas") or [texto_sin_totales]:
+        for segmento in re.split(r"[,;]+", linea):
+            seg = _quitar_intro_lista(segmento)
+            m = re.fullmatch(rf"({qty_pat})\s+([a-z0-9 áéíóúñü]+?)\s+(?:codigo|cod|tono)\s*#?({codigo_alpha_pat}|\d{{1,4}})", seg)
+            if m:
+                qty = _qty(m.group(1))
+                if qty:
+                    items.append(_item(codigo=m.group(3), cantidad=qty, desc=m.group(2), raw=seg, fuente="cantidad_color_codigo"))
 
     # V39/V42: lista de códigos con cantidad global: "55, 60, 429 todos x2".
     # También entiende "todos dos" y, si viene después de una lista, aplica a la cotización previa.

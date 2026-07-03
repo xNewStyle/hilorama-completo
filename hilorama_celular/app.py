@@ -14406,11 +14406,7 @@ def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, an
     resp['modo_precios'] = 'TABLA_HILORAMA_VOLUMETRICO_V50'
 
     motivo_humano = plan.get('motivo_humano') or ''
-    opciones_seguras = bool(resp.get('ok') and (resp.get('opciones') or []))
-    bloquear_auto = bool(plan.get('requiere_humano')) and (
-        motivo_humano == 'productos_sin_volumetrico_configurado'
-        or not opciones_seguras
-    )
+    bloquear_auto = bool(plan.get('requiere_humano'))
     if bloquear_auto:
         resp['ok'] = True
         resp['requiere_humano'] = True
@@ -14421,13 +14417,6 @@ def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, an
         resp['mensaje_admin'] = (
             f"Pedido de {kg} kg volumétricos, mayor al límite automático de {plan.get('max_auto_kg')} kg. "
             "Revisar precio manual y posible reexpedición antes de responder."
-        )
-    elif motivo_humano == 'peso_volumetrico_mayor_a_15kg':
-        resp['requiere_humano'] = False
-        resp['alerta_envio_mayor_15kg'] = False
-        resp['motivo_humano'] = ''
-        resp['nota_revision_envio_volumetrico'] = (
-            f"Pedido de {kg} kg volumetricos con tarifa automatica disponible."
         )
     return resp
 
