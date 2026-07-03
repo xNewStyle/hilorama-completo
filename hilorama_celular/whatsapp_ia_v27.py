@@ -482,10 +482,14 @@ def _es_solicitud_foto_tono(texto):
 
 def _es_pedido_cantidad_codigo_texto(texto):
     t = _norm(texto)
-    qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
-    if re.search(rf"\b(?:ponme|agregame|agrega|dame|deme|quiero|ocupo|necesito|me\s+llevo|llevare|llevaria|pondria)\b.*\b(?:{qty_pat})\s+(?:del|de|d|codigo|cod|tono)?\s*#?\d{{1,4}}\b", t):
+    qty_pat = r"\d{1,4}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
+    code_pat = r"\d{1,4}[a-z]{1,4}|\d{1,4}"
+    verb_pat = r"ponme|pon|pondria|agregame|agrega|agregas|agregar|dame|deme|quiero|ocupo|necesito|cotiza|cotizar|me\s+llevo|llevare|llevaria"
+    if re.search(rf"\b(?:{verb_pat})\b.*\b(?:{qty_pat})\s+(?:piezas?\s*)?(?:del|de|d|codigo|cod|tono)?\s*#?(?:{code_pat})\b", t):
         return True
-    if re.search(rf"\b(?:ponme|agregame|agrega|dame|deme|quiero|ocupo|necesito|me\s+llevo|llevare|llevaria)\b.*\b#?\d{{1,4}}\s+(?:{qty_pat})\b", t):
+    if re.search(rf"\b(?:{verb_pat})\b.*\b#?(?:{code_pat})\s+(?:{qty_pat})\b", t):
+        return True
+    if re.search(rf"\b(?:tambien|también|estos|va\s+otra|otra\s+parte|se\s+me\s+paso|se\s+me\s+pasó)\b.*\b(?:{qty_pat})\s+piezas?\s+#?(?:{code_pat})\b", t):
         return True
     return False
 
@@ -706,6 +710,12 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     ):
         principal = "pedido_lista"
         estado = "preparando_cotizacion"
+    elif re.search(r"\b(?:\d{1,4}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta)\s+[a-z0-9 áéíóúñü ]{2,}\s+(?:codigo|cod|tono)\s*#?(?:\d{1,4}[a-z]{1,4}|\d{1,4})\b", texto) and (
+        str((memoria or {}).get("estado_actual") or "") in ("esperando_lista_de_colores", "preparando_cotizacion")
+        or re.search(r"\b(tambien|también|estos|otra parte|va otra)\b", texto)
+    ):
+        principal = "pedido_lista"
+        estado = "preparando_cotizacion"
     elif _consulta_seguimiento_accesorio(texto, memoria):
         # V40: no tratar medidas o bolsas de accesorios como códigos de hilo.
         principal = "pregunta_precio" if re.search(r"\b(precio|cuanto|cuesta|costo|vale|sale)\b", texto) else "catalogo_general"
@@ -796,10 +806,20 @@ def _parece_lista_o_pedido(texto, memoria=None):
     # "ocupo del 4.5 y del 5" son medidas, no códigos de hilos.
     if _consulta_seguimiento_accesorio(t, memoria) and re.search(r"\b(?:del|de)\s*\d+(?:\.\d+)?\b|\b\d+(?:\.\d+)?\s*mm\b", t):
         return False
-    qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
-    if re.search(rf"\b(?:{qty_pat})\s*(?:del|de|d|codigo|cod|tono)\s*\d{{1,4}}\b", t):
+    qty_pat = r"\d{1,4}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
+    code_pat = r"\d{1,4}[a-z]{1,4}|\d{1,4}"
+    if re.search(rf"\b(?:{qty_pat})\s*(?:del|de|d|codigo|cod|tono)\s*(?:{code_pat})\b", t):
         return True
-    if re.search(rf"\b\d{{1,4}}\s*x\s*(?:{qty_pat})\b", t):
+    if re.search(rf"\b(?:{qty_pat})\s+piezas?\s+(?:{code_pat})\b", t):
+        return True
+    if re.search(rf"\b(?:{qty_pat})\s+[a-z0-9 ]{{2,}}\s+(?:codigo|cod|tono)\s*#?(?:{code_pat})\b", t):
+        return True
+    if re.search(rf"\b(?:{code_pat})\s*x\s*(?:{qty_pat})\b", t):
+        return True
+    if re.search(rf"\b(?:{code_pat})\s+(?:{qty_pat})\b", t) and (
+        re.search(r"\b(tambien|también|estos|va\s+otra|otra\s+parte|lista|pedido)\b", t)
+        or str((memoria or {}).get("estado_actual") or "") in ("esperando_lista_de_colores", "preparando_cotizacion")
+    ):
         return True
     if re.search(rf"\b(?:blanco|negro|rojo|rosa|hueso|camel|beige|arena|cielo|turquesa|lila|amarillo|canario|cafe|gris)\s+(?:{qty_pat})\b", t):
         return True
@@ -864,7 +884,13 @@ def _contexto_lista_larga_mixta(texto, normalizado, intencion, memoria, hilos):
     continuacion = bool(re.search(r"\b(tambien|también|otra parte|va otra|sigue|continuo|continua|faltan|estos tambien)\b", texto_n))
     lista_larga = len(lineas) >= 4 or len(nums) >= 8
     lista_mixta = len(familias) >= 2
-    resolver_global = lista_mixta or (continuacion and bool((memoria or {}).get("lista_mixta_activa")))
+    hilo_mem = str((memoria or {}).get("hilo_actual") or "").strip()
+    resolver_global = (
+        lista_mixta
+        or (continuacion and bool((memoria or {}).get("lista_mixta_activa")))
+        or (lista_larga and not hilo_mem)
+        or (continuacion and len(nums) >= 4 and not hilo_mem)
+    )
     return {
         "lista_larga": bool(lista_larga),
         "lista_mixta": bool(lista_mixta),
@@ -999,7 +1025,7 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # 5 del 55, 10 de 60, dos del 55, cinco del 60.
     # V42: entiende abreviaturas y mala escritura ya normalizada:
     # "4 d 60", "sinco del 60", "55 x dos", "429 x uno".
-    qty_pat = r"\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
+    qty_pat = r"\d{1,4}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta"
 
     # V62: listas mixtas por hilo en una sola línea.
     # Ejemplos reales: "velluto 429 x34 y komfy 99 x2",
@@ -1023,7 +1049,7 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
         fam = _hilo_family(m.group(1))
         if qty and fam:
             items.append(_item(codigo=m.group(3), cantidad=qty, raw=m.group(0), fuente="hilo_cantidad_codigo", hilo=fam))
-    for m in re.finditer(rf"(?<!\w)({qty_pat})\s*(?:piezas?\s*)?(?:del|de|d|codigo|cod|tono)\s*#?(\d{{1,4}})(?!\d)", texto_sin_totales):
+    for m in re.finditer(rf"(?<!\w)({qty_pat})\s*(?:piezas?\s*)?(?:del|de|d|codigo|cod|tono)\s*#?({codigo_alpha_pat}|\d{{1,4}})(?!\w)", texto_sin_totales):
         qty = _qty(m.group(1))
         if qty:
             items.append(_item(codigo=m.group(2), cantidad=qty, raw=m.group(0), fuente="cantidad_codigo"))
@@ -1036,7 +1062,7 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             bloques_sin_del = [_quitar_intro_lista(x) for x in lineas_para_sin_del]
             bloques_sin_del = [x for x in bloques_sin_del if x]
         for bloque in bloques_sin_del:
-            for m in re.finditer(rf"\b({qty_pat})\s+(?:piezas?\s*)?(?:el\s+)?#?(\d{{1,4}})(?!\d)", bloque):
+            for m in re.finditer(rf"\b({qty_pat})\s+(?:piezas?\s*)?(?:el\s+)?#?({codigo_alpha_pat}|\d{{1,4}})(?!\w)", bloque):
                 qty = _qty(m.group(1))
                 verbo_cercano = bool(re.search(r"\b(ponme|agrega|agregame|dame|deme|quiero|ocupo|necesito|cotiza|cotizar|me\s+llevo)\b", bloque[:m.start()], re.I))
                 tiene_piezas = bool(re.search(r"\bpiezas?\b", m.group(0)))
@@ -1059,7 +1085,7 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
                     continue
                 if qty and qty <= 300 and (qty <= 30 or verbo_cercano or tiene_piezas):
                     items.append(_item(codigo=m.group(2), cantidad=qty, raw=m.group(0), fuente="cantidad_codigo_sin_del"))
-            for m in re.finditer(rf"\b(?:el\s+)?#?(\d{{1,4}})\s+({qty_pat})(?!\w)", bloque):
+            for m in re.finditer(rf"\b(?:el\s+)?#?({codigo_alpha_pat}|\d{{1,4}})\s+({qty_pat})(?!\w)", bloque):
                 qty = _qty(m.group(2))
                 if qty and qty <= 300:
                     items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_cantidad_sin_x"))
@@ -1279,6 +1305,7 @@ def _quitar_totales_y_cp(texto):
 
 def _quitar_intro_lista(linea):
     l = _norm(linea)
+    l = re.sub(r"^(?:tambien|también|y\s+estos\s+tambien|y\s+estos\s+también|estos\s+tambien|estos\s+también|va\s+otra\s+parte|otra\s+parte)\s*:?\s*", "", l)
     l = re.sub(r"^.*?\b(?:lista|pedido|poner|agregar|cotizar)\b\s*", "", l)
     l = re.sub(r"^(?:quiero|dame|deme|ponme|agregame|agrega)\s+", "", l)
     return _compact(l.strip(" ,.;"))
@@ -1307,6 +1334,8 @@ def _debe_tomar_codigos_sueltos(texto, intencion, contexto, items_count, nums_co
     if intencion["principal"] == "pide_foto_tono":
         return False
     if _detectar_cp(texto):
+        return False
+    if items_count > 0:
         return False
     if nums_count >= 2:
         return True

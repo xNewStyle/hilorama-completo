@@ -6,5 +6,27 @@
     "fuentes_preferidas": ["Karina", "Alize", "fabricante", "proveedor oficial"],
     "si_no_es_confiable": "pendiente de validar"
   },
-  "aprendizajes": []
+  "aprendizajes": [
+    {
+      "id": "v63_listas_partidas_cantidad_codigo",
+      "fecha": "2026-07-03",
+      "origen": "tester_real_v61_1000",
+      "regla": "Cuando la clienta ya inicio una cotizacion y manda otra parte de la lista, interpretar formatos como 429 x2, 429 2, 2 piezas 429, 52 TABACO CLARO codigo 429 y 172AT x3 como pedido, no como consulta de tono.",
+      "respuesta_humana": "Perfecto, le agrego esos tonos a su cotizacion."
+    },
+    {
+      "id": "v63_listas_mixtas_globales",
+      "fecha": "2026-07-03",
+      "origen": "tester_real_v61_1000",
+      "regla": "Si una lista larga no trae hilo unico claro, resolver los codigos contra el almacen completo y conservar el pedido acumulado entre mensajes.",
+      "respuesta_humana": "Ahorita lleva esto en su cotizacion."
+    },
+    {
+      "id": "v63_envio_mixto_tarifa_segura",
+      "fecha": "2026-07-03",
+      "origen": "tester_real_v61_1000",
+      "regla": "Para pedidos mixtos con tarifa de envio configurada y segura, mostrar opciones de paqueteria y total; si falta volumetrico o es Velluto puro arriba del limite, mandar a revision humana.",
+      "respuesta_humana": "Le paso las opciones con envio."
+    }
+  ]
 }

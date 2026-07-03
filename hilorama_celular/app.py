@@ -14406,7 +14406,32 @@ def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, an
     resp['modo_precios'] = 'TABLA_HILORAMA_VOLUMETRICO_V50'
 
     motivo_humano = plan.get('motivo_humano') or ''
+    opciones_seguras = bool(resp.get('ok') and (resp.get('opciones') or []))
+    detalle_vol = plan.get('items_detalle') or []
+    familias_vol = {
+        str((it or {}).get('hilo') or '').strip().upper()
+        for it in detalle_vol
+        if str((it or {}).get('hilo') or '').strip()
+    }
+    solo_velluto = bool(familias_vol) and all('VELLUTO' in fam or 'VELUTO' in fam or 'BELLUTO' in fam for fam in familias_vol)
+    origen_estimado = str(plan.get('origen') or '').startswith('piezas_estimadas')
     bloquear_auto = bool(plan.get('requiere_humano'))
+    if (
+        motivo_humano == 'peso_volumetrico_mayor_a_15kg'
+        and opciones_seguras
+        and not solo_velluto
+        and not origen_estimado
+    ):
+        # Listas mixtas con tabla segura de 20/25 kg pueden cotizarse;
+        # Velluto puro y estimados siguen pasando por revision manual.
+        bloquear_auto = False
+        resp['requiere_humano'] = False
+        resp['alerta_envio_mayor_15kg'] = False
+        resp['motivo_humano'] = ''
+        resp['nota_revision_envio_volumetrico'] = (
+            f"Pedido mixto de {kg} kg volumetricos con tarifa configurada. "
+            "Se muestran opciones automaticas sin generar guia."
+        )
     if bloquear_auto:
         resp['ok'] = True
         resp['requiere_humano'] = True
