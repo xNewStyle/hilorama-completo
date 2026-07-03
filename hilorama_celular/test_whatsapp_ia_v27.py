@@ -1,9 +1,10 @@
+import json
 import unittest
 
 from hilorama_celular.whatsapp_ia_v27 import procesar_conversacion_v27
 
 
-def prod(pid, codigo, hilo, color, stock=5, precio=65, marca="ALIZE"):
+def prod(pid, codigo, hilo, color, stock=5, precio=65, marca="ALIZE", volumetrico=1.0):
     return {
         "id": pid,
         "codigo": codigo,
@@ -13,6 +14,7 @@ def prod(pid, codigo, hilo, color, stock=5, precio=65, marca="ALIZE"):
         "color": color,
         "stock": stock,
         "precio_venta": precio,
+        "volumetrico": volumetrico,
         "es_inventariable": True,
     }
 
@@ -147,6 +149,22 @@ Hueso 26- 1"""
         self.assertIn("429.webp", resultado["respuesta"])
         self.assertFalse(resultado["resolucion"]["pedidos"])
 
+    def test_consulta_de_codigo_no_agrega_carrito(self):
+        resultado = run("que color es 429?")
+
+        self.assertEqual(resultado["intencion"]["principal"], "consulta_tono")
+        self.assertFalse(resultado["resolucion"]["pedidos"])
+        self.assertIn("Uva", resultado["respuesta"])
+
+    def test_me_llevo_y_cotizame_si_agregan_cotizacion(self):
+        pedido = run("me llevo 2 del 55", memoria={"hilo_actual": "VELLUTO", "marca_actual": "ALIZE"})
+        cotiza = run("cotizame 2 del 55", memoria={"hilo_actual": "VELLUTO", "marca_actual": "ALIZE"})
+
+        self.assertEqual(pedidos_por_codigo(pedido)["55"]["cantidad"], 2)
+        self.assertEqual(pedidos_por_codigo(cotiza)["55"]["cantidad"], 2)
+        self.assertIn("Subtotal productos: $130.00 MXN", pedido["respuesta"])
+        self.assertNotIn("apartar", pedido["respuesta"].lower())
+
     def test_envio_sin_cp_pide_codigo_postal(self):
         resultado = run("cuanto sale el envio?")
 
@@ -219,6 +237,32 @@ Hueso 26- 1"""
         self.assertNotIn("aparto", resultado["respuesta"].lower())
         self.assertNotIn("apartar", resultado["respuesta"].lower())
         self.assertIn("agrego a su cotización", resultado["respuesta"].lower())
+
+
+    def test_correccion_quita_y_sustituye_en_memoria(self):
+        primero = run("ponme 2 del 55 y 1 del 60", memoria={"hilo_actual": "VELLUTO", "marca_actual": "ALIZE"})
+        quita = run("quitame el 60", memoria=primero["memoria"])
+        sustituye = run("cambia 55 por 56", memoria=quita["memoria"])
+
+        pedidos_quita = pedidos_por_codigo({"resolucion": {"pedidos": json.loads(quita["memoria"]["pedido_en_proceso"])}})
+        pedidos_final = pedidos_por_codigo({"resolucion": {"pedidos": json.loads(sustituye["memoria"]["pedido_en_proceso"])}})
+
+        self.assertNotIn("60", pedidos_quita)
+        self.assertNotIn("55", pedidos_final)
+        self.assertIn("56", pedidos_final)
+        self.assertIn("cambio", sustituye["respuesta"].lower())
+
+    def test_tester_mode_regresa_bandera_y_no_toca_datos_reales(self):
+        resultado = procesar_conversacion_v27(
+            {"texto": "foto del 429", "tester_mode": True, "dry_run": True},
+            PRODUCTOS,
+            memoria={},
+            callbacks={},
+        )
+
+        self.assertTrue(resultado["tester_mode"])
+        self.assertTrue(resultado["dry_run"])
+        self.assertFalse(resultado["resolucion"]["pedidos"])
 
 
 if __name__ == "__main__":

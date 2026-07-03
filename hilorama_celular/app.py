@@ -7827,7 +7827,12 @@ def _wa_v8_auto_seed_static_recursos(db):
 
 
 def _wa_v8_recurso_to_url(recurso):
-    return str((recurso or {}).get('archivo_url') or '').strip()
+    url = str((recurso or {}).get('archivo_url') or '').strip()
+    # El agente de WhatsApp solo debe adjuntar recursos locales del repositorio
+    # visual. Si un registro viejo trae URL externa, no se manda al cliente.
+    if url.startswith('/static/'):
+        return url
+    return ''
 
 
 def _wa_v8_obtener_recursos_grupo(recurso):
@@ -8217,9 +8222,14 @@ def _wa_v59_respuesta_recursos_tonos(recursos, texto=''):
             code = m.group(1) if m else ''
         if code and code not in codigos:
             codigos.append(code)
-        url = str(r.get('archivo_url') or '').strip()
+        url = _wa_v8_recurso_to_url(r)
         if url and url not in urls:
             urls.append(url)
+    if not urls:
+        titulo = 'Claro ðŸ˜Š le comparto fotos/imÃ¡genes'
+        if codigos:
+            titulo += ' de los tonos ' + ', '.join(codigos[:8])
+        return titulo + '.'
     if len(urls) == 1:
         nombre = str(recursos[0].get('nombre') or 'foto del tono').strip()
         return f"Claro 😊 le comparto la foto del tono {codigos[0] if codigos else ''}.\n\n📎 Recurso para enviar: {nombre}\n{urls[0]}".strip()
@@ -12553,7 +12563,7 @@ def _wa_v22_envio_opciones_texto(cp=''):
         if _envia_v24_config().get('enabled'):
             return (
                 f"Con el CP {cp_txt} necesito revisar el envío manualmente 😊 "
-                "No me aparece una tarifa automática segura en este momento."
+                "No me aparece una tarifa automática segura en este momento, pero reviso opciones de paqueteria para su pedido."
             )
     except Exception as exc:
         print('WARN Envia cotizacion WA:', exc, flush=True)
@@ -13279,6 +13289,7 @@ def _wa_v27_envio_formato_publico(cp, cotizacion):
 
 def _wa_v27_buscar_recurso(intencion, normalizado, contexto, extraccion):
     principal = (intencion or {}).get('principal') or ''
+    secundaria = (intencion or {}).get('secundaria') or ''
     texto = (normalizado or {}).get('texto') or ''
     consulta = ' '.join(x for x in [texto, (contexto or {}).get('hilo_actual'), (contexto or {}).get('marca_actual')] if x)
     try:
@@ -13305,6 +13316,31 @@ def _wa_v27_buscar_recurso(intencion, normalizado, contexto, extraccion):
                     'respuesta': _wa_v7_respuesta_de_recurso(recurso),
                     'recurso': recurso,
                     'motor': 'biblioteca_ia_carta_colores_v27',
+                }
+        categoria = ''
+        motor = ''
+        if secundaria == 'ficha_hilo':
+            categoria = 'ficha_producto'
+            motor = 'biblioteca_ia_ficha_local_v63'
+        elif secundaria in ('foto_accesorio', 'accesorio_especifico'):
+            categoria = 'accesorio'
+            motor = 'biblioteca_ia_accesorio_local_v63'
+        elif principal == 'catalogo_general' and re.search(r'\b(catalogo|cat[aá]logo|carta|gama)\b', texto, re.I):
+            categoria = 'carta_colores'
+            motor = 'biblioteca_ia_catalogo_local_v63'
+        elif principal == 'envio':
+            categoria = 'envio'
+            motor = 'biblioteca_ia_envios_local_v63'
+        elif principal == 'pago':
+            categoria = 'pago'
+            motor = 'biblioteca_ia_pagos_local_v63'
+        if categoria:
+            recurso = _wa_v7_buscar_recurso(consulta, categoria=categoria)
+            if recurso:
+                return {
+                    'respuesta': _wa_v7_respuesta_de_recurso(recurso),
+                    'recurso': recurso,
+                    'motor': motor,
                 }
     except Exception as exc:
         print('WARN recurso WA v27:', exc, flush=True)
@@ -15215,7 +15251,7 @@ def _envia_v52_formato_publico(cp, cotizacion):
         elif op.get('entrega'):
             desc += f" - {op.get('entrega')}"
         lineas.append(desc)
-    intro = f"Con el CP {cp}, su pedido queda en tramo de hasta {tramo:g} kg volumétricos"
+    intro = f"Con el CP {cp}, estas son las opciones de paqueteria para tramo de hasta {tramo:g} kg volumétricos"
     if subtotal > 0:
         intro += f". Subtotal de productos: ${subtotal:,.2f} MXN"
     extra = ''
@@ -15303,4 +15339,3 @@ def api_envios_debug_whatsapp_contexto_v52():
         'plan_volumetrico': _envia_v50_plan_volumetrico(items=items, nota_id=data.get('nota_id') or data.get('nota'), piezas=data.get('piezas')),
         'nota': 'El agente usa estos items acumulados para calcular envío dentro del hilo de conversación.'
     }))
-
