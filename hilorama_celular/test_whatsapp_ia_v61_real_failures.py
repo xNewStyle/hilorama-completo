@@ -15,6 +15,7 @@ except Exception:  # pragma: no cover
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_DIR = ROOT / "wa_tester_reports"
 TESTER_PATH = Path(__file__).resolve().parent / "tools" / "whatsapp_ia_cotizacion_real_tester_v61.py"
+REGRESSION_PATH = ROOT / "hilorama_celular" / "data" / "test_cases" / "regresion_hilorama_v63.jsonl"
 
 
 def _load_v61_tester():
@@ -39,6 +40,26 @@ def _latest_report_pair():
 def _failed_ids_from_csv(csv_path):
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         return [row["case_id"] for row in csv.DictReader(f) if row.get("case_id")]
+
+
+def _load_v63_regression_cases():
+    if not REGRESSION_PATH.exists():
+        raise AssertionError(f"Falta archivo de regresion V63: {REGRESSION_PATH}")
+    cases = []
+    invalid = []
+    for n, line in enumerate(REGRESSION_PATH.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        obj = json.loads(line)
+        if not (obj.get("case_id") and obj.get("turns") and obj.get("expected_items")):
+            invalid.append((n, obj.get("case_id") or "sin_case_id"))
+            continue
+        cases.append(obj)
+    if invalid:
+        raise AssertionError(f"regresion_hilorama_v63.jsonl trae filas no ejecutables: {invalid[:5]}")
+    if not cases:
+        raise AssertionError("regresion_hilorama_v63.jsonl no trae casos ejecutables.")
+    return cases
 
 
 def _as_product(raw):
@@ -180,18 +201,14 @@ def _shipping_callback(cp, contexto):
 
 
 def _shipping_callback_for_case(case):
-    expected_items = [dict(x) for x in case.expected_items or []]
-
     def _callback(cp, contexto):
-        items = expected_items or _pedido_from_memoria(contexto)
+        items = _pedido_from_memoria(contexto)
         plan_obj = _plan_for_items(items)
         plan = plan_obj["plan_volumetrico"]
-        kg = case.expected_tramo_kg or plan["tramo_kg"]
-        if not case.expected_manual and case.expected_tramo_kg is None and kg > 15:
-            kg = 15
+        kg = plan["tramo_kg"]
         plan["tramo_kg"] = kg
         plan["peso_volumetrico_kg"] = kg
-        plan["requiere_humano"] = bool(case.expected_manual or kg > 15)
+        plan["requiere_humano"] = bool(case.expected_manual)
         subtotal = plan_obj["subtotal"]
         if plan["requiere_humano"]:
             return {
@@ -222,11 +239,10 @@ def _shipping_callback_for_case(case):
 class WhatsappIAV61RealFailuresRegressionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        json_path, csv_path = _latest_report_pair()
-        cls.json_path = json_path
-        cls.csv_path = csv_path
-        cls.results = json.loads(json_path.read_text(encoding="utf-8"))
-        cls.failed_ids = _failed_ids_from_csv(csv_path)
+        cls.json_path = REGRESSION_PATH
+        cls.csv_path = REGRESSION_PATH
+        cls.results = _load_v63_regression_cases()
+        cls.failed_ids = [r.get("case_id") for r in cls.results]
         by_id = {r.get("case_id"): r for r in cls.results}
         missing = [case_id for case_id in cls.failed_ids if case_id not in by_id]
         if missing:

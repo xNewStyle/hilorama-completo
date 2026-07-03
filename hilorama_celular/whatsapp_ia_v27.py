@@ -1033,6 +1033,15 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
                 qty = _qty(m.group(1))
                 verbo_cercano = bool(re.search(r"\b(ponme|agrega|agregame|dame|deme|quiero|ocupo|necesito|cotiza|cotizar|me\s+llevo)\b", bloque[:m.start()], re.I))
                 tiene_piezas = bool(re.search(r"\bpiezas?\b", m.group(0)))
+                parece_codigo_cantidad = (
+                    str(m.group(1)).isdigit()
+                    and _codigo_probable(m.group(1))
+                    and qty and qty > 30
+                    and _qty(m.group(2)) is not None
+                    and not tiene_piezas
+                )
+                if parece_codigo_cantidad:
+                    continue
                 if (
                     qty and qty <= 300
                     and not tiene_piezas
@@ -1113,6 +1122,12 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # Blanco 01 - 2 / 216 canario - 4
     for linea in normalizado.get("lineas") or [texto_sin_totales]:
         l = _quitar_intro_lista(linea)
+        m = re.fullmatch(rf"({qty_pat})\s+([a-z0-9 áéíóúñü]+?)\s+(?:codigo|cod|tono)\s*#?({codigo_alpha_pat}|\d{{1,4}})", l)
+        if m:
+            qty = _qty(m.group(1))
+            if qty:
+                items.append(_item(codigo=m.group(3), cantidad=qty, desc=m.group(2), raw=linea, fuente="cantidad_color_codigo"))
+                continue
         m = re.fullmatch(r"(\d{1,4})\s+([a-z0-9 ]{2,})\s*-\s*(\d{1,3})", l)
         if m:
             items.append(_item(codigo=m.group(1), cantidad=int(m.group(3)), desc=m.group(2), raw=linea, fuente="codigo_color_cantidad"))
@@ -1497,6 +1512,10 @@ def _resolver_item(item, productos_all, productos_ctx, contexto):
                 return out
         if resolver_global and len(fams) > 1:
             out["internos"].append(f"codigo_ambiguo_resuelto_lista_mixta:{codigo_raw or codigo}")
+        if desc:
+            compatibles = [p for p in matches if _desc_compatible(p, desc)]
+            if compatibles:
+                matches = compatibles
         prod_codigo = sorted(matches, key=lambda p: (_score_producto_codigo(p, contexto, codigo_raw), _stock(p)), reverse=True)[0]
         if desc and not _desc_compatible(prod_codigo, desc):
             if prod_por_desc:
@@ -3098,7 +3117,19 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if callbacks.get("cotizar_envio") and intencion["principal"] in ("cp_envio", "envio"):
         cp_para_envio = extraccion.get("cp") or contexto.get("cp_actual") or ((memoria or {}).get("cp_actual") if isinstance(memoria, dict) else "") or ""
         if cp_para_envio:
-            envio = callbacks["cotizar_envio"](cp_para_envio, contexto) or {}
+            contexto_envio = dict(contexto or {})
+            memoria_envio = dict((contexto_envio.get("memoria_previa") or memoria or {}))
+            if "pedido_en_proceso_actualizado" in resolucion:
+                pedido_envio = (resolucion.get("pedido_en_proceso_actualizado") or [])[:80]
+            elif resolucion.get("pedidos"):
+                pedido_envio = _wa_v52_merge_pedido_en_proceso(memoria_envio, resolucion.get("pedidos") or [], intencion)
+            else:
+                pedido_envio = _cargar_pedido_en_proceso(memoria_envio)
+            if pedido_envio:
+                contexto_envio["pedido_en_proceso_actual"] = pedido_envio
+                memoria_envio["pedido_en_proceso"] = json.dumps(pedido_envio[:80], ensure_ascii=False)
+                contexto_envio["memoria_previa"] = memoria_envio
+            envio = callbacks["cotizar_envio"](cp_para_envio, contexto_envio) or {}
 
     decision = detectar_decision_pendiente(
         normalizado, intencion, contexto, extraccion, resolucion, confianza,

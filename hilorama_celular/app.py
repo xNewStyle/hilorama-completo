@@ -14405,16 +14405,29 @@ def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, an
     resp['tramo_kg'] = plan.get('tramo_kg')
     resp['modo_precios'] = 'TABLA_HILORAMA_VOLUMETRICO_V50'
 
-    if plan.get('requiere_humano'):
+    motivo_humano = plan.get('motivo_humano') or ''
+    opciones_seguras = bool(resp.get('ok') and (resp.get('opciones') or []))
+    bloquear_auto = bool(plan.get('requiere_humano')) and (
+        motivo_humano == 'productos_sin_volumetrico_configurado'
+        or not opciones_seguras
+    )
+    if bloquear_auto:
         resp['ok'] = True
         resp['requiere_humano'] = True
         resp['alerta_envio_mayor_15kg'] = True
-        resp['motivo_humano'] = plan.get('motivo_humano')
+        resp['motivo_humano'] = motivo_humano
         resp['opciones_auto_bloqueadas'] = resp.get('opciones') or []
         resp['opciones'] = []
         resp['mensaje_admin'] = (
             f"Pedido de {kg} kg volumétricos, mayor al límite automático de {plan.get('max_auto_kg')} kg. "
             "Revisar precio manual y posible reexpedición antes de responder."
+        )
+    elif motivo_humano == 'peso_volumetrico_mayor_a_15kg':
+        resp['requiere_humano'] = False
+        resp['alerta_envio_mayor_15kg'] = False
+        resp['motivo_humano'] = ''
+        resp['nota_revision_envio_volumetrico'] = (
+            f"Pedido de {kg} kg volumetricos con tarifa automatica disponible."
         )
     return resp
 
@@ -15061,10 +15074,20 @@ def _wa_v52_items_envio_desde_contexto(contexto):
         if isinstance(it, dict):
             items.append(dict(it))
     # 2) Pedido acumulado por la conversación de WhatsApp.
+    pedido_contexto = []
+    for it in contexto.get('pedido_en_proceso_actual') or []:
+        if isinstance(it, dict):
+            pedido_contexto.append(dict(it))
+    items.extend(pedido_contexto)
     mem = contexto.get('memoria_previa') or {}
-    for key in ('pedido_en_proceso', 'ultima_lista_recibida'):
-        for it in _wa_v52_json_list(mem.get(key)):
-            items.append(it)
+    if not pedido_contexto:
+        pedido_memoria = _wa_v52_json_list(mem.get('pedido_en_proceso'))
+        if pedido_memoria:
+            for it in pedido_memoria:
+                items.append(it)
+        elif not items:
+            for it in _wa_v52_json_list(mem.get('ultima_lista_recibida')):
+                items.append(it)
     # 3) Si hay nota seleccionada, cotizar también puede resolverla directo por nota_id.
     return _wa_v52_merge_items(items)
 

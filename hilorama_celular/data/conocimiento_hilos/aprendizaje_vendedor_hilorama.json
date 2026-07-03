@@ -1,0 +1,10 @@
+{
+  "version": "v63",
+  "politica": {
+    "usar_para_cliente_solo_si_validado": true,
+    "no_usar_para_precios_hilorama": true,
+    "fuentes_preferidas": ["Karina", "Alize", "fabricante", "proveedor oficial"],
+    "si_no_es_confiable": "pendiente de validar"
+  },
+  "aprendizajes": []
+}
