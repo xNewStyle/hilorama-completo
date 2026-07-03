@@ -1,0 +1,771 @@
+[
+  {
+    "category": "v52_envio_con_pedido_35_velluto_5kg",
+    "turns": [
+      "hola buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 35 del 429",
+      "mi cp es 97000 cuanto seria con envio"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "envio",
+        "envío",
+        "kg",
+        "volum",
+        "total",
+        "$",
+        "97000"
+      ],
+      "must_not_contain_any": [
+        "me indica qué hilo",
+        "me indica que hilo"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_con_pedido_mas_de_35_velluto_10kg",
+    "turns": [
+      "buen dia",
+      "voy a hacer pedido de velluto",
+      "ponme 35 del 429",
+      "agregame 5 del 60",
+      "cuanto seria con envio al codigo postal 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "10 kg",
+        "hasta 10",
+        "volum",
+        "total",
+        "$",
+        "97000"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_solo_cp_sin_lista_base",
+    "turns": [
+      "hola",
+      "cuanto sale el envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "$",
+        "kg"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_pedido_grande_alerta_manual",
+    "turns": [
+      "hola",
+      "quiero pedido de velluto",
+      "ponme 120 del 429",
+      "mi cp es 97000 cuanto sale con envio"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "manual",
+        "15",
+        "volum",
+        "revis"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_mixto_velluto_komfy",
+    "turns": [
+      "holaa",
+      "quiero hacer pedido",
+      "velluto 429 x34 y komfy mini 99 x2",
+      "cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_despues_de_varios_turnos",
+    "turns": [
+      "hola buenas tardes de casualidad manejas velluto",
+      "si me mandas catalogo por favor",
+      "ok dame 20 del 429",
+      "y otros 20 del 60",
+      "a 97000 cuanto queda ya con envio"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "10",
+        "volum",
+        "total",
+        "$"
+      ]
+    }
+  },
+  {
+    "category": "v52_pide_total_con_envio_sin_cp",
+    "turns": [
+      "hola",
+      "voy a hacer pedido de velluto",
+      "ponme 10 del 429",
+      "cuanto seria con envio?"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "codigo postal",
+        "cp",
+        "envio",
+        "envío"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 35 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "5"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 36 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 34 del 429 y 2 del 60",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "oye disculpa",
+      "quiero hacer pedido de velluto",
+      "ponme 20 del 429 y 20 del 60",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 105 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "15"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 35 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "5"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 36 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "oye disculpa",
+      "quiero hacer pedido de velluto",
+      "ponme 34 del 429 y 2 del 60",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 20 del 429 y 20 del 60",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 105 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "15"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 35 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "5"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "oye disculpa",
+      "quiero hacer pedido de velluto",
+      "ponme 36 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 34 del 429 y 2 del 60",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 20 del 429 y 20 del 60",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 105 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "15"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "oye disculpa",
+      "quiero hacer pedido de velluto",
+      "ponme 35 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "5"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 36 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 34 del 429 y 2 del 60",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 20 del 429 y 20 del 60",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "oye disculpa",
+      "quiero hacer pedido de velluto",
+      "ponme 105 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "15"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 35 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "5"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 36 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 34 del 429 y 2 del 60",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "oye disculpa",
+      "quiero hacer pedido de velluto",
+      "ponme 20 del 429 y 20 del 60",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 105 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "15"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 35 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "5"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buenas tardes",
+      "quiero hacer pedido de velluto",
+      "ponme 36 del 429",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "oye disculpa",
+      "quiero hacer pedido de velluto",
+      "ponme 34 del 429 y 2 del 60",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "hola buenas",
+      "quiero hacer pedido de velluto",
+      "ponme 20 del 429 y 20 del 60",
+      "y cuanto seria con envio al cp 97000"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "97000",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "10"
+      ]
+    }
+  },
+  {
+    "category": "v52_envio_variacion_acumulado",
+    "turns": [
+      "buen dia",
+      "quiero hacer pedido de velluto",
+      "ponme 105 del 429",
+      "y cuanto seria con envio al cp 64600"
+    ],
+    "expect": {
+      "scope": "final",
+      "must_contain_any": [
+        "64600",
+        "envio",
+        "envío",
+        "volum",
+        "total",
+        "$",
+        "15"
+      ]
+    }
+  }
+]

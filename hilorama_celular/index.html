@@ -576,6 +576,8 @@ async function simularWhatsAppIA(){
         hilo:i.hilo||'',
         color:i.color||'',
         cantidad:Number(i.cantidad||1),
+        precio:Number(i.precio_venta||i.precio||0),
+        precio_venta:Number(i.precio_venta||i.precio||0),
         volumetrico:Number(i.volumetrico||0)
       })),
       nota_id:state.editing||'',

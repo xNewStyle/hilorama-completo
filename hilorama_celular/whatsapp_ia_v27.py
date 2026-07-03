@@ -2389,6 +2389,66 @@ def _respuesta_pedido(resolucion, contexto):
     return "\n\n".join(partes).strip()
 
 
+
+
+def _wa_v52_item_key(item):
+    item = item or {}
+    pid = str(item.get("producto_id") or item.get("id") or "").strip()
+    if pid:
+        return "pid:" + pid
+    codigo = str(item.get("codigo") or item.get("codigo_raw") or "").strip().upper()
+    hilo = _norm(item.get("hilo") or "")
+    marca = _norm(item.get("marca") or "")
+    color = _norm(item.get("color") or item.get("desc") or "")
+    return "|".join([marca, hilo, codigo, color])
+
+
+def _wa_v52_merge_pedido_en_proceso(memoria_previa, pedidos_nuevos, intencion=None):
+    """Mantiene una lista acumulada dentro del hilo de WhatsApp.
+
+    Antes se reemplazaba el pedido_en_proceso con el último mensaje. Eso hacía que,
+    si la clienta decía: "35 vellutos" y después "agrega 5 más" y luego preguntaba
+    "¿cuánto sería con envío?", el envío se calculara solo con el último turno.
+    """
+    prev = _cargar_pedido_en_proceso(memoria_previa or {})
+    nuevos = [dict(x) for x in (pedidos_nuevos or []) if isinstance(x, dict)]
+    if not nuevos:
+        return prev[:80]
+    principal = (intencion or {}).get("principal") or ""
+    if principal not in ("pedido_lista", "iniciar_pedido", "confirmacion_contexto"):
+        # Para consultas de stock/foto/precio no se debe convertir en carrito.
+        return prev[:80]
+    merged = []
+    idx = {}
+    for it in prev:
+        d = dict(it or {})
+        k = _wa_v52_item_key(d)
+        if k and k not in idx:
+            idx[k] = len(merged)
+            merged.append(d)
+    for it in nuevos:
+        d = dict(it or {})
+        k = _wa_v52_item_key(d)
+        try:
+            q = int(float(d.get("cantidad") or 1))
+        except Exception:
+            q = 1
+        d["cantidad"] = max(q, 1)
+        if k and k in idx:
+            pos = idx[k]
+            try:
+                q_prev = int(float(merged[pos].get("cantidad") or 1))
+            except Exception:
+                q_prev = 1
+            merged[pos].update({kk: vv for kk, vv in d.items() if vv not in (None, "", [])})
+            merged[pos]["cantidad"] = max(q_prev, 0) + max(q, 0)
+        else:
+            if k:
+                idx[k] = len(merged)
+            merged.append(d)
+    return merged[:80]
+
+
 def guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extraccion, resolucion, respuesta):
     nueva = dict(memoria or {})
     pedidos = resolucion.get("pedidos") or []
@@ -2405,7 +2465,7 @@ def guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extr
         "fecha_ultima_actividad": datetime.now().isoformat(sep=" ", timespec="seconds"),
         "cp_actual": extraccion.get("cp") or contexto.get("cp_actual") or nueva.get("cp_actual") or "",
         "total_esperado": total_esperado,
-        "pedido_en_proceso": json.dumps(pedidos[:60], ensure_ascii=False) if pedidos else nueva.get("pedido_en_proceso", "[]"),
+        "pedido_en_proceso": json.dumps(_wa_v52_merge_pedido_en_proceso(nueva, pedidos, intencion), ensure_ascii=False) if pedidos else nueva.get("pedido_en_proceso", "[]"),
     })
     if items and (resolucion.get("preguntas") or resolucion.get("errores") or not pedidos):
         nueva["ultima_lista_pendiente"] = json.dumps(items[:80], ensure_ascii=False)
@@ -2518,7 +2578,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v48_motor_conversacional",
+            "motor": "v52_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -2548,8 +2608,10 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     confianza = calcular_confianza(intencion, contexto, extraccion, resolucion)
 
     envio = {}
-    if callbacks.get("cotizar_envio") and intencion["principal"] == "cp_envio":
-        envio = callbacks["cotizar_envio"](extraccion.get("cp") or contexto.get("cp_actual") or "", contexto) or {}
+    if callbacks.get("cotizar_envio") and intencion["principal"] in ("cp_envio", "envio"):
+        cp_para_envio = extraccion.get("cp") or contexto.get("cp_actual") or ((memoria or {}).get("cp_actual") if isinstance(memoria, dict) else "") or ""
+        if cp_para_envio:
+            envio = callbacks["cotizar_envio"](cp_para_envio, contexto) or {}
 
     decision = detectar_decision_pendiente(
         normalizado, intencion, contexto, extraccion, resolucion, confianza,
@@ -2567,7 +2629,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v48_motor_conversacional",
+        "motor": "v52_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,
