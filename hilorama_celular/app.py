@@ -7955,7 +7955,7 @@ def _wa_v10_tone_resource_from_code(texto):
     except Exception:
         t = str(texto or '').lower()
     # Solo aplica cuando realmente pide mostrar foto/tono/color, no para cantidades de pedido.
-    wants_image = bool(re.search(r'\b(foto|imagen|mostrar|muestra|ver|enseña|ensena|mandar|manda|tono|color|como se ve|se ve)\b', t, re.I))
+    wants_image = _wa_v59_quiere_imagen(t)
     mentions_velluto = bool(re.search(r'\b(velluto|veluto|vellutos|alize)\b', t, re.I))
     if not wants_image:
         return None
@@ -8010,6 +8010,227 @@ def _wa_v10_tone_resource_from_code(texto):
         except Exception as exc:
             print('WARN respaldo físico tono exacto IA:', exc, flush=True)
     return None
+
+
+# ==========================================================
+# WhatsApp IA V59 - usar repositorio visual local en fotos de tonos
+# ==========================================================
+def _wa_v59_norm_txt(txt):
+    try:
+        return _v6_norm(txt or '') if '_v6_norm' in globals() else str(txt or '').lower()
+    except Exception:
+        return str(txt or '').lower()
+
+
+def _wa_v59_codigos_texto(txt):
+    """Códigos/tokens numéricos pedidos por la clienta, conservando orden."""
+    t = _wa_v59_norm_txt(txt)
+    nums = re.findall(r'(?<!\d)(\d{1,5})(?!\d)', t)
+    out = []
+    for n in nums:
+        n = str(n).lstrip('0') or '0'
+        # Evita agarrar CP como tono cuando vienen 5 dígitos en una conversación de envío.
+        if len(n) == 5 and re.search(r'\b(cp|codigo postal|código postal|envio|envío)\b', t):
+            continue
+        if n not in out:
+            out.append(n)
+    return out
+
+
+def _wa_v59_quiere_imagen(txt):
+    t = _wa_v59_norm_txt(txt)
+    return bool(re.search(
+        r'\b(foto|fotos|imagen|imagenes|imágenes|muestra|muestras|muestres|muestrame|muéstrame|mostrar|ver|enseña|ensena|enseñas|ensenas|enséñame|mandame|mándame|manda|mandas|pasame|pásame|se\s+ve|como\s+se\s+ve)\b',
+        t, re.I
+    ))
+
+
+def _wa_v59_hilo_ctx(contexto=None, texto=''):
+    texto_n = _wa_v59_norm_txt(texto)
+    mem_hilo = ''
+    mem_marca = ''
+    try:
+        mem_hilo = str((contexto or {}).get('hilo_actual') or (contexto or {}).get('hilo') or '').strip().upper().replace(' ', '_')
+        mem_marca = str((contexto or {}).get('marca_actual') or (contexto or {}).get('marca') or '').strip().upper().replace(' ', '_')
+    except Exception:
+        pass
+    if re.search(r'\b(velluto|veluto|belluto|alize)\b', texto_n):
+        return 'VELLUTO', 'ALIZE'
+    if mem_hilo:
+        return mem_hilo, mem_marca
+    # En Hilorama la mayoría de solicitudes sueltas de tonos vienen de Velluto.
+    return 'VELLUTO', 'ALIZE'
+
+
+def _wa_v59_recurso_from_local_file(code, f):
+    """Crea un recurso dict desde una imagen local, sin depender de que ya esté en ia_recursos."""
+    try:
+        f = Path(f)
+        repo_base = Path(__file__).resolve().parent / 'static' / 'recursos_ia' / 'repositorio_visual'
+        if repo_base.exists() and repo_base in f.parents:
+            meta = _wa_v54_repositorio_visual_meta(repo_base, f, 1)
+            meta['id'] = None
+            meta['_score'] = 1000
+            meta['_v59_local'] = True
+            meta['_v59_exact_code'] = code
+            return meta
+    except Exception:
+        pass
+    try:
+        static_base = Path(__file__).resolve().parent / 'static'
+        rel = f.relative_to(static_base)
+        url = _wa_v8_static_url(rel)
+    except Exception:
+        url = str(f)
+    return {
+        'id': None,
+        'nombre': f'Foto tono Velluto {code}',
+        'categoria': 'foto_tono',
+        'marca': 'ALIZE',
+        'hilo': 'VELLUTO',
+        'triggers': f'velluto {code}, tono {code}, codigo {code}, código {code}, foto {code}, imagen {code}',
+        'respuesta': f'Claro 😊 le comparto la foto del tono Velluto {code}.',
+        'archivo_url': url,
+        'grupo': f'tono_alize_velluto_{code}',
+        'orden': 1,
+        'enviar_junto': False,
+        'prioridad': 100,
+        '_score': 1000,
+        '_v59_local': True,
+        '_v59_exact_code': code,
+    }
+
+
+def _wa_v59_local_tono(code, contexto=None, texto=''):
+    """Busca primero en repositorio_visual local y luego en el directorio viejo Velluto Colores."""
+    hilo, marca = _wa_v59_hilo_ctx(contexto, texto)
+    root = Path(__file__).resolve().parent
+    exts = ('.webp', '.png', '.jpg', '.jpeg', '.jfif', '.gif')
+    candidates = []
+    # Nuevo repositorio local.
+    repo = root / 'static' / 'recursos_ia' / 'repositorio_visual'
+    if repo.exists():
+        for ext in exts:
+            # Exactos: tonos/56.webp o tonos/56_rojo.webp
+            candidates.extend(repo.glob(f'hilos/**/tonos/{code}{ext}'))
+            candidates.extend(repo.glob(f'hilos/**/tonos/{code}_*{ext}'))
+            candidates.extend(repo.glob(f'hilos/**/tonos/{code}-*{ext}'))
+    # Directorio viejo, por compatibilidad.
+    old = root / 'static' / 'recursos_ia' / 'Velluto Colores'
+    if old.exists():
+        for ext in exts:
+            candidates.extend(old.glob(f'{code}{ext}'))
+            candidates.extend(old.glob(f'{code}_*{ext}'))
+            candidates.extend(old.glob(f'{code}-*{ext}'))
+    # Preferir Velluto/Alize si el contexto lo pide.
+    def rank(path):
+        ps = path.as_posix().upper()
+        score = 0
+        if hilo and f'/{hilo}/' in ps:
+            score -= 20
+        if marca and f'/{marca}/' in ps:
+            score -= 10
+        if '/REPOSITORIO_VISUAL/' in ps:
+            score -= 5
+        return (score, len(ps), ps)
+    candidates = sorted({c.resolve() for c in candidates if c.exists()}, key=rank)
+    if candidates:
+        return _wa_v59_recurso_from_local_file(code, candidates[0])
+    return None
+
+
+def _wa_v59_db_tono(code, contexto=None, texto=''):
+    """Busca tono exacto en ia_recursos sin que una gama o ficha gane por accidente."""
+    hilo, marca = _wa_v59_hilo_ctx(contexto, texto)
+    try:
+        grupos = [
+            f'tono_velluto_{code}',
+            f'tono_alize_velluto_{code}',
+            f'tono_{str(marca or "alize").lower()}_{str(hilo or "velluto").lower()}_{code}',
+        ]
+        with DB() as db:
+            rows = db.execute("""
+                SELECT * FROM ia_recursos
+                WHERE activo=TRUE
+                  AND categoria='foto_tono'
+                  AND (
+                    grupo = ANY(%s)
+                    OR archivo_url ILIKE %s
+                    OR archivo_url ILIKE %s
+                    OR archivo_url ILIKE %s
+                    OR triggers ILIKE %s
+                    OR triggers ILIKE %s
+                  )
+                ORDER BY
+                  CASE WHEN grupo = ANY(%s) THEN 0 ELSE 1 END,
+                  CASE WHEN hilo=%s THEN 0 ELSE 1 END,
+                  prioridad DESC NULLS LAST,
+                  updated_at DESC NULLS LAST,
+                  id DESC
+                LIMIT 1
+            """, (
+                grupos,
+                f'%/tonos/{code}.%', f'%/tonos/{code}_%', f'%/Velluto Colores/{code}.%',
+                f'%codigo {code}%', f'%código {code}%', grupos, hilo
+            )).fetchone()
+        if rows:
+            d = dict(rows)
+            d['_score'] = 1000
+            d['_v59_db'] = True
+            d['_v59_exact_code'] = code
+            return d
+    except Exception as exc:
+        print('WARN V59 buscar tono DB:', exc, flush=True)
+    return None
+
+
+def _wa_v59_recursos_tonos(texto, contexto=None, forzar=False):
+    """Devuelve recursos locales/DB para uno o varios códigos solicitados."""
+    if not forzar and not _wa_v59_quiere_imagen(texto):
+        return []
+    codigos = _wa_v59_codigos_texto(texto)
+    if not codigos:
+        return []
+    recursos = []
+    vistos = set()
+    for code in codigos[:8]:
+        rec = _wa_v59_db_tono(code, contexto, texto) or _wa_v59_local_tono(code, contexto, texto)
+        if not rec:
+            continue
+        url = str(rec.get('archivo_url') or '').strip()
+        key = url or str(rec.get('grupo') or '') or code
+        if key and key not in vistos:
+            vistos.add(key)
+            recursos.append(rec)
+    return recursos
+
+
+def _wa_v59_respuesta_recursos_tonos(recursos, texto=''):
+    if not recursos:
+        return ''
+    codigos = []
+    urls = []
+    for r in recursos:
+        code = str(r.get('_v59_exact_code') or r.get('_v10_exact_code') or r.get('codigo') or '').strip()
+        if not code:
+            m = re.search(r'(?<!\d)(\d{1,5})(?!\d)', str(r.get('nombre') or '') + ' ' + str(r.get('archivo_url') or ''))
+            code = m.group(1) if m else ''
+        if code and code not in codigos:
+            codigos.append(code)
+        url = str(r.get('archivo_url') or '').strip()
+        if url and url not in urls:
+            urls.append(url)
+    if len(urls) == 1:
+        nombre = str(recursos[0].get('nombre') or 'foto del tono').strip()
+        return f"Claro 😊 le comparto la foto del tono {codigos[0] if codigos else ''}.\n\n📎 Recurso para enviar: {nombre}\n{urls[0]}".strip()
+    titulo = 'Claro 😊 le comparto fotos/imágenes'
+    if codigos:
+        titulo += ' de los tonos ' + ', '.join(codigos[:8])
+    lineas = []
+    for i, u in enumerate(urls, start=1):
+        lineas.append(f'{i}. {u}')
+    return titulo + '.\n\n📎 Recursos para enviar\n' + '\n'.join(lineas)
+
 
 _wa_generar_respuesta_v6_core = _generar_respuesta_wa_con_openai
 
@@ -8082,7 +8303,12 @@ def _generar_respuesta_wa_con_openai(texto, parsed, meta, contexto):
     pregunta_envio = _wa_v11_es_pregunta_envio(texto)
     pregunta_pago = _wa_v11_es_pregunta_pago(texto)
 
-    # 1) Prioridad absoluta: foto/tono/color + código exacto => recurso individual.
+    # 1) Prioridad absoluta: foto/tono/color + código exacto => recurso individual o múltiples tonos.
+    recursos_tonos_v59 = _wa_v59_recursos_tonos(texto, contexto or {}, forzar=False)
+    if recursos_tonos_v59 and (not pedidos or preguntas or errores or es_consulta):
+        resp = _wa_v59_respuesta_recursos_tonos(recursos_tonos_v59, texto)
+        if resp:
+            return resp, "biblioteca_ia_v59_tonos_locales"
     recurso_exact_code = _wa_v10_tone_resource_from_code(texto)
     if recurso_exact_code and (not pedidos or preguntas or errores or es_consulta):
         resp = _wa_v7_respuesta_de_recurso(recurso_exact_code)
@@ -8197,6 +8423,31 @@ def ia_recursos_actualizar(rid):
         r = db.execute(f"UPDATE ia_recursos SET {', '.join(campos)} WHERE id=%s RETURNING *", tuple(vals)).fetchone()
     return jsonify(json_safe({'ok': True, 'recurso': dict(r) if r else None}))
 
+
+
+@app.route('/api/ia/recursos/debug-tonos', methods=['GET'])
+def ia_recursos_debug_tonos_v59():
+    auth = require_pin()
+    if auth:
+        return auth
+    texto = request.args.get('texto') or request.args.get('q') or ''
+    if not texto:
+        codigos = request.args.get('codigos') or request.args.get('codigo') or ''
+        texto = 'me muestras ' + codigos
+    contexto = {
+        'hilo_actual': request.args.get('hilo') or 'VELLUTO',
+        'marca_actual': request.args.get('marca') or 'ALIZE',
+    }
+    recursos = _wa_v59_recursos_tonos(texto, contexto, forzar=True)
+    return jsonify(json_safe({
+        'ok': True,
+        'texto': texto,
+        'codigos_detectados': _wa_v59_codigos_texto(texto),
+        'total_recursos': len(recursos),
+        'recursos': recursos,
+        'respuesta': _wa_v59_respuesta_recursos_tonos(recursos, texto),
+        'nota': 'V59 busca en ia_recursos y, si no está importado, usa fallback directo al repositorio_visual local.'
+    }))
 
 @app.route('/api/ia/recursos/importar-static', methods=['POST'])
 def ia_recursos_importar_static():
@@ -13032,6 +13283,14 @@ def _wa_v27_buscar_recurso(intencion, normalizado, contexto, extraccion):
     consulta = ' '.join(x for x in [texto, (contexto or {}).get('hilo_actual'), (contexto or {}).get('marca_actual')] if x)
     try:
         if principal == 'pide_foto_tono':
+            recursos_v59 = _wa_v59_recursos_tonos(consulta, contexto or {}, forzar=True)
+            if recursos_v59:
+                return {
+                    'respuesta': _wa_v59_respuesta_recursos_tonos(recursos_v59, consulta),
+                    'recurso': recursos_v59[0],
+                    'recursos': recursos_v59,
+                    'motor': 'biblioteca_ia_tonos_locales_v59',
+                }
             recurso = _wa_v10_tone_resource_from_code(consulta)
             if recurso:
                 return {
