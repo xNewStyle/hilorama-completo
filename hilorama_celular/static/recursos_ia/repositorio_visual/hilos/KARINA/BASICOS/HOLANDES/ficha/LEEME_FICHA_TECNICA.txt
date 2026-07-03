@@ -1,0 +1,1 @@
+Aquí va la ficha técnica en texto/JSON. Puedes poner también foto de etiqueta o captura oficial, pero la IA lee principalmente ficha_tecnica.json.

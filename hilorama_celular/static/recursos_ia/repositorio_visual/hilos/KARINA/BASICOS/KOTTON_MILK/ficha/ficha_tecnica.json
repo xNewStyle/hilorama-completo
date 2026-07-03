@@ -1,0 +1,34 @@
+{
+  "clave": "KOTTON_MILK",
+  "nombre": "Kotton Milk",
+  "marca": "Karina",
+  "proveedor_fuente": "Estambres Karina / Hilorama",
+  "linea": "BASICOS",
+  "categoria_repositorio": "hilos",
+  "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+  "source_url_sugerida": "https://estambreskarina.com.mx/producto/kotton-milk/",
+  "datos_tecnicos_confirmados": true,
+  "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+  "descripcion": "Estambre de textura tipo algodón, suave, útil para prendas ligeras y amigurumis con definición.",
+  "composicion": "100% Acrílico",
+  "peso_bola": "50 g",
+  "metraje": "80 m",
+  "origen": "",
+  "gancho_recomendado": "#3",
+  "agujas_recomendadas": "#3",
+  "usos_recomendados": [
+    "amigurumis",
+    "prendas ligeras",
+    "muñecos",
+    "detalles tejidos"
+  ],
+  "cuando_recomendar": "",
+  "cuando_no_recomendar": "",
+  "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+  "fuente_detalle": "https://estambreskarina.com.mx/producto/kotton-milk/",
+  "alias": [
+    "KOTTON MILK",
+    "Kotton Milk",
+    "kotton milk"
+  ]
+}

@@ -1,0 +1,704 @@
+{
+  "version": "V56",
+  "fecha_generado": "2026-07-03T05:07:45.766656Z",
+  "fuente": "Catálogo público Estambres Karina, páginas de estambres 1-9; estructura local para imágenes propias o permitidas por distribuidor.",
+  "nota": "Las carpetas vacías NO se usan por la IA. Se activan cuando tienen imágenes reales y se corre hilorama_reindexar_repositorio_visual.py.",
+  "total_productos_en_estructura": 97,
+  "lineas": {
+    "NUEVOS_Y_SIN_CLASIFICAR": [
+      "Portugal",
+      "Bebefil Nacarado"
+    ],
+    "CALIDA": [
+      "Komfy",
+      "Komfy Mini",
+      "Komfy Plus",
+      "Kurumi",
+      "Koi",
+      "Kairo",
+      "Kenai",
+      "Fosfo"
+    ],
+    "DECORA": [
+      "Trapillo Kraft",
+      "Kramé 3mm",
+      "Kramé 4mm",
+      "Kordoncillo"
+    ],
+    "BASICOS": [
+      "Kotton Milk",
+      "Kiwi",
+      "Cristy Liso",
+      "Cristy Fm (Matizado)",
+      "Cristy Metálico",
+      "Cristy Metálico Fm (Matizado)",
+      "Cristy Diamante (2/12)",
+      "Cristy Diamante Fm (2/12 Matizado)",
+      "Cristy 10g Surtido",
+      "Río",
+      "Río Matizado",
+      "Lirio",
+      "Tamatz",
+      "Holandés",
+      "Holandés Fm (Matizado)",
+      "Holandés Bicolor",
+      "Caricia",
+      "Caricia Matizado",
+      "Karime",
+      "Acrilán (3 Hebras)",
+      "Alaska",
+      "Alaska Matizado",
+      "Angorita",
+      "Angorita Matizado",
+      "Fiorentino",
+      "Fiorentino Maxi",
+      "Flandes",
+      "Flandes Metálico",
+      "Madejón",
+      "Madejón Fm (Matizado)",
+      "Karibú",
+      "Karibú Batik",
+      "Bebefil",
+      "Bebefil Matizado",
+      "Bebito",
+      "Karineta",
+      "Karineta 250 gr"
+    ],
+    "FANTASIA": [
+      "Brezza",
+      "Frívolo Nacarado",
+      "Metálico Crochet",
+      "Metálico 4 Hebras",
+      "Hilo Poliéster Metálico (MX)",
+      "Lentejuela",
+      "Flor de Kactus",
+      "Fashion",
+      "Elisse",
+      "Brujas",
+      "Borreguito",
+      "Pepita",
+      "Nebia"
+    ],
+    "PREMIUM": [
+      "Madona (Brizna)",
+      "Fashion Boucle",
+      "Country"
+    ],
+    "ALIZE": [
+      "Velluto",
+      "Velluto Mini Colors",
+      "Diva",
+      "Diva Fine",
+      "Diva Batik",
+      "Diva Ombre Batik",
+      "Cotton Gold",
+      "Cotton Gold Batik",
+      "Baby Best",
+      "Baby Best Batik",
+      "Softy Mega",
+      "Softy Plus",
+      "Superlana Maxi",
+      "Superlana Maxi Batik",
+      "Superlana Megafil",
+      "Superlana Midi Ombre",
+      "Superlana Klasik",
+      "Verona",
+      "Sekerim Bebe",
+      "Sekerim Bebe Batik",
+      "Puffy More",
+      "Puffy Fine",
+      "Puffy Fine Color",
+      "Puffy Fine Ombre Batik",
+      "Burcum Klasik",
+      "Burcum Batik",
+      "Burcum Bebe Batik",
+      "Angora Gold Sim",
+      "Angora Gold Batik",
+      "Angora Gold Ombre Batik"
+    ]
+  },
+  "carpetas": [
+    {
+      "linea": "NUEVOS_Y_SIN_CLASIFICAR",
+      "producto": "Portugal",
+      "slug": "PORTUGAL",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/PORTUGAL"
+    },
+    {
+      "linea": "NUEVOS_Y_SIN_CLASIFICAR",
+      "producto": "Bebefil Nacarado",
+      "slug": "BEBEFIL_NACARADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/BEBEFIL_NACARADO"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Komfy",
+      "slug": "KOMFY",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Komfy Mini",
+      "slug": "KOMFY_MINI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_MINI"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Komfy Plus",
+      "slug": "KOMFY_PLUS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_PLUS"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Kurumi",
+      "slug": "KURUMI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KURUMI"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Koi",
+      "slug": "KOI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOI"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Kairo",
+      "slug": "KAIRO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KAIRO"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Kenai",
+      "slug": "KENAI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KENAI"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Fosfo",
+      "slug": "FOSFO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/FOSFO"
+    },
+    {
+      "linea": "DECORA",
+      "producto": "Trapillo Kraft",
+      "slug": "TRAPILLO_KRAFT",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/TRAPILLO_KRAFT"
+    },
+    {
+      "linea": "DECORA",
+      "producto": "Kramé 3mm",
+      "slug": "KRAME_3MM",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_3MM"
+    },
+    {
+      "linea": "DECORA",
+      "producto": "Kramé 4mm",
+      "slug": "KRAME_4MM",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_4MM"
+    },
+    {
+      "linea": "DECORA",
+      "producto": "Kordoncillo",
+      "slug": "KORDONCILLO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KORDONCILLO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Kotton Milk",
+      "slug": "KOTTON_MILK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KOTTON_MILK"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Kiwi",
+      "slug": "KIWI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KIWI"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Liso",
+      "slug": "CRISTY_LISO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_LISO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Fm (Matizado)",
+      "slug": "CRISTY_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_FM_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Metálico",
+      "slug": "CRISTY_METALICO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Metálico Fm (Matizado)",
+      "slug": "CRISTY_METALICO_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO_FM_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Diamante (2/12)",
+      "slug": "CRISTY_DIAMANTE_2_12",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_2_12"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Diamante Fm (2/12 Matizado)",
+      "slug": "CRISTY_DIAMANTE_FM_2_12_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_FM_2_12_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy 10g Surtido",
+      "slug": "CRISTY_10G_SURTIDO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_10G_SURTIDO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Río",
+      "slug": "RIO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Río Matizado",
+      "slug": "RIO_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Lirio",
+      "slug": "LIRIO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/LIRIO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Tamatz",
+      "slug": "TAMATZ",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/TAMATZ"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Holandés",
+      "slug": "HOLANDES",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Holandés Fm (Matizado)",
+      "slug": "HOLANDES_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_FM_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Holandés Bicolor",
+      "slug": "HOLANDES_BICOLOR",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_BICOLOR"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Caricia",
+      "slug": "CARICIA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Caricia Matizado",
+      "slug": "CARICIA_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Karime",
+      "slug": "KARIME",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIME"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Acrilán (3 Hebras)",
+      "slug": "ACRILAN_3_HEBRAS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ACRILAN_3_HEBRAS"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Alaska",
+      "slug": "ALASKA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Alaska Matizado",
+      "slug": "ALASKA_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Angorita",
+      "slug": "ANGORITA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Angorita Matizado",
+      "slug": "ANGORITA_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Fiorentino",
+      "slug": "FIORENTINO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Fiorentino Maxi",
+      "slug": "FIORENTINO_MAXI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO_MAXI"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Flandes",
+      "slug": "FLANDES",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Flandes Metálico",
+      "slug": "FLANDES_METALICO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES_METALICO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Madejón",
+      "slug": "MADEJON",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Madejón Fm (Matizado)",
+      "slug": "MADEJON_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON_FM_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Karibú",
+      "slug": "KARIBU",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Karibú Batik",
+      "slug": "KARIBU_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU_BATIK"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Bebefil",
+      "slug": "BEBEFIL",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Bebefil Matizado",
+      "slug": "BEBEFIL_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL_MATIZADO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Bebito",
+      "slug": "BEBITO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBITO"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Karineta",
+      "slug": "KARINETA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Karineta 250 gr",
+      "slug": "KARINETA_250_GR",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA_250_GR"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Brezza",
+      "slug": "BREZZA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BREZZA"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Frívolo Nacarado",
+      "slug": "FRIVOLO_NACARADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FRIVOLO_NACARADO"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Metálico Crochet",
+      "slug": "METALICO_CROCHET",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_CROCHET"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Metálico 4 Hebras",
+      "slug": "METALICO_4_HEBRAS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_4_HEBRAS"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Hilo Poliéster Metálico (MX)",
+      "slug": "HILO_POLIESTER_METALICO_MX",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/HILO_POLIESTER_METALICO_MX"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Lentejuela",
+      "slug": "LENTEJUELA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/LENTEJUELA"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Flor de Kactus",
+      "slug": "FLOR_DE_KACTUS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FLOR_DE_KACTUS"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Fashion",
+      "slug": "FASHION",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FASHION"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Elisse",
+      "slug": "ELISSE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/ELISSE"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Brujas",
+      "slug": "BRUJAS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BRUJAS"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Borreguito",
+      "slug": "BORREGUITO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BORREGUITO"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Pepita",
+      "slug": "PEPITA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/PEPITA"
+    },
+    {
+      "linea": "FANTASIA",
+      "producto": "Nebia",
+      "slug": "NEBIA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/NEBIA"
+    },
+    {
+      "linea": "PREMIUM",
+      "producto": "Madona (Brizna)",
+      "slug": "MADONA_BRIZNA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/MADONA_BRIZNA"
+    },
+    {
+      "linea": "PREMIUM",
+      "producto": "Fashion Boucle",
+      "slug": "FASHION_BOUCLE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/FASHION_BOUCLE"
+    },
+    {
+      "linea": "PREMIUM",
+      "producto": "Country",
+      "slug": "COUNTRY",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/COUNTRY"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Velluto",
+      "slug": "VELLUTO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Velluto Mini Colors",
+      "slug": "VELLUTO_MINI_COLORS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO_MINI_COLORS"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Diva",
+      "slug": "DIVA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Diva Fine",
+      "slug": "DIVA_FINE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_FINE"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Diva Batik",
+      "slug": "DIVA_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Diva Ombre Batik",
+      "slug": "DIVA_OMBRE_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_OMBRE_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Cotton Gold",
+      "slug": "COTTON_GOLD",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Cotton Gold Batik",
+      "slug": "COTTON_GOLD_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Baby Best",
+      "slug": "BABY_BEST",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Baby Best Batik",
+      "slug": "BABY_BEST_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Softy Mega",
+      "slug": "SOFTY_MEGA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_MEGA"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Softy Plus",
+      "slug": "SOFTY_PLUS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_PLUS"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Maxi",
+      "slug": "SUPERLANA_MAXI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Maxi Batik",
+      "slug": "SUPERLANA_MAXI_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Megafil",
+      "slug": "SUPERLANA_MEGAFIL",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MEGAFIL"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Midi Ombre",
+      "slug": "SUPERLANA_MIDI_OMBRE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MIDI_OMBRE"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Klasik",
+      "slug": "SUPERLANA_KLASIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_KLASIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Verona",
+      "slug": "VERONA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VERONA"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Sekerim Bebe",
+      "slug": "SEKERIM_BEBE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Sekerim Bebe Batik",
+      "slug": "SEKERIM_BEBE_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Puffy More",
+      "slug": "PUFFY_MORE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_MORE"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Puffy Fine",
+      "slug": "PUFFY_FINE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Puffy Fine Color",
+      "slug": "PUFFY_FINE_COLOR",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_COLOR"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Puffy Fine Ombre Batik",
+      "slug": "PUFFY_FINE_OMBRE_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_OMBRE_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Burcum Klasik",
+      "slug": "BURCUM_KLASIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_KLASIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Burcum Batik",
+      "slug": "BURCUM_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Burcum Bebe Batik",
+      "slug": "BURCUM_BEBE_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BEBE_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Angora Gold Sim",
+      "slug": "ANGORA_GOLD_SIM",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_SIM"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Angora Gold Batik",
+      "slug": "ANGORA_GOLD_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_BATIK"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Angora Gold Ombre Batik",
+      "slug": "ANGORA_GOLD_OMBRE_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_OMBRE_BATIK"
+    }
+  ]
+}

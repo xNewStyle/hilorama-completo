@@ -1,0 +1,287 @@
+{
+  "version": "v55_catalogo_karina_estructura_local",
+  "actualizado": "2026-07-03T04:58:25",
+  "nota": "Catálogo base para carpetas locales. La IA no usa URLs de imagen; solo imágenes locales indexadas. Las URLs/fuentes son únicamente para auditoría humana.",
+  "lineas_oficiales_visibles": [
+    "BASICOS",
+    "ALIZE",
+    "PREMIUM",
+    "CALIDA",
+    "FANTASIA",
+    "DECORA"
+  ],
+  "accesorios_oficiales_visibles": [
+    "AGUJAS",
+    "AROS_Y_TELARES",
+    "GANCHOS_Y_CROCHET",
+    "ESTUCHES_Y_SETS",
+    "OTROS"
+  ],
+  "productos": [
+    {
+      "linea": "BASICOS",
+      "producto": "Kotton Milk",
+      "clave_carpeta": "KOTTON_MILK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KOTTON_MILK",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Fm Matizado",
+      "clave_carpeta": "CRISTY_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_FM_MATIZADO",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Metalico",
+      "clave_carpeta": "CRISTY_METALICO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Kiwi",
+      "clave_carpeta": "KIWI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KIWI",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Liso",
+      "clave_carpeta": "CRISTY_LISO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_LISO",
+      "estado_investigacion": "oficial_ficha"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Holandes Fm Matizado",
+      "clave_carpeta": "HOLANDES_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_FM_MATIZADO",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Diamante Fm 2_12 Matizado",
+      "clave_carpeta": "CRISTY_DIAMANTE_FM_2_12_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_FM_2_12_MATIZADO",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Diamante 2_12",
+      "clave_carpeta": "CRISTY_DIAMANTE_2_12",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_2_12",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy Metalico Fm Matizado",
+      "clave_carpeta": "CRISTY_METALICO_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO_FM_MATIZADO",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Cristy 10g Surtido",
+      "clave_carpeta": "CRISTY_10G_SURTIDO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_10G_SURTIDO",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Karime",
+      "clave_carpeta": "KARIME",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIME",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Caricia Matizado",
+      "clave_carpeta": "CARICIA_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA_MATIZADO",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "BASICOS",
+      "producto": "Rio Matizado",
+      "clave_carpeta": "RIO_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO_MATIZADO",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Velluto Mini Colors",
+      "clave_carpeta": "VELLUTO_MINI_COLORS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO_MINI_COLORS",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Diva Fine",
+      "clave_carpeta": "DIVA_FINE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_FINE",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Softy Mega",
+      "clave_carpeta": "SOFTY_MEGA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_MEGA",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Maxi Batik",
+      "clave_carpeta": "SUPERLANA_MAXI_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI_BATIK",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Maxi",
+      "clave_carpeta": "SUPERLANA_MAXI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Verona",
+      "clave_carpeta": "VERONA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VERONA",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Baby Best Batik",
+      "clave_carpeta": "BABY_BEST_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST_BATIK",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Baby Best",
+      "clave_carpeta": "BABY_BEST",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Midi Ombre",
+      "clave_carpeta": "SUPERLANA_MIDI_OMBRE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MIDI_OMBRE",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Superlana Megafil",
+      "clave_carpeta": "SUPERLANA_MEGAFIL",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MEGAFIL",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Velluto",
+      "clave_carpeta": "VELLUTO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO",
+      "estado_investigacion": "oficial_ficha"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Cotton Gold Batik",
+      "clave_carpeta": "COTTON_GOLD_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD_BATIK",
+      "estado_investigacion": "oficial_visible"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Cotton Gold",
+      "clave_carpeta": "COTTON_GOLD",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Sekerim Bebe Batik",
+      "clave_carpeta": "SEKERIM_BEBE_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE_BATIK",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Angora Gold Ombre Batik",
+      "clave_carpeta": "ANGORA_GOLD_OMBRE_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_OMBRE_BATIK",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Diva Batik",
+      "clave_carpeta": "DIVA_BATIK",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_BATIK",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Madejon Fm Matizado",
+      "clave_carpeta": "MADEJON_FM_MATIZADO",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/MADEJON_FM_MATIZADO",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "ALIZE",
+      "producto": "Holandes",
+      "clave_carpeta": "HOLANDES",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/HOLANDES",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "PREMIUM",
+      "producto": "Fashion Boucle",
+      "clave_carpeta": "FASHION_BOUCLE",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/FASHION_BOUCLE",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "PREMIUM",
+      "producto": "Madona Brizna",
+      "clave_carpeta": "MADONA_BRIZNA",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/MADONA_BRIZNA",
+      "estado_investigacion": "oficial_relacionado"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Komfy Mini",
+      "clave_carpeta": "KOMFY_MINI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_MINI",
+      "estado_investigacion": "oficial_ficha"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Komfy Plus",
+      "clave_carpeta": "KOMFY_PLUS",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_PLUS",
+      "estado_investigacion": "oficial_ficha"
+    },
+    {
+      "linea": "CALIDA",
+      "producto": "Kurumi",
+      "clave_carpeta": "KURUMI",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KURUMI",
+      "estado_investigacion": "oficial_ficha"
+    },
+    {
+      "linea": "DECORA",
+      "producto": "Trapillo Kraft",
+      "clave_carpeta": "TRAPILLO_KRAFT",
+      "ruta": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/TRAPILLO_KRAFT",
+      "estado_investigacion": "oficial_visible"
+    }
+  ],
+  "fuentes_resumen": {
+    "karina_nav": "Menu oficial Estambres Karina: BÁSICOS, ALIZE, PREMIUM, CÁLIDA, FANTASÍA, DECORA; accesorios: AGUJAS, AROS Y TELARES, GANCHOS Y CROCHET, ESTUCHES Y SETS, OTROS.",
+    "basicos_page": "Lista visible de primera página de Básicos usada para crear carpetas base.",
+    "alize_page": "Lista visible de primera página de Alize usada para crear carpetas base.",
+    "fichas": "Fichas iniciales ya existentes para Velluto, Komfy Mini, Komfy Plus, Kurumi, Kotton Milk; se agrega Cristy Liso."
+  }
+}

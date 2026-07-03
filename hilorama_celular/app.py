@@ -7533,6 +7533,213 @@ def _wa_v8_static_url(rel_path):
     return '/static/' + '/'.join(parts)
 
 
+# =========================
+# V54 - Repositorio visual local Hilorama
+# =========================
+def _wa_v54_clean_id(txt):
+    try:
+        t = str(txt or '').strip().replace('-', '_').replace(' ', '_')
+        t = re.sub(r'__+', '_', t)
+        return t.strip('_')
+    except Exception:
+        return str(txt or '').strip()
+
+
+def _wa_v54_human(txt):
+    return _wa_v54_clean_id(txt).replace('_', ' ').title()
+
+
+def _wa_v54_codigo_from_filename(path):
+    try:
+        m = re.search(r'(?<!\d)(\d{1,5})(?!\d)', Path(path).stem)
+        return m.group(1) if m else ''
+    except Exception:
+        return ''
+
+
+def _wa_v54_categoria_from_parts(parts):
+    low = [str(p).lower() for p in (parts or [])]
+    if 'tonos' in low or 'tono' in low:
+        return 'foto_tono'
+    if 'gama' in low or 'catalogos' in low or 'catalogo' in low:
+        return 'carta_colores'
+    if 'ficha' in low or 'fichas' in low:
+        return 'ficha_producto'
+    if 'envios' in low or 'envíos' in low:
+        return 'envio'
+    if 'pagos' in low or 'pago' in low:
+        return 'pago'
+    if 'promociones' in low or 'promocion' in low or 'promoción' in low:
+        return 'promocion'
+    if 'accesorios' in low:
+        return 'accesorio'
+    return 'recurso_visual'
+
+
+def _wa_v54_repositorio_visual_meta(base, f, orden):
+    """Convierte una imagen local del repositorio visual en registro ia_recursos."""
+    rel = f.relative_to(base)
+    parts = list(rel.parts)
+    low = [str(p).lower() for p in parts]
+    categoria = _wa_v54_categoria_from_parts(parts)
+    marca = ''
+    hilo = ''
+    familia = ''
+
+    if len(parts) >= 4 and low[0] == 'hilos':
+        marca = parts[1].upper().replace(' ', '_')
+        # V55 soporta hilos/MARCA/LINEA/HILO/tonos/img y no usa carpetas vacías.
+        if len(parts) >= 6 and low[2] not in ('gama', 'tonos', 'tono', 'ficha', 'fichas'):
+            familia = parts[2].lower().replace(' ', '_')
+            hilo = parts[3].upper().replace(' ', '_')
+            # Si el producto está en la línea ALIZE de Karina, mantener marca real ALIZE para no romper contexto Velluto.
+            if low[1] == 'karina' and low[2] == 'alize':
+                marca = 'ALIZE'
+                familia = 'karina_alize'
+        else:
+            hilo = parts[2].upper().replace(' ', '_')
+    elif len(parts) >= 3 and low[0] == 'accesorios':
+        marca = 'ACCESORIOS'
+        if len(parts) >= 5 and low[1] == 'karina':
+            familia = (parts[2] + '_' + parts[3]).lower().replace(' ', '_')
+            hilo = parts[3].upper().replace(' ', '_')
+        else:
+            familia = parts[1].lower().replace(' ', '_')
+            hilo = familia.upper()
+    elif len(parts) >= 2 and low[0] == 'catalogos':
+        marca = parts[1].upper().replace(' ', '_')
+        familia = 'catalogo'
+    elif len(parts) >= 2 and low[0] in ('envios', 'pagos', 'promociones'):
+        familia = low[0]
+
+    codigo = _wa_v54_codigo_from_filename(f) if categoria == 'foto_tono' else ''
+
+    tags = []
+    for token in (marca, hilo, familia, codigo, f.stem):
+        token = str(token or '').strip()
+        if token:
+            for v in (token, token.replace('_', ' ')):
+                v = v.strip()
+                if v and v.lower() not in [x.lower() for x in tags]:
+                    tags.append(v)
+
+    if categoria == 'foto_tono':
+        grupo = f"tono_{_wa_v54_clean_id(marca).lower()}_{_wa_v54_clean_id(hilo).lower()}_{codigo or _wa_v54_clean_id(f.stem).lower()}"
+        nombre = f"Foto tono {_wa_v54_human(hilo)} {codigo or _wa_v54_human(f.stem)}"
+        respuesta = f"Claro 😊 le comparto la foto del tono {codigo or _wa_v54_human(f.stem)} de {_wa_v54_human(hilo)}."
+        enviar_junto = False
+        prioridad = 82
+        tags += ['foto', 'imagen', 'tono', 'color', 'codigo', 'código']
+    elif categoria == 'carta_colores':
+        grupo = f"gama_{_wa_v54_clean_id(marca).lower()}_{_wa_v54_clean_id(hilo or familia or 'catalogo').lower()}"
+        nombre = f"Gama {_wa_v54_human(hilo or marca or familia)} {_wa_v54_human(f.stem)}"
+        respuesta = f"Claro 😊 le comparto la gama de colores de {_wa_v54_human(hilo or marca or familia)}. Si le gusta algún código o tono, me lo indica y le reviso disponibilidad."
+        enviar_junto = True
+        prioridad = 91
+        tags += ['gama', 'carta', 'catálogo', 'catalogo', 'colores', 'tonos', 'disponibilidad']
+    elif categoria == 'ficha_producto':
+        grupo = f"ficha_{_wa_v54_clean_id(marca).lower()}_{_wa_v54_clean_id(hilo or familia or f.stem).lower()}"
+        nombre = f"Ficha {_wa_v54_human(hilo or marca or f.stem)}"
+        respuesta = f"Claro 😊 le comparto la información técnica de {_wa_v54_human(hilo or marca or f.stem)}."
+        enviar_junto = False
+        prioridad = 76
+        tags += ['ficha', 'composición', 'composicion', 'gancho', 'aguja', 'metraje', 'gramos']
+    elif categoria == 'accesorio':
+        grupo = f"accesorio_{_wa_v54_clean_id(familia or f.parent.name).lower()}"
+        nombre = f"Accesorio {_wa_v54_human(familia or f.stem)}"
+        respuesta = f"Claro 😊 le comparto imagen de {_wa_v54_human(familia or f.stem)}."
+        enviar_junto = 'gama' in low
+        prioridad = 70
+        tags += ['accesorio', 'gancho', 'aguja', 'ojos', 'relleno', 'medida']
+    elif categoria == 'envio':
+        grupo = f"envios_{_wa_v54_clean_id(f.parent.name).lower()}"
+        nombre = f"Envíos {_wa_v54_human(f.stem)}"
+        respuesta = 'Claro 😊 le comparto la información de envíos. Para costo exacto también necesito su código postal.'
+        enviar_junto = False
+        prioridad = 74
+        tags += ['envio', 'envío', 'paqueteria', 'paquetería', 'correos', 'estafeta', 'fedex', 'dhl', 'reexpedicion', 'reexpedición']
+    elif categoria == 'pago':
+        grupo = f"pagos_{_wa_v54_clean_id(f.parent.name).lower()}"
+        nombre = f"Pagos {_wa_v54_human(f.stem)}"
+        respuesta = 'Claro 😊 le comparto la información de pago. Cuando realice el pago me manda su comprobante para revisarlo.'
+        enviar_junto = False
+        prioridad = 74
+        tags += ['pago', 'transferencia', 'datos de pago', 'cuenta', 'clabe', 'comprobante']
+    elif categoria == 'promocion':
+        grupo = f"promocion_{_wa_v54_clean_id(f.parent.name).lower()}"
+        nombre = f"Promoción {_wa_v54_human(f.stem)}"
+        respuesta = 'Claro 😊 le comparto la promoción disponible.'
+        enviar_junto = False
+        prioridad = 72
+        tags += ['promocion', 'promoción', 'descuento', 'oferta', 'remate']
+    else:
+        grupo = f"recurso_{_wa_v54_clean_id(f.parent.name).lower()}"
+        nombre = f"Recurso visual {_wa_v54_human(f.stem)}"
+        respuesta = 'Claro 😊 le comparto la imagen de referencia.'
+        enviar_junto = False
+        prioridad = 60
+
+    dedup_tags = []
+    for t in tags:
+        t = str(t or '').strip()
+        if t and t.lower() not in [x.lower() for x in dedup_tags]:
+            dedup_tags.append(t)
+
+    rel_static = f.relative_to(Path(__file__).resolve().parent / 'static')
+    return {
+        'nombre': nombre,
+        'categoria': categoria,
+        'marca': marca,
+        'hilo': hilo,
+        'triggers': ', '.join(dedup_tags),
+        'pregunta_ejemplo': f'¿Me compartes {nombre}?',
+        'respuesta': respuesta,
+        'archivo_url': _wa_v8_static_url(rel_static),
+        'grupo': grupo,
+        'orden': orden,
+        'enviar_junto': enviar_junto,
+        'notas': 'Generado desde repositorio visual local V55. No es URL externa de proveedor; solo existe si hay imagen local.',
+        'prioridad': prioridad,
+    }
+
+
+def _wa_v54_auto_seed_repositorio_visual(db):
+    """Escanea static/recursos_ia/repositorio_visual y registra imágenes locales en Biblioteca IA."""
+    base = Path(__file__).resolve().parent / 'static' / 'recursos_ia' / 'repositorio_visual'
+    if not base.exists():
+        return 0
+    exts = ('.png', '.jpg', '.jpeg', '.webp', '.jfif', '.gif')
+    files = [f for f in base.rglob('*') if f.is_file() and f.suffix.lower() in exts]
+    files = sorted(files, key=lambda x: x.as_posix().lower())
+    counters = {}
+    total = 0
+    now = now_mexico()
+    for f in files:
+        # orden por grupo
+        temp_meta = _wa_v54_repositorio_visual_meta(base, f, 1)
+        grupo = temp_meta.get('grupo') or 'repositorio_visual'
+        counters[grupo] = counters.get(grupo, 0) + 1
+        meta = _wa_v54_repositorio_visual_meta(base, f, counters[grupo])
+        exists = db.execute('SELECT id FROM ia_recursos WHERE archivo_url=%s LIMIT 1', (meta['archivo_url'],)).fetchone()
+        if exists:
+            db.execute("""
+                UPDATE ia_recursos
+                SET nombre=%s,categoria=%s,marca=%s,hilo=%s,triggers=%s,pregunta_ejemplo=%s,respuesta=%s,
+                    grupo=%s,orden=%s,enviar_junto=%s,notas=%s,prioridad=%s,activo=TRUE,updated_at=%s
+                WHERE id=%s
+            """, (meta['nombre'], meta['categoria'], meta['marca'], meta['hilo'], meta['triggers'], meta['pregunta_ejemplo'], meta['respuesta'],
+                  meta['grupo'], meta['orden'], meta['enviar_junto'], meta['notas'], meta['prioridad'], now, exists['id']))
+        else:
+            db.execute("""
+                INSERT INTO ia_recursos
+                (nombre,categoria,marca,hilo,triggers,pregunta_ejemplo,respuesta,archivo_url,grupo,orden,enviar_junto,notas,prioridad,activo,auto_aprendido,fecha,updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,FALSE,%s,%s)
+            """, (meta['nombre'], meta['categoria'], meta['marca'], meta['hilo'], meta['triggers'], meta['pregunta_ejemplo'], meta['respuesta'], meta['archivo_url'],
+                  meta['grupo'], meta['orden'], meta['enviar_junto'], meta['notas'], meta['prioridad'], now, now))
+        total += 1
+    return total
+
+
 def _wa_v8_auto_seed_static_recursos(db):
     """Registra automáticamente cartas/gamas y fotos físicas de static/recursos_ia."""
     try:
@@ -7611,6 +7818,10 @@ def _wa_v8_auto_seed_static_recursos(db):
                         'Foto individual de tono Velluto. Enviar solo cuando pidan ese código/tono.',
                         78, now, now
                     ))
+        try:
+            _wa_v54_auto_seed_repositorio_visual(db)
+        except Exception as exc:
+            print('WARN auto seed repositorio visual V55:', exc, flush=True)
     except Exception as exc:
         print('WARN auto seed static recursos IA:', exc, flush=True)
 
@@ -7997,7 +8208,8 @@ def ia_recursos_importar_static():
             total = db.execute("SELECT COUNT(*) AS c FROM ia_recursos WHERE archivo_url LIKE '/static/recursos_ia/%'").fetchone()['c']
             gama = db.execute("SELECT COUNT(*) AS c FROM ia_recursos WHERE grupo='gama_velluto' AND activo=TRUE").fetchone()['c']
             tonos = db.execute("SELECT COUNT(*) AS c FROM ia_recursos WHERE categoria='foto_tono' AND hilo='VELLUTO' AND activo=TRUE").fetchone()['c']
-        return jsonify(json_safe({'ok': True, 'total_static': total, 'gama_velluto': gama, 'tonos_velluto': tonos}))
+            repo_v54 = db.execute("SELECT COUNT(*) AS c FROM ia_recursos WHERE archivo_url LIKE '/static/recursos_ia/repositorio_visual/%' AND activo=TRUE").fetchone()['c']
+        return jsonify(json_safe({'ok': True, 'total_static': total, 'gama_velluto': gama, 'tonos_velluto': tonos, 'repositorio_visual_v54': repo_v54}))
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 

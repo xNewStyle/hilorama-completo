@@ -1,0 +1,38 @@
+{
+  "clave": "KOMFY_PLUS",
+  "nombre": "Komfy Plus",
+  "marca": "Karina",
+  "proveedor_fuente": "Estambres Karina / Hilorama",
+  "linea": "CALIDA",
+  "categoria_repositorio": "hilos",
+  "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+  "source_url_sugerida": "https://estambreskarina.com.mx/producto/komfy-plus/",
+  "datos_tecnicos_confirmados": true,
+  "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+  "descripcion": "Chenille grueso similar a Velluto, muy suave y voluminoso.",
+  "composicion": "100% Poliéster",
+  "peso_bola": "100 g",
+  "metraje": "35 m",
+  "origen": "China",
+  "gancho_recomendado": "#10",
+  "agujas_recomendadas": "#10",
+  "usos_recomendados": [
+    "peluches grandes",
+    "cobijas gruesas",
+    "proyectos XL",
+    "prendas muy suaves"
+  ],
+  "cuando_recomendar": "Cuando la clienta quiere algo más grueso, voluminoso y muy suave.",
+  "cuando_no_recomendar": "Cuando necesita detalles pequeños o mucha definición.",
+  "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+  "tambien_puede_tejerse_con": "dedos",
+  "fuente_detalle": "https://estambreskarina.com.mx/producto/komfy-plus/",
+  "alias": [
+    "KOMFY PLUS",
+    "Komfy Plus",
+    "comfy plus",
+    "komfi plus",
+    "komfy plus",
+    "konfy plus"
+  ]
+}

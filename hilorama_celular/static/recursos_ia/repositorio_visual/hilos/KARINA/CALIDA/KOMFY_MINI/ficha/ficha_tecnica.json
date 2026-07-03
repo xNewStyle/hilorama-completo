@@ -1,0 +1,37 @@
+{
+  "clave": "KOMFY_MINI",
+  "nombre": "Komfy Mini",
+  "marca": "Karina",
+  "proveedor_fuente": "Estambres Karina / Hilorama",
+  "linea": "CALIDA",
+  "categoria_repositorio": "hilos",
+  "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+  "source_url_sugerida": "https://estambreskarina.com.mx/producto/komfy-mini/",
+  "datos_tecnicos_confirmados": true,
+  "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+  "descripcion": "Chenille suave similar a Velluto en presentación más pequeña.",
+  "composicion": "100% Poliéster",
+  "peso_bola": "50 g",
+  "metraje": "52 m",
+  "origen": "China",
+  "gancho_recomendado": "#3",
+  "agujas_recomendadas": "#3",
+  "usos_recomendados": [
+    "amigurumis suaves",
+    "muñecos pequeños",
+    "detalles chenille",
+    "peluches pequeños"
+  ],
+  "cuando_recomendar": "Cuando la clienta quiere chenille suave pero en pieza más pequeña y rendidora para amigurumis.",
+  "cuando_no_recomendar": "Cuando busca una pieza grande muy pachoncita; ahí suele convenir Velluto o Komfy Plus.",
+  "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+  "fuente_detalle": "https://estambreskarina.com.mx/producto/komfy-mini/",
+  "alias": [
+    "KOMFY MINI",
+    "Komfy Mini",
+    "comfy mini",
+    "komfi mini",
+    "komfy mini",
+    "konfy mini"
+  ]
+}

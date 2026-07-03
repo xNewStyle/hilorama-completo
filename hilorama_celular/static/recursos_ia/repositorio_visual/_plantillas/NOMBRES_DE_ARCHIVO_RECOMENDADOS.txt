@@ -1,0 +1,39 @@
+
+REGLAS PARA QUE LA IA ENTIENDA LAS IMÁGENES
+
+1) Imágenes de gama/carta de color
+Carpeta: static/recursos_ia/repositorio_visual/hilos/MARCA/HILO/gama/
+Ejemplos:
+  gama_01.png
+  carta_colores_01.webp
+  disponibilidad_julio.png
+
+2) Fotos individuales por tono
+Carpeta: static/recursos_ia/repositorio_visual/hilos/MARCA/HILO/tonos/
+Ejemplos:
+  429.webp
+  429_tabaco_claro.webp
+  60_negro.jpg
+  55_blanco.png
+
+3) Ficha técnica del hilo
+Carpeta: static/recursos_ia/repositorio_visual/hilos/MARCA/HILO/ficha/
+Ejemplos:
+  ficha_tecnica.png
+  composicion_gancho_metraje.webp
+
+4) Accesorios
+Carpeta: static/recursos_ia/repositorio_visual/accesorios/CATEGORIA/productos/
+Ejemplos:
+  gancho_6mm.png
+  ojos_12mm_negros.webp
+
+5) Envíos y pagos
+Carpetas:
+  static/recursos_ia/repositorio_visual/envios/costos/
+  static/recursos_ia/repositorio_visual/pagos/datos_pago/
+
+IMPORTANTE:
+- No pongas acentos raros en nombres de archivo si puedes evitarlo.
+- Usa guion bajo: komfy_mini, no "komfy mini".
+- La IA usa estas imágenes como base visual local, no como URL externa.

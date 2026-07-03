@@ -1,0 +1,2515 @@
+{
+  "version": "v58_fichas_tecnicas_locales",
+  "actualizado": "2026-07-03T06:10:41",
+  "nota": "Fichas técnicas locales. Si datos_tecnicos_confirmados=false, la IA no debe inventar datos técnicos.",
+  "total_productos": 97,
+  "productos": [
+    {
+      "clave": "ANGORA_GOLD_BATIK",
+      "nombre": "Angora Gold Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=9",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/angora-gold-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ANGORA GOLD BATIK",
+        "Angora Gold Batik",
+        "angora gold batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ANGORA_GOLD_OMBRE_BATIK",
+      "nombre": "Angora Gold Ombre Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=9",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/angora-gold-ombre-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ANGORA GOLD OMBRE BATIK",
+        "Angora Gold Ombre Batik",
+        "angora gold ombre batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_OMBRE_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_OMBRE_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ANGORA_GOLD_SIM",
+      "nombre": "Angora Gold Sim",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=9",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/angora-gold-sim/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ANGORA GOLD SIM",
+        "Angora Gold Sim",
+        "angora gold sim"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_SIM/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_SIM/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BABY_BEST",
+      "nombre": "Baby Best",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/baby-best/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BABY BEST",
+        "Baby Best",
+        "baby best"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BABY_BEST_BATIK",
+      "nombre": "Baby Best Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/baby-best-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BABY BEST BATIK",
+        "Baby Best Batik",
+        "baby best batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BURCUM_BATIK",
+      "nombre": "Burcum Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/burcum-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BURCUM BATIK",
+        "Burcum Batik",
+        "burcum batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BURCUM_BEBE_BATIK",
+      "nombre": "Burcum Bebe Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/burcum-bebe-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BURCUM BEBE BATIK",
+        "Burcum Bebe Batik",
+        "burcum bebe batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BEBE_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BEBE_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BURCUM_KLASIK",
+      "nombre": "Burcum Klasik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/burcum-klasik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BURCUM KLASIK",
+        "Burcum Klasik",
+        "burcum klasik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_KLASIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_KLASIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "COTTON_GOLD",
+      "nombre": "Cotton Gold",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cotton-gold/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "COTTON GOLD",
+        "Cotton Gold",
+        "cotton gold"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "COTTON_GOLD_BATIK",
+      "nombre": "Cotton Gold Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cotton-gold-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "COTTON GOLD BATIK",
+        "Cotton Gold Batik",
+        "cotton gold batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "DIVA",
+      "nombre": "Diva",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/diva/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "DIVA",
+        "Diva",
+        "diva"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "DIVA_BATIK",
+      "nombre": "Diva Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/diva-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "DIVA BATIK",
+        "Diva Batik",
+        "diva batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "DIVA_FINE",
+      "nombre": "Diva Fine",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/diva-fine/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "DIVA FINE",
+        "Diva Fine",
+        "diva fine"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_FINE/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_FINE/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "DIVA_OMBRE_BATIK",
+      "nombre": "Diva Ombre Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/diva-ombre-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "DIVA OMBRE BATIK",
+        "Diva Ombre Batik",
+        "diva ombre batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_OMBRE_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_OMBRE_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "PUFFY_FINE",
+      "nombre": "Puffy Fine",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/puffy-fine/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "PUFFY FINE",
+        "Puffy Fine",
+        "puffy fine"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "PUFFY_FINE_COLOR",
+      "nombre": "Puffy Fine Color",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/puffy-fine-color/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "PUFFY FINE COLOR",
+        "Puffy Fine Color",
+        "puffy fine color"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_COLOR/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_COLOR/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "PUFFY_FINE_OMBRE_BATIK",
+      "nombre": "Puffy Fine Ombre Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/puffy-fine-ombre-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "PUFFY FINE OMBRE BATIK",
+        "Puffy Fine Ombre Batik",
+        "puffy fine ombre batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_OMBRE_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_OMBRE_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "PUFFY_MORE",
+      "nombre": "Puffy More",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/puffy-more/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "PUFFY MORE",
+        "Puffy More",
+        "puffy more"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_MORE/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_MORE/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SEKERIM_BEBE",
+      "nombre": "Sekerim Bebe",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/sekerim-bebe/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SEKERIM BEBE",
+        "Sekerim Bebe",
+        "sekerim bebe"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SEKERIM_BEBE_BATIK",
+      "nombre": "Sekerim Bebe Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/sekerim-bebe-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SEKERIM BEBE BATIK",
+        "Sekerim Bebe Batik",
+        "sekerim bebe batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SOFTY_MEGA",
+      "nombre": "Softy Mega",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/softy-mega/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SOFTY MEGA",
+        "Softy Mega",
+        "softy mega"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_MEGA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_MEGA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SOFTY_PLUS",
+      "nombre": "Softy Plus",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/softy-plus/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SOFTY PLUS",
+        "Softy Plus",
+        "softy plus"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_PLUS/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_PLUS/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SUPERLANA_KLASIK",
+      "nombre": "Superlana Klasik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/superlana-klasik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SUPERLANA KLASIK",
+        "Superlana Klasik",
+        "superlana klasik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_KLASIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_KLASIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SUPERLANA_MAXI",
+      "nombre": "Superlana Maxi",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/superlana-maxi/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SUPERLANA MAXI",
+        "Superlana Maxi",
+        "superlana maxi"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SUPERLANA_MAXI_BATIK",
+      "nombre": "Superlana Maxi Batik",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/superlana-maxi-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SUPERLANA MAXI BATIK",
+        "Superlana Maxi Batik",
+        "superlana maxi batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SUPERLANA_MEGAFIL",
+      "nombre": "Superlana Megafil",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/superlana-megafil/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SUPERLANA MEGAFIL",
+        "Superlana Megafil",
+        "superlana megafil"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MEGAFIL/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MEGAFIL/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "SUPERLANA_MIDI_OMBRE",
+      "nombre": "Superlana Midi Ombre",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/superlana-midi-ombre/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "SUPERLANA MIDI OMBRE",
+        "Superlana Midi Ombre",
+        "superlana midi ombre"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MIDI_OMBRE/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MIDI_OMBRE/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "VELLUTO",
+      "nombre": "Velluto",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/velluto/",
+      "datos_tecnicos_confirmados": true,
+      "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+      "descripcion": "Estambre muy suave con textura chenille.",
+      "composicion": "100% Poliéster",
+      "peso_bola": "100 g",
+      "metraje": "68 m",
+      "origen": "Turquía",
+      "gancho_recomendado": "#8 a #10",
+      "agujas_recomendadas": "#8 a #9",
+      "usos_recomendados": [
+        "peluches grandes",
+        "amigurumi pachoncito",
+        "cobijas",
+        "prendas suaves para frío",
+        "juguetes suaves"
+      ],
+      "cuando_recomendar": "Cuando la clienta quiere textura chenille, acabado pachoncito, muy suave o tipo peluche.",
+      "cuando_no_recomendar": "Cuando la clienta quiere mucha definición en puntos pequeños; en ese caso conviene algodón o hilo más delgado.",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "tambien_puede_tejerse_con": "dedos",
+      "colores": [
+        "02",
+        "06",
+        "11",
+        "13",
+        "15",
+        "16",
+        "19",
+        "31",
+        "36",
+        "43",
+        "44",
+        "55",
+        "56",
+        "58",
+        "60",
+        "62",
+        "87",
+        "98",
+        "103",
+        "107",
+        "111",
+        "121",
+        "141",
+        "146",
+        "199",
+        "216",
+        "218",
+        "310",
+        "329",
+        "340",
+        "360",
+        "374",
+        "378",
+        "414",
+        "416",
+        "426",
+        "428",
+        "429",
+        "464",
+        "490",
+        "493",
+        "530",
+        "532",
+        "550",
+        "646",
+        "798",
+        "866"
+      ],
+      "fuente_detalle": "https://estambreskarina.com.mx/producto/velluto/",
+      "alias": [
+        "VELLUTO",
+        "Velluto",
+        "alize velluto",
+        "belluto",
+        "terciopelo",
+        "velluto",
+        "veluto"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "VELLUTO_MINI_COLORS",
+      "nombre": "Velluto Mini Colors",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/velluto-mini-colors/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "VELLUTO MINI COLORS",
+        "Velluto Mini Colors",
+        "velluto mini colors"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO_MINI_COLORS/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO_MINI_COLORS/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "VERONA",
+      "nombre": "Verona",
+      "marca": "Alize",
+      "linea": "ALIZE",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/verona/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "VERONA",
+        "Verona",
+        "verona"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VERONA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VERONA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ACRILAN_3_HEBRAS",
+      "nombre": "Acrilán (3 Hebras)",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/acrilan-3-hebras/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ACRILAN 3 HEBRAS",
+        "Acrilán (3 Hebras)",
+        "acrilán (3 hebras)"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ACRILAN_3_HEBRAS/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ACRILAN_3_HEBRAS/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ALASKA",
+      "nombre": "Alaska",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/alaska/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ALASKA",
+        "Alaska",
+        "alaska"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ALASKA_MATIZADO",
+      "nombre": "Alaska Matizado",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/alaska-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ALASKA MATIZADO",
+        "Alaska Matizado",
+        "alaska matizado"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ANGORITA",
+      "nombre": "Angorita",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/angorita/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ANGORITA",
+        "Angorita",
+        "angorita"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ANGORITA_MATIZADO",
+      "nombre": "Angorita Matizado",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/angorita-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ANGORITA MATIZADO",
+        "Angorita Matizado",
+        "angorita matizado"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BEBEFIL",
+      "nombre": "Bebefil",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/bebefil/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BEBEFIL",
+        "Bebefil",
+        "bebefil"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BEBEFIL_MATIZADO",
+      "nombre": "Bebefil Matizado",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/bebefil-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BEBEFIL MATIZADO",
+        "Bebefil Matizado",
+        "bebefil matizado"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BEBITO",
+      "nombre": "Bebito",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/bebito/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BEBITO",
+        "Bebito",
+        "bebito"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBITO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBITO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CARICIA",
+      "nombre": "Caricia",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/caricia/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CARICIA",
+        "Caricia",
+        "caricia"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CARICIA_MATIZADO",
+      "nombre": "Caricia Matizado",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/caricia-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CARICIA MATIZADO",
+        "Caricia Matizado",
+        "caricia matizado"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CRISTY_10G_SURTIDO",
+      "nombre": "Cristy 10g Surtido",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-10g-surtido/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CRISTY 10G SURTIDO",
+        "Cristy 10g Surtido",
+        "cristy",
+        "cristy 10g surtido",
+        "hilo cristal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_10G_SURTIDO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_10G_SURTIDO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CRISTY_DIAMANTE_2_12",
+      "nombre": "Cristy Diamante (2/12)",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-diamante-2-12/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CRISTY DIAMANTE 2 12",
+        "Cristy Diamante (2/12)",
+        "cristy",
+        "cristy diamante (2/12)",
+        "hilo cristal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_2_12/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_2_12/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CRISTY_DIAMANTE_FM_2_12_MATIZADO",
+      "nombre": "Cristy Diamante Fm (2/12 Matizado)",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-diamante-fm-2-12-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CRISTY DIAMANTE FM 2 12 MATIZADO",
+        "Cristy Diamante Fm (2/12 Matizado)",
+        "cristy",
+        "cristy diamante fm (2/12 matizado)",
+        "hilo cristal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_FM_2_12_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_FM_2_12_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CRISTY_FM_MATIZADO",
+      "nombre": "Cristy Fm (Matizado)",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-fm-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CRISTY FM MATIZADO",
+        "Cristy Fm (Matizado)",
+        "cristy",
+        "cristy fm (matizado)",
+        "hilo cristal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_FM_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_FM_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CRISTY_LISO",
+      "nombre": "Cristy Liso",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-liso/",
+      "datos_tecnicos_confirmados": true,
+      "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+      "descripcion": "Hilo cristal para tejer o bordar.",
+      "composicion": "70% Acrílico, 30% Poliéster",
+      "peso_bola": "10 g, 37 g, 100 g, 250 g",
+      "metraje": "75 m, 300 m, 750 m, 1875 m",
+      "gancho_recomendado": "#3",
+      "agujas_recomendadas": "#3",
+      "usos_recomendados": [
+        "bordado",
+        "tejido fino",
+        "decoración",
+        "manualidades"
+      ],
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "fuente_detalle": "https://estambreskarina.com.mx/producto/cristy-liso/",
+      "alias": [
+        "CRISTY LISO",
+        "Cristy Liso",
+        "cristy",
+        "cristy liso",
+        "hilo cristal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_LISO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_LISO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CRISTY_METALICO",
+      "nombre": "Cristy Metálico",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-metalico/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CRISTY METALICO",
+        "Cristy Metálico",
+        "cristy",
+        "cristy metálico",
+        "hilo cristal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "CRISTY_METALICO_FM_MATIZADO",
+      "nombre": "Cristy Metálico Fm (Matizado)",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-metalico-fm-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "CRISTY METALICO FM MATIZADO",
+        "Cristy Metálico Fm (Matizado)",
+        "cristy",
+        "cristy metálico fm (matizado)",
+        "hilo cristal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO_FM_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO_FM_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FIORENTINO",
+      "nombre": "Fiorentino",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/fiorentino/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FIORENTINO",
+        "Fiorentino",
+        "fiorentino"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FIORENTINO_MAXI",
+      "nombre": "Fiorentino Maxi",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/fiorentino-maxi/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FIORENTINO MAXI",
+        "Fiorentino Maxi",
+        "fiorentino maxi"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO_MAXI/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO_MAXI/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FLANDES",
+      "nombre": "Flandes",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/flandes/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FLANDES",
+        "Flandes",
+        "flandes"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FLANDES_METALICO",
+      "nombre": "Flandes Metálico",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/flandes-metalico/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FLANDES METALICO",
+        "Flandes Metálico",
+        "flandes metálico"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES_METALICO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES_METALICO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "HOLANDES",
+      "nombre": "Holandés",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/holandes/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "HOLANDES",
+        "Holandés",
+        "holandés"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "HOLANDES_BICOLOR",
+      "nombre": "Holandés Bicolor",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/holandes-bicolor/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "HOLANDES BICOLOR",
+        "Holandés Bicolor",
+        "holandés bicolor"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_BICOLOR/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_BICOLOR/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "HOLANDES_FM_MATIZADO",
+      "nombre": "Holandés Fm (Matizado)",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/holandes-fm-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "HOLANDES FM MATIZADO",
+        "Holandés Fm (Matizado)",
+        "holandés fm (matizado)"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_FM_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_FM_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KARIBU",
+      "nombre": "Karibú",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/karibu/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KARIBU",
+        "Karibú",
+        "karibú"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KARIBU_BATIK",
+      "nombre": "Karibú Batik",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/karibu-batik/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KARIBU BATIK",
+        "Karibú Batik",
+        "karibú batik"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU_BATIK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU_BATIK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KARIME",
+      "nombre": "Karime",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/karime/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KARIME",
+        "Karime",
+        "karime"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIME/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIME/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KARINETA",
+      "nombre": "Karineta",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/karineta/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KARINETA",
+        "Karineta",
+        "karineta"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KARINETA_250_GR",
+      "nombre": "Karineta 250 gr",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/karineta-250-gr/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KARINETA 250 GR",
+        "Karineta 250 gr",
+        "karineta 250 gr"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA_250_GR/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA_250_GR/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KIWI",
+      "nombre": "Kiwi",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/kiwi/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KIWI",
+        "Kiwi",
+        "kiwi"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KIWI/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KIWI/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KOTTON_MILK",
+      "nombre": "Kotton Milk",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/kotton-milk/",
+      "datos_tecnicos_confirmados": true,
+      "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+      "descripcion": "Estambre de textura tipo algodón, suave, útil para prendas ligeras y amigurumis con definición.",
+      "composicion": "100% Acrílico",
+      "peso_bola": "50 g",
+      "metraje": "80 m",
+      "gancho_recomendado": "#3",
+      "agujas_recomendadas": "#3",
+      "usos_recomendados": [
+        "amigurumis",
+        "prendas ligeras",
+        "muñecos",
+        "detalles tejidos"
+      ],
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "fuente_detalle": "https://estambreskarina.com.mx/producto/kotton-milk/",
+      "alias": [
+        "KOTTON MILK",
+        "Kotton Milk",
+        "kotton milk"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KOTTON_MILK/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KOTTON_MILK/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "LIRIO",
+      "nombre": "Lirio",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/lirio/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "LIRIO",
+        "Lirio",
+        "lirio"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/LIRIO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/LIRIO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "MADEJON",
+      "nombre": "Madejón",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/madejon/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "MADEJON",
+        "Madejón",
+        "madejón"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "MADEJON_FM_MATIZADO",
+      "nombre": "Madejón Fm (Matizado)",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=7",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/madejon-fm-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "MADEJON FM MATIZADO",
+        "Madejón Fm (Matizado)",
+        "madejón fm (matizado)"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON_FM_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON_FM_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "RIO",
+      "nombre": "Río",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/rio/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "RIO",
+        "Río",
+        "río"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "RIO_MATIZADO",
+      "nombre": "Río Matizado",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/rio-matizado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "RIO MATIZADO",
+        "Río Matizado",
+        "río matizado"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO_MATIZADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO_MATIZADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "TAMATZ",
+      "nombre": "Tamatz",
+      "marca": "Karina",
+      "linea": "BASICOS",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/tamatz/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "TAMATZ",
+        "Tamatz",
+        "tamatz"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/TAMATZ/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/TAMATZ/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FOSFO",
+      "nombre": "Fosfo",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/fosfo/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FOSFO",
+        "Fosfo",
+        "fosfo"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/FOSFO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/FOSFO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KAIRO",
+      "nombre": "Kairo",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/kairo/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KAIRO",
+        "Kairo",
+        "kairo"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KAIRO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KAIRO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KENAI",
+      "nombre": "Kenai",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/kenai/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KENAI",
+        "Kenai",
+        "kenai"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KENAI/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KENAI/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KOI",
+      "nombre": "Koi",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/koi/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KOI",
+        "Koi",
+        "koi"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOI/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOI/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KOMFY",
+      "nombre": "Komfy",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/komfy/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+      "descripcion": "Chenille suave de Karina, similar a Velluto, para proyectos suaves tipo peluche.",
+      "composicion": "por confirmar",
+      "peso_bola": "100 g",
+      "metraje": "por confirmar",
+      "gancho_recomendado": "por confirmar",
+      "agujas_recomendadas": "por confirmar",
+      "usos_recomendados": [
+        "peluches",
+        "cobijas",
+        "muñecos suaves",
+        "prendas suaves"
+      ],
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "fuente_detalle": "https://estambreskarina.com.mx/producto/komfy/",
+      "alias": [
+        "KOMFY",
+        "Komfy",
+        "komfy"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KOMFY_MINI",
+      "nombre": "Komfy Mini",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/komfy-mini/",
+      "datos_tecnicos_confirmados": true,
+      "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+      "descripcion": "Chenille suave similar a Velluto en presentación más pequeña.",
+      "composicion": "100% Poliéster",
+      "peso_bola": "50 g",
+      "metraje": "52 m",
+      "origen": "China",
+      "gancho_recomendado": "#3",
+      "agujas_recomendadas": "#3",
+      "usos_recomendados": [
+        "amigurumis suaves",
+        "muñecos pequeños",
+        "detalles chenille",
+        "peluches pequeños"
+      ],
+      "cuando_recomendar": "Cuando la clienta quiere chenille suave pero en pieza más pequeña y rendidora para amigurumis.",
+      "cuando_no_recomendar": "Cuando busca una pieza grande muy pachoncita; ahí suele convenir Velluto o Komfy Plus.",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "fuente_detalle": "https://estambreskarina.com.mx/producto/komfy-mini/",
+      "alias": [
+        "KOMFY MINI",
+        "Komfy Mini",
+        "comfy mini",
+        "komfi mini",
+        "komfy mini",
+        "konfy mini"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_MINI/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_MINI/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KOMFY_PLUS",
+      "nombre": "Komfy Plus",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/komfy-plus/",
+      "datos_tecnicos_confirmados": true,
+      "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+      "descripcion": "Chenille grueso similar a Velluto, muy suave y voluminoso.",
+      "composicion": "100% Poliéster",
+      "peso_bola": "100 g",
+      "metraje": "35 m",
+      "origen": "China",
+      "gancho_recomendado": "#10",
+      "agujas_recomendadas": "#10",
+      "usos_recomendados": [
+        "peluches grandes",
+        "cobijas gruesas",
+        "proyectos XL",
+        "prendas muy suaves"
+      ],
+      "cuando_recomendar": "Cuando la clienta quiere algo más grueso, voluminoso y muy suave.",
+      "cuando_no_recomendar": "Cuando necesita detalles pequeños o mucha definición.",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "tambien_puede_tejerse_con": "dedos",
+      "fuente_detalle": "https://estambreskarina.com.mx/producto/komfy-plus/",
+      "alias": [
+        "KOMFY PLUS",
+        "Komfy Plus",
+        "comfy plus",
+        "komfi plus",
+        "komfy plus",
+        "konfy plus"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_PLUS/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_PLUS/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KURUMI",
+      "nombre": "Kurumi",
+      "marca": "Karina",
+      "linea": "CALIDA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/kurumi/",
+      "datos_tecnicos_confirmados": true,
+      "estado_ficha": "ficha_tecnica_base_confirmada_o_prellenada",
+      "descripcion": "Hilaza de algodón para amigurumis, prendas ligeras y proyectos con mejor definición.",
+      "composicion": "100% Algodón",
+      "peso_bola": "50 g",
+      "metraje": "100 m",
+      "gancho_recomendado": "#3",
+      "agujas_recomendadas": "#3",
+      "usos_recomendados": [
+        "amigurumis",
+        "prendas ligeras",
+        "detalles definidos",
+        "decoración"
+      ],
+      "cuando_recomendar": "Cuando la clienta quiere definición, algodón o acabado menos pachoncito.",
+      "cuando_no_recomendar": "Cuando busca textura chenille o peluche muy suave.",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "fuente_detalle": "https://estambreskarina.com.mx/producto/kurumi/",
+      "alias": [
+        "KURUMI",
+        "Kurumi",
+        "kurumi"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KURUMI/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KURUMI/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KORDONCILLO",
+      "nombre": "Kordoncillo",
+      "marca": "Karina",
+      "linea": "DECORA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/kordoncillo/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KORDONCILLO",
+        "Kordoncillo",
+        "kordoncillo"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KORDONCILLO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KORDONCILLO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KRAME_3MM",
+      "nombre": "Kramé 3mm",
+      "marca": "Karina",
+      "linea": "DECORA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/krame-3mm/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KRAME 3MM",
+        "Kramé 3mm",
+        "kramé 3mm"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_3MM/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_3MM/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "KRAME_4MM",
+      "nombre": "Kramé 4mm",
+      "marca": "Karina",
+      "linea": "DECORA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/krame-4mm/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "KRAME 4MM",
+        "Kramé 4mm",
+        "kramé 4mm"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_4MM/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_4MM/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "TRAPILLO_KRAFT",
+      "nombre": "Trapillo Kraft",
+      "marca": "Karina",
+      "linea": "DECORA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/trapillo-kraft/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "TRAPILLO KRAFT",
+        "Trapillo Kraft",
+        "trapillo kraft"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/TRAPILLO_KRAFT/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/TRAPILLO_KRAFT/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BORREGUITO",
+      "nombre": "Borreguito",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/borreguito/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BORREGUITO",
+        "Borreguito",
+        "borreguito"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BORREGUITO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BORREGUITO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BREZZA",
+      "nombre": "Brezza",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/brezza/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BREZZA",
+        "Brezza",
+        "brezza"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BREZZA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BREZZA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BRUJAS",
+      "nombre": "Brujas",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/brujas/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BRUJAS",
+        "Brujas",
+        "brujas"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BRUJAS/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BRUJAS/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "ELISSE",
+      "nombre": "Elisse",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=6",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/elisse/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "ELISSE",
+        "Elisse",
+        "elisse"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/ELISSE/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/ELISSE/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FASHION",
+      "nombre": "Fashion",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/fashion/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FASHION",
+        "Fashion",
+        "fashion"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FASHION/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FASHION/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FLOR_DE_KACTUS",
+      "nombre": "Flor de Kactus",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/flor-de-kactus/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FLOR DE KACTUS",
+        "Flor de Kactus",
+        "flor de kactus"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FLOR_DE_KACTUS/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FLOR_DE_KACTUS/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FRIVOLO_NACARADO",
+      "nombre": "Frívolo Nacarado",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/frivolo-nacarado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FRIVOLO NACARADO",
+        "Frívolo Nacarado",
+        "frívolo nacarado"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FRIVOLO_NACARADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FRIVOLO_NACARADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "HILO_POLIESTER_METALICO_MX",
+      "nombre": "Hilo Poliéster Metálico (MX)",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=2",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/hilo-poliester-metalico-mx/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "HILO POLIESTER METALICO MX",
+        "Hilo Poliéster Metálico (MX)",
+        "hilo poliéster metálico (mx)"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/HILO_POLIESTER_METALICO_MX/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/HILO_POLIESTER_METALICO_MX/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "LENTEJUELA",
+      "nombre": "Lentejuela",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/lentejuela/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "LENTEJUELA",
+        "Lentejuela",
+        "lentejuela"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/LENTEJUELA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/LENTEJUELA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "METALICO_4_HEBRAS",
+      "nombre": "Metálico 4 Hebras",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/metalico-4-hebras/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "METALICO 4 HEBRAS",
+        "Metálico 4 Hebras",
+        "metálico 4 hebras"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_4_HEBRAS/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_4_HEBRAS/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "METALICO_CROCHET",
+      "nombre": "Metálico Crochet",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=3",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/metalico-crochet/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "METALICO CROCHET",
+        "Metálico Crochet",
+        "metálico crochet"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_CROCHET/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_CROCHET/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "NEBIA",
+      "nombre": "Nebia",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/nebia/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "NEBIA",
+        "Nebia",
+        "nebia"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/NEBIA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/NEBIA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "PEPITA",
+      "nombre": "Pepita",
+      "marca": "Karina",
+      "linea": "FANTASIA",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=5",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/pepita/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "PEPITA",
+        "Pepita",
+        "pepita"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/PEPITA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/PEPITA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "BEBEFIL_NACARADO",
+      "nombre": "Bebefil Nacarado",
+      "marca": "Karina",
+      "linea": "NUEVOS_Y_SIN_CLASIFICAR",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/bebefil-nacarado/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "BEBEFIL NACARADO",
+        "Bebefil Nacarado",
+        "bebefil nacarado"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/BEBEFIL_NACARADO/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/BEBEFIL_NACARADO/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "PORTUGAL",
+      "nombre": "Portugal",
+      "marca": "Karina",
+      "linea": "NUEVOS_Y_SIN_CLASIFICAR",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/portugal/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "PORTUGAL",
+        "Portugal",
+        "portugal"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/PORTUGAL/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/PORTUGAL/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "COUNTRY",
+      "nombre": "Country",
+      "marca": "Karina",
+      "linea": "PREMIUM",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/country/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "COUNTRY",
+        "Country",
+        "country"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/COUNTRY/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/COUNTRY/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "FASHION_BOUCLE",
+      "nombre": "Fashion Boucle",
+      "marca": "Karina",
+      "linea": "PREMIUM",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=8",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/fashion-boucle/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "FASHION BOUCLE",
+        "Fashion Boucle",
+        "fashion boucle"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/FASHION_BOUCLE/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/FASHION_BOUCLE/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    },
+    {
+      "clave": "MADONA_BRIZNA",
+      "nombre": "Madona (Brizna)",
+      "marca": "Karina",
+      "linea": "PREMIUM",
+      "tipo_repositorio": "ficha_tecnica_local",
+      "proveedor_fuente": "Estambres Karina / Hilorama",
+      "categoria_repositorio": "hilos",
+      "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=9",
+      "source_url_sugerida": "https://estambreskarina.com.mx/producto/madona-brizna/",
+      "datos_tecnicos_confirmados": false,
+      "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+      "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+      "alias": [
+        "MADONA BRIZNA",
+        "Madona (Brizna)",
+        "madona (brizna)"
+      ],
+      "archivo_relativo": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/MADONA_BRIZNA/ficha",
+      "fuente_local": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/MADONA_BRIZNA/ficha",
+      "archivos_ficha": [
+        "ficha_tecnica.json"
+      ]
+    }
+  ],
+  "errores": []
+}

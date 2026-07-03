@@ -1,0 +1,30 @@
+{
+  "clave": "CRISTY_10G_SURTIDO",
+  "nombre": "Cristy 10g Surtido",
+  "marca": "Karina",
+  "proveedor_fuente": "Estambres Karina / Hilorama",
+  "linea": "BASICOS",
+  "categoria_repositorio": "hilos",
+  "source_catalog_page": "https://estambreskarina.com.mx/estambres/?product-page=4",
+  "source_url_sugerida": "https://estambreskarina.com.mx/producto/cristy-10g-surtido/",
+  "datos_tecnicos_confirmados": false,
+  "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+  "descripcion": "",
+  "composicion": "",
+  "peso_bola": "",
+  "metraje": "",
+  "origen": "",
+  "gancho_recomendado": "",
+  "agujas_recomendadas": "",
+  "usos_recomendados": [],
+  "cuando_recomendar": "",
+  "cuando_no_recomendar": "",
+  "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+  "alias": [
+    "CRISTY 10G SURTIDO",
+    "Cristy 10g Surtido",
+    "cristy",
+    "cristy 10g surtido",
+    "hilo cristal"
+  ]
+}

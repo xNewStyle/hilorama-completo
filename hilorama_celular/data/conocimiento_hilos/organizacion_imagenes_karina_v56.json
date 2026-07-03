@@ -1,0 +1,359 @@
+{
+  "version": "V56",
+  "fecha": "2026-07-03T05:08:36.594953+00:00",
+  "copiados": 50,
+  "sin_detectar": 0,
+  "movidos": [
+    {
+      "origen": "static/recursos_ia/Velluto Colores/103.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/103.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/107.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/107.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/11.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/11.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/111.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/111.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/121.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/121.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/13.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/13.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/141.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/141.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/146.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/146.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/15.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/15.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/16.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/16.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/19.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/19.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/199.jfif",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/199.jfif",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/2.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/2.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/216.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/216.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/218.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/218.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/26.jpg",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/26.jpg",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/31.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/31.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/310.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/310.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/329.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/329.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/340.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/340.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/36.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/36.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/360.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/360.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/374.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/374.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/378.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/378.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/414.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/414.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/416.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/416.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/426.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/426.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/428.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/428.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/429.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/429.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/43.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/43.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/44.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/44.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/464.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/464.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/466.jpg",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/466.jpg",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/490.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/490.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/493.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/493.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/530.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/530.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/532.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/532.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/55.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/55.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/550.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/550.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/56.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/56.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/58.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/58.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/6.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/6.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/60.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/60.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/62.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/62.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/646.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/646.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/798.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/798.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/866.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/866.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/87.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/87.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/98.webp",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/98.webp",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    },
+    {
+      "origen": "static/recursos_ia/Velluto Colores/993.jpg",
+      "destino": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/gama/993.jpg",
+      "linea": "ALIZE",
+      "producto": "VELLUTO",
+      "tipo": "gama"
+    }
+  ],
+  "sin_detectar_muestra": []
+}

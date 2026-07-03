@@ -3,6 +3,7 @@ import re
 import unicodedata
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
+from pathlib import Path
 
 
 EMOJI_OK = "\U0001f60a"
@@ -471,7 +472,7 @@ def _es_pregunta_info_codigo(texto):
 
 def _es_solicitud_foto_tono(texto):
     t = _norm(texto)
-    return bool(re.search(r"\b(foto|imagen|muestra|mostrar|ver|se\s+ve|como\s+se\s+ve)\b", t) and re.search(r"\b\d{1,4}\b", t))
+    return bool(re.search(r"\b(foto|imagen|muestra|muestras|muestres|mostrar|ver|enseña|ensena|enseñas|ensenas|se\s+ve|como\s+se\s+ve)\b", t) and re.search(r"\b\d{1,4}\b", t))
 
 
 def _es_pedido_cantidad_codigo_texto(texto):
@@ -519,6 +520,98 @@ def _es_consulta_recomendacion(texto):
         or re.search(r"\b(tipo\s+chenille|chenille|suave|barato|economico|económico|no\s+salga\s+tan\s+caro|no\s+quede\s+duro|quede\s+duro|duro|esponjoso|rellenito)\b", t)
         or re.search(r"\b(busco\s+algo\s+para|algo\s+para\s+(?:peluche|amigurumi|muñeco|muneco))\b", t)
     )
+
+
+# V53: conocimiento técnico de hilos (Karina/Hilorama) + modismos de venta.
+_KB_HILOS_CACHE = None
+
+def _cargar_kb_hilos():
+    global _KB_HILOS_CACHE
+    if _KB_HILOS_CACHE is not None:
+        return _KB_HILOS_CACHE
+    data = {"productos": []}
+    try:
+        ruta = Path(__file__).resolve().parent / "data" / "conocimiento_hilos" / "karina_productos.json"
+        if ruta.exists():
+            data = json.loads(ruta.read_text(encoding="utf-8"))
+    except Exception:
+        data = {"productos": []}
+    _KB_HILOS_CACHE = data
+    return data
+
+def _producto_kb_por_texto(texto, contexto=None):
+    t = _norm(texto)
+    contexto = contexto or {}
+    kb = _cargar_kb_hilos()
+    productos = kb.get("productos") or []
+    alias_extra = {
+        "VELLUTO": ["velluto", "veluto", "belluto", "alize velluto", "terciopelo"],
+        "KOMFY MINI": ["komfy mini", "komfi mini", "konfy mini", "comfy mini", "komfy", "komfi"],
+        "KOMFY PLUS": ["komfy plus", "komfi plus", "konfy plus", "comfy plus"],
+        "KURUMI": ["kurumi", "algodon", "algodón"],
+        "KOTTON MILK": ["kotton milk", "cotton milk", "koton milk", "kotton", "algodon acrilico", "algodón acrílico"],
+    }
+    for prod in productos:
+        clave = str(prod.get("clave") or prod.get("nombre") or "").upper()
+        nombre = _norm(prod.get("nombre") or clave)
+        aliases = [_norm(x) for x in alias_extra.get(clave, [])] + [nombre, _norm(clave)]
+        if any(a and a in t for a in aliases):
+            return prod
+    hilo_ctx = _norm(contexto.get("hilo_actual") or "")
+    if hilo_ctx:
+        for prod in productos:
+            clave = _norm(prod.get("clave") or prod.get("nombre") or "")
+            nombre = _norm(prod.get("nombre") or "")
+            if hilo_ctx in (clave, nombre) or clave in hilo_ctx or nombre in hilo_ctx:
+                return prod
+    return None
+
+def _es_pregunta_ficha_hilo(texto):
+    t = _norm(texto)
+    return bool(re.search(r"\b(composicion|composición|material|de que esta hecho|de qué está hecho|poliester|poliéster|algodon|algodón|gramos|grs|peso|metro|metros|metraje|mide|rendimiento|rinde|gancho|ganchillo|agujas|aguja|con que se teje|con qué se teje|tejer con|sirve para|recomiendas para|me sirve para|diferencia|comparacion|comparación|cual es mejor|cuál es mejor)\b", t))
+
+def _respuesta_conocimiento_hilo(texto, contexto=None):
+    t = _norm(texto)
+    prod = _producto_kb_por_texto(t, contexto)
+    if not prod:
+        return "Con gusto 😊 ¿me indica qué hilo quiere comparar o revisar? Le puedo decir composición, metraje, gancho recomendado o para qué proyecto conviene."
+    # V58: si la ficha existe pero no está confirmada, no inventar composición/metraje/gancho.
+    if prod.get("datos_tecnicos_confirmados") is False:
+        tiene_alguno = any(prod.get(k) not in (None, "", [], {}) and str(prod.get(k)).lower() not in ("por confirmar", "pendiente") for k in ("composicion", "peso_bola", "metraje", "gancho_recomendado", "agujas_recomendadas"))
+        if not tiene_alguno:
+            nombre_tmp = prod.get("nombre") or prod.get("clave") or "ese hilo"
+            return f"Sí 😊 tengo ubicado {nombre_tmp} en el catálogo, pero su ficha técnica completa aún está pendiente de capturar. Para no inventarle composición, metraje o gancho, se lo reviso y le confirmo."
+
+    nombre = prod.get("nombre") or prod.get("clave") or "ese hilo"
+    desc = prod.get("descripcion") or ""
+    composicion = prod.get("composicion") or "composición por confirmar"
+    peso = prod.get("peso_bola") or "peso por confirmar"
+    metraje = prod.get("metraje") or "metraje por confirmar"
+    gancho = prod.get("gancho_recomendado") or "por confirmar"
+    agujas = prod.get("agujas_recomendadas") or "por confirmar"
+    usos = prod.get("usos_recomendados") or []
+    cuando = prod.get("cuando_recomendar") or ""
+    no_rec = prod.get("cuando_no_recomendar") or ""
+
+    if re.search(r"\b(gancho|ganchillo|agujas|aguja|con que se teje|con qué se teje|tejer con)\b", t):
+        return f"Para {nombre} se recomienda gancho {gancho} y agujas {agujas} 😊 Depende un poco de qué tan apretado teja y del proyecto."
+    if re.search(r"\b(composicion|composición|material|de que esta hecho|de qué está hecho|poliester|poliéster|algodon|algodón)\b", t):
+        return f"{nombre} es de {composicion} 😊"
+    if re.search(r"\b(gramos|grs|peso|metro|metros|metraje|mide|rendimiento|rinde)\b", t):
+        return f"{nombre} pesa {peso} y trae aprox. {metraje} por bola/madeja 😊"
+    if re.search(r"\b(diferencia|comparacion|comparación|cual es mejor|cuál es mejor|mejor)\b", t):
+        # Respuesta corta con base en productos comunes.
+        if "kurumi" in t and ("velluto" in t or "veluto" in t or "belluto" in t):
+            return "Velluto queda más suave y pachoncito tipo peluche; Kurumi es algodón y queda con más definición para amigurumi pequeño 😊"
+        if "komfy" in t and ("velluto" in t or "veluto" in t or "belluto" in t):
+            return "Komfy Mini es chenille más pequeño de 50 g, útil para amigurumis suaves; Velluto es chenille más grande de 100 g y queda más pachoncito 😊"
+    if re.search(r"\b(sirve para|recomiendas para|me sirve para|proyecto|amigurumi|muñeco|muneco|peluche|elefante|conejo|oso|abeja|ropa|cobija)\b", t):
+        uso_txt = ", ".join(usos[:4]) if usos else "varios proyectos tejidos"
+        extra = f" {cuando}" if cuando else ""
+        if no_rec:
+            extra += f" Si busca otra textura: {no_rec}"
+        return f"Sí 😊 {nombre} puede servir para {uso_txt}.{extra}"
+    return f"Claro 😊 de {nombre}: {desc} Es de {composicion}, pesa {peso}, trae aprox. {metraje} y se recomienda tejer con gancho {gancho} / agujas {agujas}."
 
 
 def _es_consulta_tonos_variantes(texto):
@@ -577,7 +670,10 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         estado = "esperando_cp"
     elif re.search(r"\b(descuento|rebaja|mejor\s+precio|mejora(?:r|me|s)?\s+(?:el\s+)?precio|mejorarme\s+precio|mejoras\s+precio|precio\s+especial|precio\s+final|menos\s+precio|lo\s+menos|cuanto\s+es\s+lo\s+menos|minimo|mínimo|mayoreo|mayorista|por\s+mayoreo|bajar(?:le)?|ajustar\s+precio)\b", texto):
         principal = "decision_comercial"
-    elif re.search(r"\b(foto|imagen|muestra|mostrar|ver)\b", texto) and re.search(r"\b(ojo|ojos|seguridad|nariz|narices|flock|gancho|ganchos|aguja|agujas|relleno)\b", texto):
+    elif _es_pregunta_ficha_hilo(texto) and (hilos or _producto_kb_por_texto(texto, memoria or {})):
+        principal = "catalogo_general"
+        secundaria = "ficha_hilo"
+    elif re.search(r"\b(foto|imagen|muestra|muestras|muestres|mostrar|ver|enseña|ensena|enseñas|ensenas)\b", texto) and re.search(r"\b(ojo|ojos|seguridad|nariz|narices|flock|gancho|ganchos|aguja|agujas|relleno)\b", texto):
         principal = "catalogo_general"
         secundaria = "foto_accesorio"
     elif _consulta_seguimiento_accesorio(texto, memoria):
@@ -592,6 +688,9 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
     elif _es_consulta_tonos_variantes(texto):
         principal = "consulta_stock"
         secundaria = "tonos_variantes"
+    elif _es_pregunta_ficha_hilo(texto):
+        principal = "catalogo_general"
+        secundaria = "ficha_hilo"
     elif _es_consulta_recomendacion(texto):
         principal = "recomendacion_producto"
     elif _es_solicitud_foto_tono(texto):
@@ -1923,6 +2022,11 @@ def _respuesta_catalogo_general(texto, productos):
 
 def _respuesta_recomendacion_producto(texto, productos):
     t = _norm(texto)
+    # V53: si la recomendación pregunta por un hilo específico, usar ficha técnica primero.
+    if _producto_kb_por_texto(t, {}):
+        resp_kb = _respuesta_conocimiento_hilo(t, {})
+        if resp_kb:
+            return resp_kb
     activos = _productos_activos(productos)
     familias_stock = { _hilo_family(p.get("hilo")) for p in activos if _stock(p) > 0 and not _es_accesorio_producto(p) }
 
@@ -1949,6 +2053,10 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     principal = intencion["principal"]
     recursos = recursos or {}
     envio = envio or {}
+
+    # V53: ficha técnica de hilos (composición, gancho, metraje, usos) con base editable.
+    if intencion.get("secundaria") == "ficha_hilo":
+        return _respuesta_conocimiento_hilo(texto, contexto)
 
     # V39: si la clienta pregunta "serían 15 piezas, verdad?" se valida contra el pedido activo.
     resp_total = _respuesta_validacion_total(normalizado, intencion, contexto)
@@ -2002,6 +2110,9 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     if principal == "pide_foto_tono":
         if recursos.get("respuesta"):
             return recursos["respuesta"]
+        codigos = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)
+        if len(codigos) > 1:
+            return f"Claro {EMOJI_OK} le reviso fotos/imágenes de los tonos " + ", ".join(codigos[:6]) + "."
         codigo = _primer_codigo(texto)
         return f"Claro {EMOJI_OK} le reviso la foto del tono {codigo}."
 
@@ -2188,7 +2299,7 @@ def _respuesta_codigo_contextual(texto, contexto, productos, modo="stock"):
     if re.search(r"\b(cuanto|precio|cuesta|sale|vale)\b", tn):
         precio_txt = f"${precio:,.2f}" if precio > 0 else "precio por confirmar"
         return f"El {linea} está en {precio_txt} {EMOJI_OK}. ¿Cuántas piezas le agrego si le gusta?"
-    if re.search(r"\b(foto|imagen|muestra|mostrar|ver|se\s+ve|como\s+se\s+ve)\b", tn):
+    if re.search(r"\b(foto|imagen|muestra|muestras|muestres|mostrar|ver|enseña|ensena|enseñas|ensenas|se\s+ve|como\s+se\s+ve)\b", tn):
         return f"Claro {EMOJI_OK} le comparto la foto del tono {linea}."
     if stock > 0:
         precio_txt = f" Está en ${precio:,.2f}." if precio > 0 else ""
@@ -2578,7 +2689,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
     if cierre.get("programar"):
         return {
             "ok": True,
-            "motor": "v52_motor_conversacional",
+            "motor": "v53_motor_conversacional",
             "normalizado": normalizado,
             "intencion": {"principal": "agradecimiento"},
             "contexto": {},
@@ -2629,7 +2740,7 @@ def procesar_conversacion_v27(payload, productos, memoria=None, callbacks=None):
 
     return {
         "ok": True,
-        "motor": "v52_motor_conversacional",
+        "motor": "v53_motor_conversacional",
         "normalizado": normalizado,
         "intencion": intencion,
         "contexto": contexto,

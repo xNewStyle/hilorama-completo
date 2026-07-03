@@ -1,0 +1,15 @@
+Poner imágenes aquí.
+
+Carpeta: static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_2_12/tonos
+Producto: Cristy Diamante 2_12
+Línea/tipo: BASICOS
+
+Uso:
+- gama: cartas completas o comparativas de colores.
+- tonos: fotos individuales, nombrar con código al inicio: 429_tabaco_claro.webp.
+- ficha: ficha técnica, composición, gramaje, metraje, gancho/agujas.
+
+La IA SOLO usará esta carpeta si hay imágenes reales (.png, .jpg, .jpeg, .webp, .jfif, .gif).
+Archivos .txt y .gitkeep NO se importan.
+Después de meter imágenes, correr:
+python hilorama_celular/tools/hilorama_reindexar_repositorio_visual.py

@@ -1,0 +1,97 @@
+{
+  "version": "v53_modismos_mx_ventas_hilorama",
+  "nota": "Frases mexicanas de ventas para interpretar intención. Editable.",
+  "modismos": [
+    {
+      "frase": "de pura casualidad manejas",
+      "significa": "consulta si se vende un producto; no es pedido"
+    },
+    {
+      "frase": "no tendrás",
+      "significa": "consulta de stock o disponibilidad"
+    },
+    {
+      "frase": "me regalas info",
+      "significa": "pide información/precio/ficha, no pedido"
+    },
+    {
+      "frase": "me apoyas con",
+      "significa": "pide ayuda o cotización; revisar contexto"
+    },
+    {
+      "frase": "me podrías checar",
+      "significa": "consulta de stock o envío"
+    },
+    {
+      "frase": "me muestras",
+      "significa": "pide foto o opciones; no agregar salvo que diga ponme/agrega/quiero x piezas"
+    },
+    {
+      "frase": "me mandas foto",
+      "significa": "pide recurso visual; no pedido"
+    },
+    {
+      "frase": "lo apartas",
+      "significa": "decisión comercial; no prometer apartado sin confirmación"
+    },
+    {
+      "frase": "te pago en la noche",
+      "significa": "pago futuro; no pedir comprobante aún"
+    },
+    {
+      "frase": "cuánto queda ya con envío",
+      "significa": "calcular total con envío si hay pedido y CP; si falta CP pedirlo"
+    },
+    {
+      "frase": "algo que no quede duro",
+      "significa": "recomendación por proyecto; no pedido"
+    },
+    {
+      "frase": "algo rendidor",
+      "significa": "recomendación por costo/rendimiento"
+    },
+    {
+      "frase": "me late",
+      "significa": "interés positivo; puede seguir con pedido si hay cantidad"
+    },
+    {
+      "frase": "no me convence",
+      "significa": "quiere alternativas; no pedido"
+    },
+    {
+      "frase": "échame la mano",
+      "significa": "pide ayuda; responder humano y claro"
+    },
+    {
+      "frase": "sácame de duda",
+      "significa": "consulta; no pedido"
+    },
+    {
+      "frase": "qué onda",
+      "significa": "saludo casual"
+    },
+    {
+      "frase": "qué tal",
+      "significa": "saludo o inicio de consulta"
+    },
+    {
+      "frase": "va",
+      "significa": "confirmación ligera; revisar contexto antes de actuar"
+    },
+    {
+      "frase": "arre",
+      "significa": "confirmación ligera; revisar contexto"
+    },
+    {
+      "frase": "sale",
+      "significa": "aceptación/cierre según contexto"
+    }
+  ],
+  "reglas_intencion": [
+    "Palabras como muestra/ver/foto/imagen/catálogo no agregan productos.",
+    "Palabras como ponme/agrega/dame/quiero/necesito + cantidad sí agregan productos.",
+    "Preguntas con composición/gramos/metros/gancho/agujas son ficha técnica.",
+    "Si el cliente dice 'con envío' y ya hay pedido, calcular usando pedido acumulado.",
+    "Si falta CP para envío, pedir CP antes de cotizar."
+  ]
+}

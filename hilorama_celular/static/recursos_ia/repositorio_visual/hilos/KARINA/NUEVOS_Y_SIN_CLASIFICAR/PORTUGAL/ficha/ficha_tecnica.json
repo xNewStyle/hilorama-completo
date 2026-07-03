@@ -1,0 +1,28 @@
+{
+  "clave": "PORTUGAL",
+  "nombre": "Portugal",
+  "marca": "Karina",
+  "proveedor_fuente": "Estambres Karina / Hilorama",
+  "linea": "NUEVOS_Y_SIN_CLASIFICAR",
+  "categoria_repositorio": "hilos",
+  "source_catalog_page": "https://estambreskarina.com.mx/estambres/",
+  "source_url_sugerida": "https://estambreskarina.com.mx/producto/portugal/",
+  "datos_tecnicos_confirmados": false,
+  "estado_ficha": "producto_en_catalogo_karina; ficha_tecnica_pendiente_de_confirmar",
+  "descripcion": "",
+  "composicion": "",
+  "peso_bola": "",
+  "metraje": "",
+  "origen": "",
+  "gancho_recomendado": "",
+  "agujas_recomendadas": "",
+  "usos_recomendados": [],
+  "cuando_recomendar": "",
+  "cuando_no_recomendar": "",
+  "notas_vendedor": "Completar o corregir si Hilorama maneja datos diferentes a Karina.",
+  "alias": [
+    "PORTUGAL",
+    "Portugal",
+    "portugal"
+  ]
+}

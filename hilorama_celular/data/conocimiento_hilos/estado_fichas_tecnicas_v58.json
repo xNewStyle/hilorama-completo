@@ -1,0 +1,686 @@
+{
+  "total": 97,
+  "confirmadas": 6,
+  "pendientes": 91,
+  "productos": [
+    {
+      "clave": "PORTUGAL",
+      "nombre": "Portugal",
+      "linea": "NUEVOS_Y_SIN_CLASIFICAR",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/PORTUGAL/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BEBEFIL_NACARADO",
+      "nombre": "Bebefil Nacarado",
+      "linea": "NUEVOS_Y_SIN_CLASIFICAR",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/NUEVOS_Y_SIN_CLASIFICAR/BEBEFIL_NACARADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KOMFY",
+      "nombre": "Komfy",
+      "linea": "CALIDA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KOMFY_MINI",
+      "nombre": "Komfy Mini",
+      "linea": "CALIDA",
+      "confirmada": true,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_MINI/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KOMFY_PLUS",
+      "nombre": "Komfy Plus",
+      "linea": "CALIDA",
+      "confirmada": true,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOMFY_PLUS/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KURUMI",
+      "nombre": "Kurumi",
+      "linea": "CALIDA",
+      "confirmada": true,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KURUMI/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KOI",
+      "nombre": "Koi",
+      "linea": "CALIDA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KOI/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KAIRO",
+      "nombre": "Kairo",
+      "linea": "CALIDA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KAIRO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KENAI",
+      "nombre": "Kenai",
+      "linea": "CALIDA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/KENAI/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FOSFO",
+      "nombre": "Fosfo",
+      "linea": "CALIDA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/CALIDA/FOSFO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "TRAPILLO_KRAFT",
+      "nombre": "Trapillo Kraft",
+      "linea": "DECORA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/TRAPILLO_KRAFT/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KRAME_3MM",
+      "nombre": "Kramé 3mm",
+      "linea": "DECORA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_3MM/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KRAME_4MM",
+      "nombre": "Kramé 4mm",
+      "linea": "DECORA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KRAME_4MM/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KORDONCILLO",
+      "nombre": "Kordoncillo",
+      "linea": "DECORA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/DECORA/KORDONCILLO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KOTTON_MILK",
+      "nombre": "Kotton Milk",
+      "linea": "BASICOS",
+      "confirmada": true,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KOTTON_MILK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KIWI",
+      "nombre": "Kiwi",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KIWI/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CRISTY_LISO",
+      "nombre": "Cristy Liso",
+      "linea": "BASICOS",
+      "confirmada": true,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_LISO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CRISTY_FM_MATIZADO",
+      "nombre": "Cristy Fm (Matizado)",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_FM_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CRISTY_METALICO",
+      "nombre": "Cristy Metálico",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CRISTY_METALICO_FM_MATIZADO",
+      "nombre": "Cristy Metálico Fm (Matizado)",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_METALICO_FM_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CRISTY_DIAMANTE_2_12",
+      "nombre": "Cristy Diamante (2/12)",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_2_12/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CRISTY_DIAMANTE_FM_2_12_MATIZADO",
+      "nombre": "Cristy Diamante Fm (2/12 Matizado)",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_DIAMANTE_FM_2_12_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CRISTY_10G_SURTIDO",
+      "nombre": "Cristy 10g Surtido",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CRISTY_10G_SURTIDO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "RIO",
+      "nombre": "Río",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "RIO_MATIZADO",
+      "nombre": "Río Matizado",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/RIO_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "LIRIO",
+      "nombre": "Lirio",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/LIRIO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "TAMATZ",
+      "nombre": "Tamatz",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/TAMATZ/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "HOLANDES",
+      "nombre": "Holandés",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "HOLANDES_FM_MATIZADO",
+      "nombre": "Holandés Fm (Matizado)",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_FM_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "HOLANDES_BICOLOR",
+      "nombre": "Holandés Bicolor",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/HOLANDES_BICOLOR/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CARICIA",
+      "nombre": "Caricia",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "CARICIA_MATIZADO",
+      "nombre": "Caricia Matizado",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/CARICIA_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KARIME",
+      "nombre": "Karime",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIME/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ACRILAN_3_HEBRAS",
+      "nombre": "Acrilán (3 Hebras)",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ACRILAN_3_HEBRAS/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ALASKA",
+      "nombre": "Alaska",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ALASKA_MATIZADO",
+      "nombre": "Alaska Matizado",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ALASKA_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ANGORITA",
+      "nombre": "Angorita",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ANGORITA_MATIZADO",
+      "nombre": "Angorita Matizado",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/ANGORITA_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FIORENTINO",
+      "nombre": "Fiorentino",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FIORENTINO_MAXI",
+      "nombre": "Fiorentino Maxi",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FIORENTINO_MAXI/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FLANDES",
+      "nombre": "Flandes",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FLANDES_METALICO",
+      "nombre": "Flandes Metálico",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/FLANDES_METALICO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "MADEJON",
+      "nombre": "Madejón",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "MADEJON_FM_MATIZADO",
+      "nombre": "Madejón Fm (Matizado)",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/MADEJON_FM_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KARIBU",
+      "nombre": "Karibú",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KARIBU_BATIK",
+      "nombre": "Karibú Batik",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARIBU_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BEBEFIL",
+      "nombre": "Bebefil",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BEBEFIL_MATIZADO",
+      "nombre": "Bebefil Matizado",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBEFIL_MATIZADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BEBITO",
+      "nombre": "Bebito",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/BEBITO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KARINETA",
+      "nombre": "Karineta",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "KARINETA_250_GR",
+      "nombre": "Karineta 250 gr",
+      "linea": "BASICOS",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/BASICOS/KARINETA_250_GR/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BREZZA",
+      "nombre": "Brezza",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BREZZA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FRIVOLO_NACARADO",
+      "nombre": "Frívolo Nacarado",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FRIVOLO_NACARADO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "METALICO_CROCHET",
+      "nombre": "Metálico Crochet",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_CROCHET/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "METALICO_4_HEBRAS",
+      "nombre": "Metálico 4 Hebras",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/METALICO_4_HEBRAS/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "HILO_POLIESTER_METALICO_MX",
+      "nombre": "Hilo Poliéster Metálico (MX)",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/HILO_POLIESTER_METALICO_MX/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "LENTEJUELA",
+      "nombre": "Lentejuela",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/LENTEJUELA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FLOR_DE_KACTUS",
+      "nombre": "Flor de Kactus",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FLOR_DE_KACTUS/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FASHION",
+      "nombre": "Fashion",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/FASHION/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ELISSE",
+      "nombre": "Elisse",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/ELISSE/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BRUJAS",
+      "nombre": "Brujas",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BRUJAS/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BORREGUITO",
+      "nombre": "Borreguito",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/BORREGUITO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "PEPITA",
+      "nombre": "Pepita",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/PEPITA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "NEBIA",
+      "nombre": "Nebia",
+      "linea": "FANTASIA",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/FANTASIA/NEBIA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "MADONA_BRIZNA",
+      "nombre": "Madona (Brizna)",
+      "linea": "PREMIUM",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/MADONA_BRIZNA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "FASHION_BOUCLE",
+      "nombre": "Fashion Boucle",
+      "linea": "PREMIUM",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/FASHION_BOUCLE/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "COUNTRY",
+      "nombre": "Country",
+      "linea": "PREMIUM",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/PREMIUM/COUNTRY/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "VELLUTO",
+      "nombre": "Velluto",
+      "linea": "ALIZE",
+      "confirmada": true,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "VELLUTO_MINI_COLORS",
+      "nombre": "Velluto Mini Colors",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VELLUTO_MINI_COLORS/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "DIVA",
+      "nombre": "Diva",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "DIVA_FINE",
+      "nombre": "Diva Fine",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_FINE/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "DIVA_BATIK",
+      "nombre": "Diva Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "DIVA_OMBRE_BATIK",
+      "nombre": "Diva Ombre Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/DIVA_OMBRE_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "COTTON_GOLD",
+      "nombre": "Cotton Gold",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "COTTON_GOLD_BATIK",
+      "nombre": "Cotton Gold Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/COTTON_GOLD_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BABY_BEST",
+      "nombre": "Baby Best",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BABY_BEST_BATIK",
+      "nombre": "Baby Best Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BABY_BEST_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SOFTY_MEGA",
+      "nombre": "Softy Mega",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_MEGA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SOFTY_PLUS",
+      "nombre": "Softy Plus",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SOFTY_PLUS/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SUPERLANA_MAXI",
+      "nombre": "Superlana Maxi",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SUPERLANA_MAXI_BATIK",
+      "nombre": "Superlana Maxi Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MAXI_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SUPERLANA_MEGAFIL",
+      "nombre": "Superlana Megafil",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MEGAFIL/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SUPERLANA_MIDI_OMBRE",
+      "nombre": "Superlana Midi Ombre",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_MIDI_OMBRE/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SUPERLANA_KLASIK",
+      "nombre": "Superlana Klasik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SUPERLANA_KLASIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "VERONA",
+      "nombre": "Verona",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/VERONA/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SEKERIM_BEBE",
+      "nombre": "Sekerim Bebe",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "SEKERIM_BEBE_BATIK",
+      "nombre": "Sekerim Bebe Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/SEKERIM_BEBE_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "PUFFY_MORE",
+      "nombre": "Puffy More",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_MORE/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "PUFFY_FINE",
+      "nombre": "Puffy Fine",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "PUFFY_FINE_COLOR",
+      "nombre": "Puffy Fine Color",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_COLOR/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "PUFFY_FINE_OMBRE_BATIK",
+      "nombre": "Puffy Fine Ombre Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/PUFFY_FINE_OMBRE_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BURCUM_KLASIK",
+      "nombre": "Burcum Klasik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_KLASIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BURCUM_BATIK",
+      "nombre": "Burcum Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "BURCUM_BEBE_BATIK",
+      "nombre": "Burcum Bebe Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/BURCUM_BEBE_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ANGORA_GOLD_SIM",
+      "nombre": "Angora Gold Sim",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_SIM/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ANGORA_GOLD_BATIK",
+      "nombre": "Angora Gold Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_BATIK/ficha/ficha_tecnica.json"
+    },
+    {
+      "clave": "ANGORA_GOLD_OMBRE_BATIK",
+      "nombre": "Angora Gold Ombre Batik",
+      "linea": "ALIZE",
+      "confirmada": false,
+      "ruta_ficha": "static/recursos_ia/repositorio_visual/hilos/KARINA/ALIZE/ANGORA_GOLD_OMBRE_BATIK/ficha/ficha_tecnica.json"
+    }
+  ]
+}

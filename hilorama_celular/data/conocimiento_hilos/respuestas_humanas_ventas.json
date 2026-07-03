@@ -1,0 +1,10 @@
+{
+  "version": "v53_respuestas_humanas",
+  "templates": {
+    "ficha_tecnica": "Claro 😊 de {producto}: {descripcion} Es de {composicion}, pesa {peso_bola}, trae aprox. {metraje} y se recomienda tejer con gancho {gancho_recomendado} / agujas {agujas_recomendadas}.",
+    "gancho": "Para {producto} se recomienda gancho {gancho_recomendado} y agujas {agujas_recomendadas} 😊 Depende un poco de qué tan apretado teja y del proyecto.",
+    "composicion": "{producto} es de {composicion} 😊",
+    "metraje": "{producto} trae aprox. {metraje} por bola/madeja y pesa {peso_bola} 😊",
+    "recomendacion": "Para ese proyecto le puedo recomendar: {recomendacion}. ¿Lo quiere más pachoncito, más definido o más económico?"
+  }
+}
