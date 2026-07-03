@@ -792,6 +792,7 @@ def detalle_nota(nota_id):
                 SUM(COALESCE(i.empacadas,0)) AS empacadas,
                 COALESCE(NULLIF(MAX(i.precio),0), MAX(pr.venta), MAX(p.precio), 0) AS precio,
                 COALESCE(MAX(p.stock),0) AS stock,
+                COALESCE(MAX(p.volumetrico),0) AS volumetrico,
                 COALESCE(BOOL_OR(COALESCE(p.es_inventariable, TRUE)), TRUE) AS es_inventariable
             FROM items i
             LEFT JOIN LATERAL (
@@ -5062,7 +5063,8 @@ def _nota_full(db, nota_id):
             COALESCE(i.precio, p.precio, pr.venta, 0) AS precio_unit,
             COALESCE(NULLIF(i.marca,''), p.marca, '') AS marca_final,
             COALESCE(NULLIF(i.hilo,''), p.hilo, '') AS hilo_final,
-            COALESCE(NULLIF(i.color,''), p.color, '') AS color_final
+            COALESCE(NULLIF(i.color,''), p.color, '') AS color_final,
+            COALESCE(p.volumetrico,0) AS volumetrico
         FROM items i
         LEFT JOIN LATERAL (
             SELECT p2.*
@@ -5132,6 +5134,7 @@ def _nota_full(db, nota_id):
             "color": d.get("color_final") or "",
             "cantidad": cantidad,
             "precio": precio,
+            "volumetrico": float(d.get("volumetrico") or 0),
         }
         key = (
             item["codigo"].strip(),
@@ -13059,7 +13062,7 @@ def whatsapp_ia_simular_v27():
             memoria=memoria_previa,
             callbacks={
                 'buscar_recurso': _wa_v27_buscar_recurso,
-                'cotizar_envio': _wa_v27_cotizar_envio,
+                'cotizar_envio': (lambda cp, contexto, _payload=payload: _wa_v27_cotizar_envio(cp, dict(contexto or {}, __payload=_payload))),
             },
         )
         respuesta = _wa_v22_sanitizar_respuesta_publica(resultado.get('respuesta') or '')
@@ -13291,3 +13294,1126 @@ def favicon_v26():
     except Exception:
         pass
     return ('', 204)
+
+# ==========================================================
+# V49 - Envíos Hilorama: precios públicos por tabla propia
+# ==========================================================
+# Envia.com se usa para consultar si hay tarifa/zona/reexpedición.
+# La respuesta al cliente NO debe usar el precio bajo de Envia como precio público.
+# Debe usar la tabla de Hilorama y, si detecta reexpedición, sumar diferencia + extra.
+
+try:
+    ENVIA_V24_REF_PRECIOS.update({
+        'correosdemexico': 110.0,
+        'correos': 110.0,
+        'estafeta': 199.0,
+        'fedex': 260.0,
+        'dhl': 269.0,
+    })
+except Exception:
+    pass
+
+
+def _envia_v49_norm_carrier(carrier):
+    c = re.sub(r'\s+', '', str(carrier or '').strip().lower())
+    alias = {
+        'correosdemexico': 'correos',
+        'correosdeméxico': 'correos',
+        'correosmexico': 'correos',
+        'correos': 'correos',
+        'estafeta': 'estafeta',
+        'fedex': 'fedex',
+        'fedexmexico': 'fedex',
+        'dhl': 'dhl',
+        'paquetexpress': 'paquetexpress',
+        'paqueteexpress': 'paquetexpress',
+    }
+    return alias.get(c, c)
+
+
+def _envia_v49_nombre_publico(carrier):
+    c = _envia_v49_norm_carrier(carrier)
+    nombres = {
+        'correos': 'Correos de México',
+        'estafeta': 'Estafeta',
+        'fedex': 'FedEx',
+        'dhl': 'DHL',
+        'paquetexpress': 'Paquetexpress',
+    }
+    return nombres.get(c, ENVIA_V24_NOMBRES.get(c, str(carrier or 'Paquetería').title()))
+
+
+def _envia_v49_float_env(name, default):
+    try:
+        return float(str(os.environ.get(name, default)).strip() or default)
+    except Exception:
+        return float(default)
+
+
+def _envia_v49_volumetrico_kg(paquete):
+    paquete = paquete or {}
+    dims = paquete.get('dimensions') or {}
+    try:
+        real = float(paquete.get('weight') or 0)
+    except Exception:
+        real = 0.0
+    try:
+        l = float(dims.get('length') or 0)
+        w = float(dims.get('width') or 0)
+        h = float(dims.get('height') or 0)
+        vol = (l * w * h) / 5000.0 if l and w and h else 0.0
+    except Exception:
+        vol = 0.0
+    return round(max(real, vol, 1.0), 2)
+
+
+def _envia_v49_tabla_precios():
+    """Tabla pública de Hilorama. Se puede sobreescribir con ENVIA_PUBLIC_PRICE_TABLE_JSON."""
+    raw = os.environ.get('ENVIA_PUBLIC_PRICE_TABLE_JSON') or ''
+    if raw.strip():
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict):
+                return obj
+        except Exception as exc:
+            print('WARN ENVIA_PUBLIC_PRICE_TABLE_JSON inválido:', exc, flush=True)
+    return {
+        # 1 a 5 kg volumétricos
+        'correos': [{'max_kg': 5, 'precio': 110}],
+        'estafeta': [{'max_kg': 5, 'precio': 199}],
+        'fedex': [{'max_kg': 5, 'precio': 260}],
+        'dhl': [{'max_kg': 5, 'precio': 269}],
+    }
+
+
+def _envia_v49_precio_base_publico(carrier, kg):
+    c = _envia_v49_norm_carrier(carrier)
+    tabla = _envia_v49_tabla_precios()
+    tiers = tabla.get(c) or []
+    try:
+        kg = float(kg or 1)
+    except Exception:
+        kg = 1.0
+    for tier in tiers:
+        try:
+            if kg <= float(tier.get('max_kg') or 0):
+                return float(tier.get('precio') or 0)
+        except Exception:
+            continue
+    if tiers:
+        try:
+            return float(tiers[-1].get('precio') or 0)
+        except Exception:
+            pass
+    ref = ENVIA_V24_REF_PRECIOS.get(c)
+    return float(ref or 0)
+
+
+def _envia_v49_public_carriers(carriers=None, opciones_envia=None):
+    raw = os.environ.get('ENVIA_PUBLIC_CARRIERS') or ''
+    if raw.strip():
+        base = [x for x in raw.split(',') if x.strip()]
+    else:
+        # Si no se define, mostramos las opciones comunes de Hilorama para cliente.
+        base = ['correos', 'estafeta', 'fedex']
+    # También mantenemos carriers que haya devuelto Envia, por si se usa DHL u otro.
+    for op in opciones_envia or []:
+        c = op.get('carrier') or op.get('paqueteria')
+        if c:
+            base.append(c)
+    out = []
+    for c in base:
+        cn = _envia_v49_norm_carrier(c)
+        if cn and cn not in out:
+            out.append(cn)
+    return out
+
+
+def _envia_v49_encontrar_op_envia(opciones, carrier):
+    cn = _envia_v49_norm_carrier(carrier)
+    candidatos = [op for op in (opciones or []) if _envia_v49_norm_carrier(op.get('carrier') or op.get('paqueteria')) == cn]
+    if not candidatos:
+        return None
+    return sorted(candidatos, key=lambda x: float(x.get('precio') or 999999))[0]
+
+
+def _envia_v49_opcion_publica(carrier, kg, live_op=None):
+    cn = _envia_v49_norm_carrier(carrier)
+    base_publico = _envia_v49_precio_base_publico(cn, kg)
+    if not base_publico:
+        return None
+    precio_envia = None
+    if live_op:
+        try:
+            precio_envia = float(live_op.get('precio') or 0)
+        except Exception:
+            precio_envia = None
+    margen = _envia_v49_float_env('ENVIA_REEXPEDICION_MARGIN_PCT', 25.0) / 100.0
+    extra = _envia_v49_float_env('ENVIA_REEXPEDICION_EXTRA', 50.0)
+    posible_reexp = False
+    reexp_monto = 0.0
+    precio_publico = base_publico
+    if precio_envia and precio_envia > base_publico * (1.0 + margen):
+        posible_reexp = True
+        reexp_monto = max(0.0, precio_envia - base_publico)
+        precio_publico = base_publico + reexp_monto + extra
+    return {
+        'carrier': cn,
+        'paqueteria': _envia_v49_nombre_publico(cn),
+        'service': (live_op or {}).get('service') or '',
+        'servicio': (live_op or {}).get('servicio') or '',
+        'entrega': (live_op or {}).get('entrega') or '',
+        'moneda': (live_op or {}).get('moneda') or 'MXN',
+        'precio_envia': round(float(precio_envia or 0), 2),
+        'precio': round(float(precio_publico), 2),
+        'precio_publico': round(float(precio_publico), 2),
+        'precio_base_publico': round(float(base_publico), 2),
+        'peso_volumetrico_kg': kg,
+        'posible_reexpedicion': bool(posible_reexp),
+        'reexpedicion_monto_estimado': round(float(reexp_monto), 2),
+        'extra_reexpedicion': round(float(extra if posible_reexp else 0), 2),
+        'verificado_envia': bool(live_op),
+        'modo_precio': 'tabla_hilorama_manual',
+    }
+
+
+try:
+    _envia_v49_cotizar_anterior = cotizar_envio_envia
+except Exception:
+    _envia_v49_cotizar_anterior = None
+
+
+def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, ancho_cm=None, alto_cm=None, carriers=None):
+    """V49: cotiza en Envia para validar zona, pero regresa precio público Hilorama."""
+    if not _envia_v49_cotizar_anterior:
+        return {'ok': False, 'error': 'cotizador anterior no disponible', 'opciones': [], 'modo': 'TABLA_HILORAMA'}
+    resp = _envia_v49_cotizar_anterior(cp_destino, piezas=piezas, peso_kg=peso_kg, largo_cm=largo_cm, ancho_cm=ancho_cm, alto_cm=alto_cm, carriers=carriers)
+    try:
+        paquete = (resp or {}).get('paquete') or _envia_v24_package(piezas, peso_kg, largo_cm, ancho_cm, alto_cm)
+        kg = _envia_v49_volumetrico_kg(paquete)
+        raw_ops = list((resp or {}).get('opciones') or [])
+        public_ops = []
+        for c in _envia_v49_public_carriers(carriers, raw_ops):
+            op_live = _envia_v49_encontrar_op_envia(raw_ops, c)
+            op_pub = _envia_v49_opcion_publica(c, kg, op_live)
+            if op_pub:
+                public_ops.append(op_pub)
+        # Orden preferido por tienda, no por precio de Envia.
+        orden = {'correos': 1, 'estafeta': 2, 'fedex': 3, 'dhl': 4, 'paquetexpress': 5}
+        public_ops = sorted(public_ops, key=lambda x: (orden.get(x.get('carrier'), 99), float(x.get('precio') or 0)))
+        if public_ops:
+            resp = dict(resp or {})
+            resp['opciones_envia'] = raw_ops
+            resp['opciones'] = public_ops
+            resp['ok'] = True
+            resp['modo_precios'] = 'TABLA_HILORAMA_MANUAL_REEXPEDICION'
+            resp['peso_volumetrico_kg'] = kg
+            resp['nota_precios'] = 'Precio público basado en tabla Hilorama; Envia solo valida zona/reexpedición.'
+    except Exception as exc:
+        print('WARN V49 precio público envíos:', exc, flush=True)
+    return resp
+
+
+def _envia_v49_formato_publico(cp, cotizacion):
+    opciones = (cotizacion or {}).get('opciones') or []
+    if not opciones:
+        return (
+            f"Con el CP {cp} necesito revisar el envío manualmente 😊 "
+            "No me aparecen opciones automáticas seguras en este momento."
+        )
+    lineas = []
+    vistos = set()
+    for op in opciones[:6]:
+        nombre = op.get('paqueteria') or op.get('carrier') or 'Paquetería'
+        precio = float(op.get('precio_publico') or op.get('precio') or 0)
+        moneda = op.get('moneda') or 'MXN'
+        key = (str(nombre).lower(), round(precio, 2))
+        if key in vistos:
+            continue
+        vistos.add(key)
+        desc = f"- {nombre}: ${precio:,.2f} {moneda}"
+        if op.get('posible_reexpedicion'):
+            desc += " (zona con posible reexpedición, ya requiere confirmar)"
+        elif op.get('entrega'):
+            desc += f" - {op.get('entrega')}"
+        lineas.append(desc)
+    kg = (cotizacion or {}).get('peso_volumetrico_kg')
+    kg_txt = f" para paquete de hasta {kg:g} kg volumétricos" if kg else ""
+    extra = ''
+    if any(op.get('posible_reexpedicion') for op in opciones):
+        extra = "\n\nOjo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final."
+    return (
+        f"Con el CP {cp} le puedo manejar estas opciones de envío{kg_txt}:\n"
+        + "\n".join(lineas)
+        + "\n\n¿Cuál le gustaría usar?"
+        + extra
+    )
+
+
+# Reemplazamos los formateadores usados por el agente WhatsApp y por /api/envios/cotizar.
+_envia_v24_formato_publico = _envia_v49_formato_publico
+_wa_v27_envio_formato_publico = _envia_v49_formato_publico
+
+
+# ==========================================================
+# V50 - Envíos Hilorama por PESO VOLUMÉTRICO REAL DEL PEDIDO
+# ==========================================================
+# Reglas:
+# - Cada producto puede traer productos.volumetrico.
+# - Si no trae valor, se usan respaldos seguros por tipo de hilo.
+# - 35 Velluto ~= 5 kg volumétricos.
+# - La tabla pública cobra por tramo de kg volumétricos, hasta 15 kg.
+# - Si pasa de 15 kg volumétricos, NO se da precio automático: se manda a revisión.
+
+
+def _envia_v50_float_env(name, default):
+    try:
+        return float(str(os.environ.get(name, default)).strip() or default)
+    except Exception:
+        return float(default)
+
+
+def _envia_v50_int_env(name, default):
+    try:
+        return int(float(str(os.environ.get(name, default)).strip() or default))
+    except Exception:
+        return int(default)
+
+
+# Sobrescribe la tabla V49 con tramos hasta 15 kg volumétricos.
+# Puedes cambiarla en Render con ENVIA_PUBLIC_PRICE_TABLE_JSON.
+def _envia_v49_tabla_precios():
+    raw = os.environ.get('ENVIA_PUBLIC_PRICE_TABLE_JSON') or ''
+    if raw.strip():
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict):
+                return obj
+        except Exception as exc:
+            print('WARN ENVIA_PUBLIC_PRICE_TABLE_JSON inválido:', exc, flush=True)
+    return {
+        # Tramos default si no capturas tabla en Render.
+        # Ajustables: para precios reales coloca ENVIA_PUBLIC_PRICE_TABLE_JSON.
+        'correos': [
+            {'max_kg': 5, 'precio': 110},
+            {'max_kg': 10, 'precio': 220},
+            {'max_kg': 15, 'precio': 330},
+        ],
+        'estafeta': [
+            {'max_kg': 5, 'precio': 199},
+            {'max_kg': 10, 'precio': 398},
+            {'max_kg': 15, 'precio': 597},
+        ],
+        'fedex': [
+            {'max_kg': 5, 'precio': 260},
+            {'max_kg': 10, 'precio': 520},
+            {'max_kg': 15, 'precio': 780},
+        ],
+        'dhl': [
+            {'max_kg': 5, 'precio': 269},
+            {'max_kg': 10, 'precio': 538},
+            {'max_kg': 15, 'precio': 807},
+        ],
+    }
+
+
+def _envia_v50_unidad_volumetrica_por_item(item):
+    """Devuelve kg volumétricos por pieza. Usa productos.volumetrico si existe."""
+    item = item or {}
+    for k in ('volumetrico', 'peso_volumetrico', 'volumetrico_kg', 'peso_volumetrico_kg'):
+        try:
+            v = float(item.get(k) or 0)
+            if v > 0:
+                return v, f'campo_{k}'
+        except Exception:
+            pass
+
+    texto = ' '.join(str(item.get(k) or '') for k in ('marca', 'hilo', 'color', 'codigo', 'nombre')).lower()
+    # 35 Velluto = 5 kg volumétricos -> 0.142857 kg volumétricos por madeja.
+    if 'velluto' in texto or 'veluto' in texto or 'belluto' in texto:
+        return _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0), 'fallback_velluto_35pzas_5kg'
+    if 'komfy' in texto or 'comfy' in texto or 'komfi' in texto:
+        # Con este valor: 34 Velluto + 2 Komfy Mini sigue cayendo en 5 kg.
+        return _envia_v50_float_env('ENVIA_VOL_KOMFY_MINI', 0.07), 'fallback_komfy_mini'
+    if 'trapillo' in texto:
+        return _envia_v50_float_env('ENVIA_VOL_TRAPILLO', 0.50), 'fallback_trapillo'
+    if 'relleno' in texto:
+        return _envia_v50_float_env('ENVIA_VOL_RELLENO', 0.50), 'fallback_relleno'
+    return _envia_v50_float_env('ENVIA_VOL_DEFAULT', 0.10), 'fallback_default'
+
+
+def _envia_v50_cantidad_item(item):
+    try:
+        q = int(float((item or {}).get('cantidad') or 0))
+    except Exception:
+        q = 0
+    return max(q, 0)
+
+
+def _envia_v50_db_items_por_nota(nota_id):
+    nota_id = str(nota_id or '').strip()
+    if not nota_id:
+        return []
+    try:
+        with DB() as db:
+            rows = db.execute("""
+                SELECT
+                    COALESCE(i.producto_id, p.id) AS producto_id,
+                    i.codigo,
+                    COALESCE(NULLIF(i.marca,''), p.marca, '') AS marca,
+                    COALESCE(NULLIF(i.hilo,''), p.hilo, '') AS hilo,
+                    COALESCE(NULLIF(i.color,''), p.color, '') AS color,
+                    COALESCE(SUM(i.cantidad),0) AS cantidad,
+                    COALESCE(MAX(p.volumetrico),0) AS volumetrico
+                FROM items i
+                LEFT JOIN LATERAL (
+                    SELECT p2.*
+                    FROM productos p2
+                    WHERE
+                        (i.producto_id IS NOT NULL AND p2.id=i.producto_id)
+                        OR (
+                            i.producto_id IS NULL
+                            AND (p2.codigo=i.codigo OR p2.codigo_barras=i.codigo)
+                            AND (NULLIF(i.marca,'') IS NULL OR UPPER(COALESCE(p2.marca,''))=UPPER(i.marca))
+                            AND (NULLIF(i.hilo,'') IS NULL OR UPPER(COALESCE(p2.hilo,''))=UPPER(i.hilo))
+                            AND (NULLIF(i.color,'') IS NULL OR UPPER(COALESCE(p2.color,''))=UPPER(i.color))
+                        )
+                    ORDER BY
+                        CASE WHEN i.producto_id IS NOT NULL AND p2.id=i.producto_id THEN 0 ELSE 1 END,
+                        COALESCE(p2.stock,0) DESC,
+                        p2.id
+                    LIMIT 1
+                ) p ON TRUE
+                WHERE i.nota_id=%s
+                GROUP BY COALESCE(i.producto_id, p.id), i.codigo,
+                    COALESCE(NULLIF(i.marca,''), p.marca, ''),
+                    COALESCE(NULLIF(i.hilo,''), p.hilo, ''),
+                    COALESCE(NULLIF(i.color,''), p.color, '')
+                ORDER BY MIN(i.id)
+            """, (nota_id,)).fetchall()
+            return [dict(r) for r in rows]
+    except Exception as exc:
+        print('WARN V50 items nota envío:', exc, flush=True)
+        return []
+
+
+def _envia_v50_enriquecer_items(items):
+    """Completa volumetrico desde DB si el item viene del carrito sin ese dato."""
+    items = list(items or [])
+    if not items:
+        return []
+    out = []
+    try:
+        with DB() as db:
+            for it in items:
+                d = dict(it or {})
+                tiene_vol = False
+                for k in ('volumetrico', 'peso_volumetrico', 'volumetrico_kg', 'peso_volumetrico_kg'):
+                    try:
+                        if float(d.get(k) or 0) > 0:
+                            tiene_vol = True
+                            break
+                    except Exception:
+                        pass
+                if not tiene_vol:
+                    pid = d.get('producto_id') or d.get('id')
+                    codigo = str(d.get('codigo') or '').strip()
+                    marca = str(d.get('marca') or '').strip()
+                    hilo = str(d.get('hilo') or '').strip()
+                    color = str(d.get('color') or '').strip()
+                    row = None
+                    try:
+                        if pid not in (None, ''):
+                            row = db.execute("""
+                                SELECT id AS producto_id, codigo, marca, hilo, color, COALESCE(volumetrico,0) AS volumetrico
+                                FROM productos WHERE id=%s LIMIT 1
+                            """, (int(pid),)).fetchone()
+                    except Exception:
+                        row = None
+                    if row is None and codigo:
+                        row = db.execute("""
+                            SELECT id AS producto_id, codigo, marca, hilo, color, COALESCE(volumetrico,0) AS volumetrico
+                            FROM productos
+                            WHERE (codigo=%s OR codigo_barras=%s)
+                              AND (%s='' OR UPPER(COALESCE(marca,''))=UPPER(%s))
+                              AND (%s='' OR UPPER(COALESCE(hilo,''))=UPPER(%s))
+                              AND (%s='' OR UPPER(COALESCE(color,''))=UPPER(%s))
+                            ORDER BY COALESCE(stock,0) DESC, id
+                            LIMIT 1
+                        """, (codigo, codigo, marca, marca, hilo, hilo, color, color)).fetchone()
+                    if row:
+                        rr = dict(row)
+                        for k in ('producto_id','codigo','marca','hilo','color','volumetrico'):
+                            if d.get(k) in (None, '', 0, 0.0):
+                                d[k] = rr.get(k)
+                out.append(d)
+    except Exception as exc:
+        print('WARN V50 enriquecer items envío:', exc, flush=True)
+        return items
+    return out
+
+
+def _envia_v50_parse_items_param(value):
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            obj = json.loads(value)
+            if isinstance(obj, list):
+                return obj
+        except Exception:
+            return []
+    return []
+
+
+def _envia_v50_plan_volumetrico(items=None, nota_id=None, piezas=None):
+    items = _envia_v50_parse_items_param(items)
+    origen = 'items_request'
+    if not items and nota_id:
+        items = _envia_v50_db_items_por_nota(nota_id)
+        origen = f'nota_{nota_id}'
+    items = _envia_v50_enriquecer_items(items)
+
+    detalle = []
+    total = 0.0
+    for it in items:
+        q = _envia_v50_cantidad_item(it)
+        if q <= 0:
+            continue
+        unidad, fuente = _envia_v50_unidad_volumetrica_por_item(it)
+        subtotal = q * unidad
+        total += subtotal
+        detalle.append({
+            'producto_id': it.get('producto_id') or it.get('id'),
+            'codigo': str(it.get('codigo') or ''),
+            'marca': str(it.get('marca') or ''),
+            'hilo': str(it.get('hilo') or ''),
+            'color': str(it.get('color') or ''),
+            'cantidad': q,
+            'volumetrico_unitario': round(float(unidad), 6),
+            'volumetrico_total': round(float(subtotal), 6),
+            'fuente_volumetrico': fuente,
+        })
+
+    if not detalle:
+        # Si no hay carrito/nota, se estima por piezas. Sirve para consultas generales de envío.
+        try:
+            piezas_i = int(float(piezas or 0))
+        except Exception:
+            piezas_i = 0
+        if piezas_i > 0:
+            unidad = _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0)
+            total = piezas_i * unidad
+            detalle.append({
+                'codigo': '', 'marca': '', 'hilo': 'estimado', 'color': '',
+                'cantidad': piezas_i,
+                'volumetrico_unitario': round(float(unidad), 6),
+                'volumetrico_total': round(float(total), 6),
+                'fuente_volumetrico': 'estimado_piezas_velluto',
+            })
+            origen = 'piezas_estimadas'
+
+    kg_raw = round(float(total), 6) if total > 0 else 1.0
+    kg_facturable = int(math.ceil(kg_raw)) if kg_raw > 0 else 1
+    kg_facturable = max(1, kg_facturable)
+    tramo = int(math.ceil(kg_facturable / 5.0) * 5)
+    max_auto = _envia_v50_int_env('ENVIA_MAX_AUTO_VOLUMETRIC_KG', 15)
+    return {
+        'origen': origen,
+        'items_detalle': detalle,
+        'volumetrico_total_raw': kg_raw,
+        'peso_volumetrico_kg': kg_facturable,
+        'tramo_kg': tramo,
+        'max_auto_kg': max_auto,
+        'requiere_humano': kg_facturable > max_auto,
+        'motivo_humano': 'peso_volumetrico_mayor_a_15kg' if kg_facturable > max_auto else '',
+    }
+
+
+def _envia_v50_dims_para_kg(kg):
+    try:
+        kg = max(1.0, float(kg or 1))
+    except Exception:
+        kg = 1.0
+    # Caja estable: 50 x 25 x alto. Alto calculado para que L*W*H/5000 = kg.
+    largo = _envia_v50_float_env('ENVIA_BOX_LENGTH_CM', 50.0)
+    ancho = _envia_v50_float_env('ENVIA_BOX_WIDTH_CM', 25.0)
+    alto = max(5.0, math.ceil((kg * 5000.0) / max(1.0, largo * ancho)))
+    return largo, ancho, alto
+
+
+try:
+    _envia_v50_cotizar_anterior = cotizar_envio_envia
+except Exception:
+    _envia_v50_cotizar_anterior = None
+
+
+def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, ancho_cm=None, alto_cm=None, carriers=None, items=None, nota_id=None):
+    plan = _envia_v50_plan_volumetrico(items=items, nota_id=nota_id, piezas=piezas)
+    kg = plan.get('peso_volumetrico_kg') or 1
+    # Si el usuario manda peso/dimensiones explícitas, se respeta; si no, se calcula del pedido.
+    if not peso_kg and not (largo_cm and ancho_cm and alto_cm):
+        largo_cm, ancho_cm, alto_cm = _envia_v50_dims_para_kg(kg)
+        peso_kg = kg
+
+    if not _envia_v50_cotizar_anterior:
+        resp = {'ok': False, 'error': 'cotizador anterior no disponible', 'opciones': [], 'modo': 'TABLA_HILORAMA_V50'}
+    else:
+        resp = _envia_v50_cotizar_anterior(
+            cp_destino,
+            piezas=piezas,
+            peso_kg=peso_kg,
+            largo_cm=largo_cm,
+            ancho_cm=ancho_cm,
+            alto_cm=alto_cm,
+            carriers=carriers,
+        )
+    resp = dict(resp or {})
+    resp['volumetrico'] = plan
+    resp['peso_volumetrico_kg'] = kg
+    resp['tramo_kg'] = plan.get('tramo_kg')
+    resp['modo_precios'] = 'TABLA_HILORAMA_VOLUMETRICO_V50'
+
+    if plan.get('requiere_humano'):
+        resp['ok'] = True
+        resp['requiere_humano'] = True
+        resp['alerta_envio_mayor_15kg'] = True
+        resp['motivo_humano'] = plan.get('motivo_humano')
+        resp['opciones_auto_bloqueadas'] = resp.get('opciones') or []
+        resp['opciones'] = []
+        resp['mensaje_admin'] = (
+            f"Pedido de {kg} kg volumétricos, mayor al límite automático de {plan.get('max_auto_kg')} kg. "
+            "Revisar precio manual y posible reexpedición antes de responder."
+        )
+    return resp
+
+
+# Reemplazo del endpoint público de cotización para aceptar items/nota_id.
+def api_envios_cotizar_v50():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args.to_dict(flat=True)
+    cp = data.get('cp_destino') or data.get('cp') or data.get('codigo_postal') or data.get('postalCode') or ''
+    carriers_raw = data.get('carriers') or data.get('paqueterias') or ''
+    carriers = None
+    if carriers_raw:
+        if isinstance(carriers_raw, str):
+            carriers = [re.sub(r'\s+', '', c.strip().lower()) for c in carriers_raw.split(',') if c.strip()]
+        elif isinstance(carriers_raw, list):
+            carriers = [re.sub(r'\s+', '', str(c).strip().lower()) for c in carriers_raw if str(c).strip()]
+    items = data.get('items') or data.get('items_envio') or []
+    if isinstance(items, str):
+        items = _envia_v50_parse_items_param(items)
+    if not items:
+        atajos = []
+        try:
+            v = int(float(data.get('velluto') or data.get('vellutos') or 0))
+        except Exception:
+            v = 0
+        try:
+            k = int(float(data.get('komfy') or data.get('komfy_mini') or data.get('komfi') or 0))
+        except Exception:
+            k = 0
+        if v:
+            atajos.append({'hilo': 'VELLUTO', 'codigo': 'VELLUTO_TEST', 'cantidad': v})
+        if k:
+            atajos.append({'hilo': 'KOMFY MINI', 'codigo': 'KOMFY_TEST', 'cantidad': k})
+        items = atajos
+    result = cotizar_envio_envia(
+        cp,
+        piezas=data.get('piezas'),
+        peso_kg=data.get('peso_kg') or data.get('peso'),
+        largo_cm=data.get('largo_cm') or data.get('largo'),
+        ancho_cm=data.get('ancho_cm') or data.get('ancho'),
+        alto_cm=data.get('alto_cm') or data.get('alto'),
+        carriers=carriers,
+        items=items,
+        nota_id=data.get('nota_id') or data.get('nota'),
+    )
+    status = 200 if result.get('ok') or result.get('opciones') else 400
+    return jsonify(json_safe(result)), status
+
+
+try:
+    app.view_functions['api_envios_cotizar_v24'] = api_envios_cotizar_v50
+except Exception as exc:
+    print('WARN V50 reemplazo endpoint cotizar:', exc, flush=True)
+
+
+@app.route('/api/envios/debug-volumetrico', methods=['GET', 'POST'])
+def api_envios_debug_volumetrico_v50():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args.to_dict(flat=True)
+    items = data.get('items') or data.get('items_envio') or []
+    if isinstance(items, str):
+        items = _envia_v50_parse_items_param(items)
+    # Atajos para probar sin armar carrito.
+    if not items:
+        atajos = []
+        try:
+            v = int(float(data.get('velluto') or data.get('vellutos') or 0))
+        except Exception:
+            v = 0
+        try:
+            k = int(float(data.get('komfy') or data.get('komfy_mini') or data.get('komfi') or 0))
+        except Exception:
+            k = 0
+        if v:
+            atajos.append({'hilo': 'VELLUTO', 'codigo': 'VELLUTO_TEST', 'cantidad': v})
+        if k:
+            atajos.append({'hilo': 'KOMFY MINI', 'codigo': 'KOMFY_TEST', 'cantidad': k})
+        items = atajos
+    plan = _envia_v50_plan_volumetrico(
+        items=items,
+        nota_id=data.get('nota_id') or data.get('nota'),
+        piezas=data.get('piezas'),
+    )
+    tabla = _envia_v49_tabla_precios()
+    precios_tramo = {}
+    for carrier in _envia_v49_public_carriers():
+        precios_tramo[carrier] = _envia_v49_precio_base_publico(carrier, plan.get('peso_volumetrico_kg'))
+    return jsonify(json_safe({
+        'ok': True,
+        'modo': 'V50_DEBUG_VOLUMETRICO_NO_GUIAS',
+        'plan_volumetrico': plan,
+        'tabla_precios': tabla,
+        'precios_para_tramo': precios_tramo,
+        'ejemplos': {
+            '35_vellutos': '/api/envios/debug-volumetrico?velluto=35&pin=TU_PIN',
+            '34_vellutos_2_komfy': '/api/envios/debug-volumetrico?velluto=34&komfy=2&pin=TU_PIN',
+            'cotizar_nota': '/api/envios/cotizar?cp=97000&nota_id=COT-XXX&pin=TU_PIN',
+        }
+    }))
+
+
+def _envia_v50_formato_publico(cp, cotizacion):
+    cotizacion = cotizacion or {}
+    if cotizacion.get('alerta_envio_mayor_15kg'):
+        kg = cotizacion.get('peso_volumetrico_kg') or (cotizacion.get('volumetrico') or {}).get('peso_volumetrico_kg')
+        max_auto = (cotizacion.get('volumetrico') or {}).get('max_auto_kg') or 15
+        return (
+            f"Con el CP {cp}, este pedido queda en aproximadamente {kg:g} kg volumétricos. "
+            f"Como pasa de {max_auto:g} kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. "
+            "También reviso si su zona trae reexpedición y le confirmo el costo final."
+        )
+    return _envia_v49_formato_publico(cp, cotizacion)
+
+
+_envia_v24_formato_publico = _envia_v50_formato_publico
+_wa_v27_envio_formato_publico = _envia_v50_formato_publico
+
+
+# Reemplazo de cotización WhatsApp para pasar carrito/nota actual desde la UI al cotizador.
+def _wa_v27_cotizar_envio(cp, contexto):
+    cp = re.sub(r'\D+', '', str(cp or ''))
+    if not re.fullmatch(r'\d{5}', cp):
+        return {'respuesta': "Claro 😊 para decirle el costo exacto de envío necesito su código postal."}
+    contexto = contexto or {}
+    payload = contexto.get('__payload') or {}
+    items_envio = payload.get('items_envio') or payload.get('items') or []
+    nota_id = payload.get('nota_id') or payload.get('nota') or ''
+    try:
+        piezas = _wa_v27_piezas_desde_memoria(contexto)
+    except Exception:
+        piezas = None
+    try:
+        cot = cotizar_envio_envia(cp, piezas=piezas, items=items_envio, nota_id=nota_id)
+        if cot.get('ok') and (cot.get('opciones') or cot.get('alerta_envio_mayor_15kg')):
+            out = {'respuesta': _wa_v27_envio_formato_publico(cp, cot), 'cotizacion': cot}
+            if cot.get('requiere_humano'):
+                out.update({
+                    'requiere_humano': True,
+                    'tipo_decision': 'envio_peso_volumetrico_alto',
+                    'resumen_para_admin': cot.get('mensaje_admin') or f'Revisar envío manual para CP {cp}.',
+                    'opciones_sugeridas': ['Revisar tabla manual', 'Revisar reexpedición', 'Confirmar costo final'],
+                })
+            return out
+        if _envia_v24_config().get('enabled'):
+            return {
+                'respuesta': (
+                    f"Con el CP {cp} necesito revisar el envío manualmente 😊 "
+                    "No me aparece una tarifa automática segura en este momento."
+                ),
+                'cotizacion': cot,
+                'requiere_humano': True,
+                'tipo_decision': 'envio_sin_tarifa_segura',
+                'resumen_para_admin': f'Envia.com no regresó una tarifa segura para el CP {cp}. Revisar envío manualmente.',
+                'opciones_sugeridas': ['Revisar tarifa manual', 'Pedir datos de envío', 'Responder manualmente'],
+            }
+    except Exception as exc:
+        print('WARN cotizar envio WA v50:', exc, flush=True)
+    try:
+        return {'respuesta': _wa_v22_envio_opciones_texto(cp)}
+    except Exception:
+        return {
+            'respuesta': (
+                f"Con el CP {cp} necesito revisar el envío manualmente 😊 "
+                "No me aparece una tarifa automática segura en este momento."
+            ),
+            'requiere_humano': True,
+        }
+
+
+# ==========================================================
+# V51 - Envíos: usar volumétrico del almacén y tabla de precios del programa
+# ==========================================================
+# Corrección importante:
+# - NO debe calcular el volumen de productos reales por nombre si ya existe productos.volumetrico.
+# - Para carrito/nota real, el volumétrico se toma del producto en almacén.
+# - Si falta volumétrico en un producto real, se manda a revisión para no cobrar mal.
+# - La tabla de precios se intenta leer de tablas del programa/DB antes de usar respaldo.
+
+
+def _envia_v51_db_columns(table):
+    try:
+        with DB() as db:
+            rows = db.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name=%s
+                ORDER BY ordinal_position
+            """, (table,)).fetchall()
+            return [str(r.get('column_name') or '') for r in rows]
+    except Exception:
+        return []
+
+
+def _envia_v51_db_table_exists(table):
+    try:
+        with DB() as db:
+            row = db.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables WHERE table_name=%s
+                ) AS existe
+            """, (table,)).fetchone()
+            return bool(row and row.get('existe'))
+    except Exception:
+        return False
+
+
+def _envia_v51_pick_col(cols, opciones):
+    cols_l = {str(c).lower(): c for c in cols}
+    for op in opciones:
+        if op.lower() in cols_l:
+            return cols_l[op.lower()]
+    return ''
+
+
+def _envia_v51_tabla_precios_desde_db():
+    """Intenta encontrar la tabla de tarifas del programa de PC sin exigir un nombre exacto."""
+    candidatos = [
+        'envios_tarifas', 'tarifas_envio', 'envios_precios', 'precios_envio',
+        'paqueterias_tarifas', 'tarifas_paqueteria', 'paqueterias_precios',
+        'envios_config', 'config_envios'
+    ]
+    for tabla in candidatos:
+        if not _envia_v51_db_table_exists(tabla):
+            continue
+        cols = _envia_v51_db_columns(tabla)
+        if not cols:
+            continue
+        carrier_col = _envia_v51_pick_col(cols, ['carrier','paqueteria','paquetería','nombre','tipo','empresa','servicio'])
+        maxkg_col = _envia_v51_pick_col(cols, ['max_kg','kg_hasta','hasta_kg','peso_hasta','peso_max','max_peso','volumetrico_hasta','kg_volumetrico','tramo_kg','peso_volumetrico'])
+        precio_col = _envia_v51_pick_col(cols, ['precio','precio_publico','precio_cliente','costo','costo_envio','monto','tarifa','base'])
+        activo_col = _envia_v51_pick_col(cols, ['activo','enabled','habilitado','visible'])
+        if not (carrier_col and maxkg_col and precio_col):
+            continue
+        try:
+            where = ''
+            if activo_col:
+                where = f"WHERE COALESCE({activo_col}, TRUE)=TRUE"
+            sql = f"SELECT {carrier_col} AS carrier, {maxkg_col} AS max_kg, {precio_col} AS precio FROM {tabla} {where}"
+            with DB() as db:
+                rows = db.execute(sql).fetchall()
+            out = {}
+            for r in rows:
+                carrier = _envia_v49_norm_carrier(r.get('carrier'))
+                try:
+                    max_kg = float(r.get('max_kg') or 0)
+                    precio = float(r.get('precio') or 0)
+                except Exception:
+                    continue
+                if not carrier or max_kg <= 0 or precio <= 0:
+                    continue
+                out.setdefault(carrier, []).append({'max_kg': max_kg, 'precio': precio, 'fuente': f'db:{tabla}'})
+            for k in list(out.keys()):
+                out[k] = sorted(out[k], key=lambda x: float(x.get('max_kg') or 0))
+            if out:
+                return out, f'db:{tabla}'
+        except Exception as exc:
+            print('WARN V51 leer tabla tarifas DB:', tabla, exc, flush=True)
+    return {}, ''
+
+
+def _envia_v51_tabla_precios_desde_json_file():
+    candidatos = [Path(APP_DIR) / 'envios_config.json', Path(APP_DIR).parent / 'envios_config.json']
+    for path in candidatos:
+        try:
+            if not path.exists():
+                continue
+            data = json.loads(path.read_text(encoding='utf-8'))
+            if not isinstance(data, dict):
+                continue
+            out = {}
+            for nombre, cfg in data.items():
+                carrier = _envia_v49_norm_carrier(nombre)
+                if not carrier:
+                    continue
+                tiers = []
+                if isinstance(cfg, dict):
+                    raw_tiers = cfg.get('tramos') or cfg.get('tiers') or cfg.get('precios') or []
+                    if isinstance(raw_tiers, list):
+                        for t in raw_tiers:
+                            if not isinstance(t, dict):
+                                continue
+                            max_kg = t.get('max_kg') or t.get('kg_hasta') or t.get('hasta_kg') or t.get('peso_hasta') or t.get('tramo_kg')
+                            precio = t.get('precio') or t.get('precio_publico') or t.get('base') or t.get('costo')
+                            try:
+                                max_kg = float(max_kg or 0); precio = float(precio or 0)
+                            except Exception:
+                                continue
+                            if max_kg > 0 and precio > 0:
+                                tiers.append({'max_kg': max_kg, 'precio': precio, 'fuente': f'archivo:{path.name}'})
+                    if not tiers:
+                        base = cfg.get('base') or cfg.get('precio') or cfg.get('precio_publico')
+                        try:
+                            base = float(base or 0)
+                        except Exception:
+                            base = 0
+                        if base > 0:
+                            tiers.append({'max_kg': 5, 'precio': base, 'fuente': f'archivo:{path.name}:base'})
+                elif isinstance(cfg, (int, float)):
+                    if float(cfg) > 0:
+                        tiers.append({'max_kg': 5, 'precio': float(cfg), 'fuente': f'archivo:{path.name}:numero'})
+                if tiers:
+                    out[carrier] = sorted(tiers, key=lambda x: float(x.get('max_kg') or 0))
+            if out:
+                return out, f'archivo:{path.name}'
+        except Exception as exc:
+            print('WARN V51 leer envios_config.json:', exc, flush=True)
+    return {}, ''
+
+
+def _envia_v51_default_tabla_precios():
+    # Respaldo mínimo para no romper la app si aún no existe la tabla del programa.
+    # Cambia esto en DB/ENVIA_PUBLIC_PRICE_TABLE_JSON cuando confirmes tus tramos reales.
+    return {
+        'correos': [
+            {'max_kg': 5, 'precio': 110, 'fuente': 'default_v51'},
+        ],
+        'estafeta': [
+            {'max_kg': 5, 'precio': 199, 'fuente': 'default_v51'},
+        ],
+        'fedex': [
+            {'max_kg': 5, 'precio': 260, 'fuente': 'default_v51'},
+        ],
+        'dhl': [
+            {'max_kg': 5, 'precio': 269, 'fuente': 'default_v51'},
+        ],
+    }
+
+
+def _envia_v49_tabla_precios():
+    """V51: prioridad: Render JSON -> tabla del programa/DB -> envios_config.json -> respaldo."""
+    raw = os.environ.get('ENVIA_PUBLIC_PRICE_TABLE_JSON') or ''
+    if raw.strip():
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict):
+                return obj
+        except Exception as exc:
+            print('WARN ENVIA_PUBLIC_PRICE_TABLE_JSON inválido:', exc, flush=True)
+    db_tabla, fuente = _envia_v51_tabla_precios_desde_db()
+    if db_tabla:
+        return db_tabla
+    file_tabla, fuente = _envia_v51_tabla_precios_desde_json_file()
+    if file_tabla:
+        return file_tabla
+    return _envia_v51_default_tabla_precios()
+
+
+def _envia_v51_item_es_prueba_o_estimado(item):
+    item = item or {}
+    codigo = str(item.get('codigo') or '').upper()
+    return bool(
+        codigo.endswith('_TEST')
+        or item.get('_permitir_estimado')
+        or item.get('estimado')
+        or item.get('fuente') in ('debug', 'atajo_debug')
+    )
+
+
+def _envia_v50_unidad_volumetrica_por_item(item):
+    """V51: para productos reales, usar el volumétrico del almacén. No adivinar por nombre."""
+    item = item or {}
+    for k in ('volumetrico', 'peso_volumetrico', 'volumetrico_kg', 'peso_volumetrico_kg'):
+        try:
+            v = float(item.get(k) or 0)
+            if v > 0:
+                return v, f'almacen_{k}'
+        except Exception:
+            pass
+    if _envia_v51_item_es_prueba_o_estimado(item):
+        texto = ' '.join(str(item.get(k) or '') for k in ('marca', 'hilo', 'color', 'codigo', 'nombre')).lower()
+        if 'velluto' in texto or 'veluto' in texto or 'belluto' in texto:
+            return _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0), 'estimado_debug_velluto'
+        if 'komfy' in texto or 'comfy' in texto or 'komfi' in texto:
+            return _envia_v50_float_env('ENVIA_VOL_KOMFY_MINI', 0.07), 'estimado_debug_komfy'
+        return _envia_v50_float_env('ENVIA_VOL_DEFAULT', 0.10), 'estimado_debug_default'
+    return None, 'sin_volumetrico_en_almacen'
+
+
+def _envia_v50_plan_volumetrico(items=None, nota_id=None, piezas=None):
+    items = _envia_v50_parse_items_param(items)
+    origen = 'items_request'
+    if not items and nota_id:
+        items = _envia_v50_db_items_por_nota(nota_id)
+        origen = f'nota_{nota_id}'
+    items = _envia_v50_enriquecer_items(items)
+
+    detalle = []
+    faltantes = []
+    total = 0.0
+    for it in items:
+        q = _envia_v50_cantidad_item(it)
+        if q <= 0:
+            continue
+        unidad, fuente = _envia_v50_unidad_volumetrica_por_item(it)
+        if unidad is None or float(unidad or 0) <= 0:
+            faltantes.append({
+                'producto_id': it.get('producto_id') or it.get('id'),
+                'codigo': str(it.get('codigo') or ''),
+                'marca': str(it.get('marca') or ''),
+                'hilo': str(it.get('hilo') or ''),
+                'color': str(it.get('color') or ''),
+                'cantidad': q,
+                'motivo': fuente,
+            })
+            continue
+        subtotal = q * float(unidad)
+        total += subtotal
+        detalle.append({
+            'producto_id': it.get('producto_id') or it.get('id'),
+            'codigo': str(it.get('codigo') or ''),
+            'marca': str(it.get('marca') or ''),
+            'hilo': str(it.get('hilo') or ''),
+            'color': str(it.get('color') or ''),
+            'cantidad': q,
+            'volumetrico_unitario': round(float(unidad), 6),
+            'volumetrico_total': round(float(subtotal), 6),
+            'fuente_volumetrico': fuente,
+        })
+
+    if not detalle and not faltantes:
+        try:
+            piezas_i = int(float(piezas or 0))
+        except Exception:
+            piezas_i = 0
+        # Solo consultas generales sin carrito: se puede dar precio base hasta 5 kg.
+        # No se usa para pedidos reales.
+        if piezas_i > 0:
+            unidad = _envia_v50_float_env('ENVIA_VOL_VELLUTO', 5.0 / 35.0)
+            total = piezas_i * unidad
+            detalle.append({
+                'codigo': '', 'marca': '', 'hilo': 'estimado_consulta_general', 'color': '',
+                'cantidad': piezas_i,
+                'volumetrico_unitario': round(float(unidad), 6),
+                'volumetrico_total': round(float(total), 6),
+                'fuente_volumetrico': 'estimado_sin_carrito',
+            })
+            origen = 'piezas_estimadas_sin_carrito'
+
+    kg_raw = round(float(total), 6) if total > 0 else 0.0
+    if kg_raw <= 0 and not faltantes:
+        kg_raw = 5.0  # consulta general de envío sin pedido: mostrar tramo base.
+    kg_facturable = int(math.ceil(kg_raw)) if kg_raw > 0 else 0
+    if kg_facturable > 0:
+        kg_facturable = max(1, kg_facturable)
+    tramo = int(math.ceil(max(kg_facturable, 1) / 5.0) * 5)
+    max_auto = _envia_v50_int_env('ENVIA_MAX_AUTO_VOLUMETRIC_KG', 15)
+    requiere_humano = bool(faltantes) or (kg_facturable > max_auto)
+    motivo = ''
+    if faltantes:
+        motivo = 'productos_sin_volumetrico_configurado'
+    elif kg_facturable > max_auto:
+        motivo = 'peso_volumetrico_mayor_a_15kg'
+    return {
+        'origen': origen,
+        'items_detalle': detalle,
+        'items_sin_volumetrico': faltantes,
+        'volumetrico_total_raw': kg_raw,
+        'peso_volumetrico_kg': kg_facturable or 5,
+        'tramo_kg': tramo,
+        'max_auto_kg': max_auto,
+        'requiere_humano': requiere_humano,
+        'motivo_humano': motivo,
+    }
+
+
+@app.route('/api/envios/debug-tablas', methods=['GET'])
+def api_envios_debug_tablas_v51():
+    tabla = _envia_v49_tabla_precios()
+    db_tabla, fuente_db = _envia_v51_tabla_precios_desde_db()
+    file_tabla, fuente_file = _envia_v51_tabla_precios_desde_json_file()
+    muestras = []
+    try:
+        with DB() as db:
+            rows = db.execute("""
+                SELECT id, codigo, marca, hilo, color, COALESCE(volumetrico,0) AS volumetrico
+                FROM productos
+                WHERE COALESCE(volumetrico,0) > 0
+                ORDER BY id
+                LIMIT 20
+            """).fetchall()
+            muestras = [dict(r) for r in rows]
+    except Exception as exc:
+        muestras = [{'error': str(exc)}]
+    return jsonify(json_safe({
+        'ok': True,
+        'modo': 'V51_DEBUG_TABLAS_ENVIO',
+        'tabla_precios_usada': tabla,
+        'fuente_db_detectada': fuente_db,
+        'hay_tabla_db_detectada': bool(db_tabla),
+        'fuente_archivo_detectada': fuente_file,
+        'hay_archivo_detectado': bool(file_tabla),
+        'tablas_db_buscadas': [
+            'envios_tarifas','tarifas_envio','envios_precios','precios_envio',
+            'paqueterias_tarifas','tarifas_paqueteria','paqueterias_precios',
+            'envios_config','config_envios'
+        ],
+        'productos_con_volumetrico_muestra': muestras,
+        'nota': 'Para pedidos reales se usa productos.volumetrico. Si un producto no tiene volumétrico, se manda a revisión manual.'
+    }))
+
+
+# V51: mejorar mensaje cuando falte volumétrico configurado en productos.
+def _envia_v50_formato_publico(cp, cotizacion):
+    cotizacion = cotizacion or {}
+    vol = cotizacion.get('volumetrico') or {}
+    if vol.get('motivo_humano') == 'productos_sin_volumetrico_configurado':
+        faltan = vol.get('items_sin_volumetrico') or []
+        lista = ', '.join([str(x.get('codigo') or x.get('color') or x.get('hilo') or 'producto') for x in faltan[:5]])
+        return (
+            f"Con el CP {cp} necesito revisar el envío manualmente 😊 "
+            f"porque hay productos sin peso volumétrico configurado en almacén"
+            + (f": {lista}." if lista else ".") +
+            " Así evitamos cobrarle mal."
+        )
+    if cotizacion.get('alerta_envio_mayor_15kg'):
+        kg = cotizacion.get('peso_volumetrico_kg') or vol.get('peso_volumetrico_kg')
+        max_auto = vol.get('max_auto_kg') or 15
+        return (
+            f"Con el CP {cp}, este pedido queda en aproximadamente {kg:g} kg volumétricos. "
+            f"Como pasa de {max_auto:g} kg volumétricos, necesito revisarle el envío manualmente para no cobrarle mal 😊. "
+            "También reviso si su zona trae reexpedición y le confirmo el costo final."
+        )
+    return _envia_v49_formato_publico(cp, cotizacion)
+
+
+_envia_v24_formato_publico = _envia_v50_formato_publico
+_wa_v27_envio_formato_publico = _envia_v50_formato_publico
