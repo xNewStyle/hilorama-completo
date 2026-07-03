@@ -14417,3 +14417,660 @@ def _envia_v50_formato_publico(cp, cotizacion):
 
 _envia_v24_formato_publico = _envia_v50_formato_publico
 _wa_v27_envio_formato_publico = _envia_v50_formato_publico
+
+# ==========================================================
+# V52 - Envíos: tabla y volumétrico REAL del programa de PC
+# ==========================================================
+# En el programa de escritorio Hilorama la lógica es:
+#   volumétrico_total = SUM(productos.volumetrico * cantidad)
+#   precio_envío = envios_config.json[paquetería][tabla][siguiente_tramo]
+# Donde envios_config.json usa tramos 50/100/150/... que equivalen a
+# 5/10/15 kg volumétricos comerciales, no a 50 kg reales.
+# Esta capa replica esa lógica para el agente de Hilorama en Render.
+
+
+def _envia_v52_float(value, default=0.0):
+    try:
+        return float(str(value).strip())
+    except Exception:
+        return float(default)
+
+
+def _envia_v52_int_env(name, default):
+    try:
+        return int(float(str(os.environ.get(name, default)).strip() or default))
+    except Exception:
+        return int(default)
+
+
+def _envia_v52_unidades_por_kg():
+    # En el programa de escritorio los tramos son 50/100/150.
+    # 50 = hasta 5 kg volumétricos comerciales.
+    return _envia_v52_float(os.environ.get('ENVIA_VOLUMETRIC_UNITS_PER_KG'), 10.0) or 10.0
+
+
+def _envia_v52_vol_a_kg(vol):
+    try:
+        return round(float(vol or 0) / _envia_v52_unidades_por_kg(), 2)
+    except Exception:
+        return 0.0
+
+
+def _envia_v52_kg_a_vol(kg):
+    try:
+        return float(kg or 0) * _envia_v52_unidades_por_kg()
+    except Exception:
+        return 0.0
+
+
+def _envia_v52_norm_carrier(nombre):
+    try:
+        return _envia_v49_norm_carrier(nombre)
+    except Exception:
+        n = _norm(str(nombre or '')).replace(' ', '')
+        if 'correo' in n: return 'correos'
+        if 'estafeta' in n: return 'estafeta'
+        if 'fedex' in n: return 'fedex'
+        if 'dhl' in n: return 'dhl'
+        return n
+
+
+def _envia_v52_nombre_publico(carrier):
+    nombres = {
+        'correos': 'Correos de México',
+        'estafeta': 'Estafeta',
+        'fedex': 'FedEx',
+        'dhl': 'DHL',
+        'entregapersonal': 'Entrega Personal',
+        'entregaentienda': 'Entrega en Tienda',
+        'entregatienda': 'Entrega en Tienda',
+    }
+    c = _envia_v52_norm_carrier(carrier)
+    try:
+        return nombres.get(c) or _envia_v49_nombre_publico(c)
+    except Exception:
+        return nombres.get(c) or str(carrier or 'Paquetería').title()
+
+
+def _envia_v52_buscar_envios_config_paths():
+    paths = []
+    try:
+        paths.append(Path(APP_DIR) / 'envios_config.json')
+        paths.append(Path(APP_DIR).parent / 'envios_config.json')
+    except Exception:
+        pass
+    # rutas por si Render se ejecuta desde raíz del repo
+    try:
+        paths.append(Path.cwd() / 'envios_config.json')
+        paths.append(Path.cwd() / 'hilorama_celular' / 'envios_config.json')
+    except Exception:
+        pass
+    seen = []
+    out = []
+    for p in paths:
+        s = str(p)
+        if s not in seen:
+            seen.append(s); out.append(p)
+    return out
+
+
+def _envia_v52_parse_tabla_envios_config(obj, fuente='envios_config.json'):
+    out = {}
+    if not isinstance(obj, dict):
+        return out
+    for nombre, cfg in obj.items():
+        carrier = _envia_v52_norm_carrier(nombre)
+        if not carrier or not isinstance(cfg, dict):
+            continue
+        tiers = []
+        tabla = cfg.get('tabla')
+        if isinstance(tabla, dict):
+            for k, precio in tabla.items():
+                max_vol = _envia_v52_float(k, 0)
+                precio_f = _envia_v52_float(precio, 0)
+                if max_vol > 0 and precio_f > 0:
+                    tiers.append({
+                        'max_volumetrico': max_vol,
+                        'max_kg': _envia_v52_vol_a_kg(max_vol),
+                        'precio': precio_f,
+                        'fuente': f'{fuente}:tabla',
+                    })
+        # Formatos alternativos por si después usas JSON de Render con lista de tramos.
+        raw_tiers = cfg.get('tramos') or cfg.get('tiers') or cfg.get('precios') or []
+        if isinstance(raw_tiers, list):
+            for t in raw_tiers:
+                if not isinstance(t, dict):
+                    continue
+                max_vol = t.get('max_volumetrico') or t.get('volumetrico_hasta') or t.get('hasta_volumetrico')
+                if not max_vol:
+                    kg = t.get('max_kg') or t.get('kg_hasta') or t.get('hasta_kg') or t.get('tramo_kg')
+                    max_vol = _envia_v52_kg_a_vol(kg)
+                precio = t.get('precio') or t.get('precio_publico') or t.get('base') or t.get('costo')
+                max_vol = _envia_v52_float(max_vol, 0)
+                precio_f = _envia_v52_float(precio, 0)
+                if max_vol > 0 and precio_f > 0:
+                    tiers.append({
+                        'max_volumetrico': max_vol,
+                        'max_kg': _envia_v52_vol_a_kg(max_vol),
+                        'precio': precio_f,
+                        'fuente': f'{fuente}:tramos',
+                    })
+        if not tiers:
+            base = _envia_v52_float(cfg.get('base') or cfg.get('precio') or cfg.get('precio_publico'), 0)
+            if base > 0:
+                max_vol = _envia_v52_kg_a_vol(5)
+                tiers.append({
+                    'max_volumetrico': max_vol,
+                    'max_kg': 5,
+                    'precio': base,
+                    'fuente': f'{fuente}:base',
+                })
+        if tiers:
+            # quitar duplicados y ordenar por volumétrico real del programa.
+            clean = {}
+            for t in tiers:
+                clean[float(t['max_volumetrico'])] = t
+            out[carrier] = [clean[k] for k in sorted(clean.keys())]
+    return out
+
+
+def _envia_v52_tabla_precios_desde_archivo():
+    for path in _envia_v52_buscar_envios_config_paths():
+        try:
+            if not path.exists():
+                continue
+            data = json.loads(path.read_text(encoding='utf-8'))
+            parsed = _envia_v52_parse_tabla_envios_config(data, f'archivo:{path.name}')
+            if parsed:
+                return parsed, str(path)
+        except Exception as exc:
+            print('WARN V52 leer envios_config:', path, exc, flush=True)
+    return {}, ''
+
+
+def _envia_v52_tabla_precios_desde_env():
+    raw = os.environ.get('ENVIA_PUBLIC_PRICE_TABLE_JSON') or ''
+    if not raw.strip():
+        return {}, ''
+    try:
+        obj = json.loads(raw)
+        parsed = _envia_v52_parse_tabla_envios_config(obj, 'env:ENVIA_PUBLIC_PRICE_TABLE_JSON')
+        if parsed:
+            return parsed, 'env:ENVIA_PUBLIC_PRICE_TABLE_JSON'
+    except Exception as exc:
+        print('WARN V52 ENVIA_PUBLIC_PRICE_TABLE_JSON inválido:', exc, flush=True)
+    return {}, ''
+
+
+def _envia_v52_tabla_precios():
+    env_tabla, env_fuente = _envia_v52_tabla_precios_desde_env()
+    if env_tabla:
+        return env_tabla
+    file_tabla, file_fuente = _envia_v52_tabla_precios_desde_archivo()
+    if file_tabla:
+        return file_tabla
+    # Respaldo mínimo, en unidades del programa: 50 = 5 kg.
+    return {
+        'correos': [{'max_volumetrico': 50, 'max_kg': 5, 'precio': 110, 'fuente': 'default_v52'}],
+        'estafeta': [{'max_volumetrico': 50, 'max_kg': 5, 'precio': 199, 'fuente': 'default_v52'}],
+        'fedex': [{'max_volumetrico': 50, 'max_kg': 5, 'precio': 260, 'fuente': 'default_v52'}],
+        'dhl': [{'max_volumetrico': 50, 'max_kg': 5, 'precio': 269, 'fuente': 'default_v52'}],
+    }
+
+
+def _envia_v49_tabla_precios():
+    # nombre histórico, ahora regresa tramos del programa con max_volumetrico.
+    return _envia_v52_tabla_precios()
+
+
+def _envia_v52_precio_publico_por_volumetrico(carrier, volumetrico_total):
+    c = _envia_v52_norm_carrier(carrier)
+    tabla = _envia_v52_tabla_precios()
+    tiers = tabla.get(c) or []
+    vol = _envia_v52_float(volumetrico_total, 0)
+    if vol <= 0:
+        vol = _envia_v52_kg_a_vol(5)
+    for tier in tiers:
+        if vol <= _envia_v52_float(tier.get('max_volumetrico'), 0):
+            return _envia_v52_float(tier.get('precio'), 0), tier
+    if tiers:
+        # Hay tabla, pero excede el último tramo. Se regresa último precio solo para debug;
+        # el flujo automático lo bloqueará si excede el máximo permitido.
+        last = tiers[-1]
+        return _envia_v52_float(last.get('precio'), 0), last
+    return 0.0, {}
+
+
+def _envia_v49_precio_base_publico(carrier, kg_o_vol):
+    # Compatibilidad con funciones viejas: si recibe <= 25 lo tratamos como kg;
+    # si recibe 50/100/150 lo tratamos como volumétrico del programa.
+    v = _envia_v52_float(kg_o_vol, 0)
+    if v <= 25:
+        v = _envia_v52_kg_a_vol(v)
+    precio, tier = _envia_v52_precio_publico_por_volumetrico(carrier, v)
+    return precio
+
+
+def _envia_v52_public_carriers(carriers=None, opciones_envia=None):
+    raw = os.environ.get('ENVIA_PUBLIC_CARRIERS') or ''
+    if raw.strip():
+        base = [x for x in raw.split(',') if x.strip()]
+    elif carriers:
+        base = carriers
+    else:
+        # usar carriers que existan en la tabla, pero en orden de tienda.
+        tabla = _envia_v52_tabla_precios()
+        pref = ['correos', 'estafeta', 'fedex', 'dhl']
+        base = [c for c in pref if c in tabla]
+    out = []
+    for c in base:
+        cn = _envia_v52_norm_carrier(c)
+        if cn and cn not in out:
+            out.append(cn)
+    return out
+
+
+def _envia_v52_unidad_volumetrica_por_item(item):
+    item = item or {}
+    for k in ('volumetrico', 'volumetrico_total_unitario', 'peso_volumetrico', 'volumetrico_kg', 'peso_volumetrico_kg'):
+        try:
+            v = float(item.get(k) or 0)
+            if v > 0:
+                return v, f'almacen_{k}'
+        except Exception:
+            pass
+    return None, 'sin_volumetrico_en_almacen'
+
+
+def _envia_v52_plan_volumetrico(items=None, nota_id=None, piezas=None):
+    items = _envia_v50_parse_items_param(items)
+    origen = 'items_request'
+    if not items and nota_id:
+        items = _envia_v50_db_items_por_nota(nota_id)
+        origen = f'nota_{nota_id}'
+    items = _envia_v50_enriquecer_items(items)
+
+    detalle = []
+    faltantes = []
+    total = 0.0
+    for it in items or []:
+        q = _envia_v50_cantidad_item(it)
+        if q <= 0:
+            continue
+        unidad, fuente = _envia_v52_unidad_volumetrica_por_item(it)
+        if unidad is None or float(unidad or 0) <= 0:
+            faltantes.append({
+                'producto_id': it.get('producto_id') or it.get('id'),
+                'codigo': str(it.get('codigo') or ''),
+                'marca': str(it.get('marca') or ''),
+                'hilo': str(it.get('hilo') or ''),
+                'color': str(it.get('color') or ''),
+                'cantidad': q,
+                'motivo': fuente,
+            })
+            continue
+        subtotal = q * float(unidad)
+        total += subtotal
+        detalle.append({
+            'producto_id': it.get('producto_id') or it.get('id'),
+            'codigo': str(it.get('codigo') or ''),
+            'marca': str(it.get('marca') or ''),
+            'hilo': str(it.get('hilo') or ''),
+            'color': str(it.get('color') or ''),
+            'cantidad': q,
+            'volumetrico_unitario': round(float(unidad), 6),
+            'volumetrico_total': round(float(subtotal), 6),
+            'fuente_volumetrico': fuente,
+        })
+
+    # Si no hay carrito/nota real, se da tramo base únicamente para consulta general.
+    if not detalle and not faltantes:
+        try:
+            piezas_i = int(float(piezas or 0))
+        except Exception:
+            piezas_i = 0
+        if piezas_i > 0:
+            # Solo modo consulta sin productos: el usuario pidió CP sin carrito.
+            # No se inventa por tipo de producto.
+            total = _envia_v52_kg_a_vol(5)
+            origen = 'consulta_general_sin_carrito'
+        else:
+            total = _envia_v52_kg_a_vol(5)
+            origen = 'consulta_general_sin_carrito'
+
+    raw = round(float(total), 6)
+    tabla = _envia_v52_tabla_precios()
+    # siguiente tramo visible basado en cualquier carrier con tabla (preferimos Estafeta/Correos)
+    carrier_ref = 'estafeta' if 'estafeta' in tabla else (list(tabla.keys())[0] if tabla else 'correos')
+    tiers_ref = tabla.get(carrier_ref) or []
+    tramo_vol = 0.0
+    tramo_kg = 0.0
+    for t in tiers_ref:
+        maxv = _envia_v52_float(t.get('max_volumetrico'), 0)
+        if raw <= maxv:
+            tramo_vol = maxv
+            tramo_kg = _envia_v52_float(t.get('max_kg'), _envia_v52_vol_a_kg(maxv))
+            break
+    if not tramo_vol and tiers_ref:
+        last = tiers_ref[-1]
+        tramo_vol = _envia_v52_float(last.get('max_volumetrico'), 0)
+        tramo_kg = _envia_v52_float(last.get('max_kg'), _envia_v52_vol_a_kg(tramo_vol))
+    if not tramo_vol:
+        tramo_vol = _envia_v52_kg_a_vol(5); tramo_kg = 5
+
+    # Límite automático: por default 150 unidades del programa = 15 kg.
+    max_auto_vol = _envia_v52_float(os.environ.get('ENVIA_MAX_AUTO_VOLUMETRIC'), 0)
+    if max_auto_vol <= 0:
+        max_auto_kg = _envia_v52_float(os.environ.get('ENVIA_MAX_AUTO_VOLUMETRIC_KG'), 15)
+        max_auto_vol = _envia_v52_kg_a_vol(max_auto_kg)
+    else:
+        max_auto_kg = _envia_v52_vol_a_kg(max_auto_vol)
+
+    requiere_humano = bool(faltantes) or raw > max_auto_vol
+    motivo = ''
+    if faltantes:
+        motivo = 'productos_sin_volumetrico_configurado'
+    elif raw > max_auto_vol:
+        motivo = 'peso_volumetrico_mayor_a_15kg'
+
+    return {
+        'origen': origen,
+        'items_detalle': detalle,
+        'items_sin_volumetrico': faltantes,
+        'volumetrico_total_raw': raw,
+        'volumetrico_total': raw,
+        'peso_volumetrico_kg': _envia_v52_vol_a_kg(raw),
+        'tramo_volumetrico': tramo_vol,
+        'tramo_kg': tramo_kg,
+        'max_auto_volumetrico': max_auto_vol,
+        'max_auto_kg': max_auto_kg,
+        'requiere_humano': requiere_humano,
+        'motivo_humano': motivo,
+        'unidades_por_kg': _envia_v52_unidades_por_kg(),
+    }
+
+
+# Sustituye el plan anterior usado por cotizador/debug.
+_envia_v50_plan_volumetrico = _envia_v52_plan_volumetrico
+
+
+def _envia_v52_dims_para_volumetrico(vol_total):
+    kg = max(1.0, math.ceil(_envia_v52_vol_a_kg(vol_total)))
+    largo = _envia_v50_float_env('ENVIA_BOX_LENGTH_CM', 50.0)
+    ancho = _envia_v50_float_env('ENVIA_BOX_WIDTH_CM', 25.0)
+    alto = max(5.0, math.ceil((kg * 5000.0) / max(1.0, largo * ancho)))
+    return kg, largo, ancho, alto
+
+
+def _envia_v52_encontrar_op_envia(opciones, carrier):
+    try:
+        return _envia_v49_encontrar_op_envia(opciones, carrier)
+    except Exception:
+        cn = _envia_v52_norm_carrier(carrier)
+        ops = [op for op in (opciones or []) if _envia_v52_norm_carrier(op.get('carrier') or op.get('paqueteria')) == cn]
+        if not ops:
+            return None
+        return sorted(ops, key=lambda x: _envia_v52_float(x.get('precio'), 999999))[0]
+
+
+def _envia_v52_opcion_publica(carrier, plan, live_op=None):
+    cn = _envia_v52_norm_carrier(carrier)
+    vol_total = plan.get('volumetrico_total_raw') or plan.get('volumetrico_total') or _envia_v52_kg_a_vol(5)
+    base, tier = _envia_v52_precio_publico_por_volumetrico(cn, vol_total)
+    if not base:
+        return None
+    precio_envia = None
+    if live_op:
+        precio_envia = _envia_v52_float(live_op.get('precio') or live_op.get('precio_publico'), 0)
+    margen = _envia_v49_float_env('ENVIA_REEXPEDICION_MARGIN_PCT', 25.0) / 100.0
+    extra = _envia_v49_float_env('ENVIA_REEXPEDICION_EXTRA', 50.0)
+    posible_reexp = False
+    reexp_monto = 0.0
+    precio_publico = base
+    if precio_envia and precio_envia > base * (1.0 + margen):
+        posible_reexp = True
+        reexp_monto = max(0.0, precio_envia - base)
+        precio_publico = base + reexp_monto + extra
+    return {
+        'carrier': cn,
+        'paqueteria': _envia_v52_nombre_publico(cn),
+        'service': (live_op or {}).get('service') or '',
+        'servicio': (live_op or {}).get('servicio') or '',
+        'entrega': (live_op or {}).get('entrega') or '',
+        'moneda': (live_op or {}).get('moneda') or 'MXN',
+        'precio_envia': round(float(precio_envia or 0), 2),
+        'precio': round(float(precio_publico), 2),
+        'precio_publico': round(float(precio_publico), 2),
+        'precio_base_publico': round(float(base), 2),
+        'volumetrico_total': plan.get('volumetrico_total_raw'),
+        'tramo_volumetrico': (tier or {}).get('max_volumetrico'),
+        'tramo_kg': (tier or {}).get('max_kg'),
+        'peso_volumetrico_kg': plan.get('peso_volumetrico_kg'),
+        'posible_reexpedicion': bool(posible_reexp),
+        'reexpedicion_monto_estimado': round(float(reexp_monto), 2),
+        'extra_reexpedicion': round(float(extra if posible_reexp else 0), 2),
+        'verificado_envia': bool(live_op),
+        'modo_precio': 'tabla_programa_pc_envios_config',
+        'fuente_precio': (tier or {}).get('fuente'),
+    }
+
+
+def cotizar_envio_envia(cp_destino, piezas=None, peso_kg=None, largo_cm=None, ancho_cm=None, alto_cm=None, carriers=None, items=None, nota_id=None):
+    plan = _envia_v52_plan_volumetrico(items=items, nota_id=nota_id, piezas=piezas)
+    kg_envia, largo_auto, ancho_auto, alto_auto = _envia_v52_dims_para_volumetrico(plan.get('volumetrico_total_raw') or _envia_v52_kg_a_vol(5))
+    if not peso_kg and not (largo_cm and ancho_cm and alto_cm):
+        peso_kg = kg_envia
+        largo_cm, ancho_cm, alto_cm = largo_auto, ancho_auto, alto_auto
+
+    live_func = globals().get('_envia_v49_cotizar_anterior') or globals().get('_envia_v50_cotizar_anterior')
+    if live_func:
+        try:
+            resp = live_func(cp_destino, piezas=piezas, peso_kg=peso_kg, largo_cm=largo_cm, ancho_cm=ancho_cm, alto_cm=alto_cm, carriers=carriers)
+        except TypeError:
+            resp = live_func(cp_destino, piezas=piezas, peso_kg=peso_kg, largo_cm=largo_cm, ancho_cm=ancho_cm, alto_cm=alto_cm)
+        except Exception as exc:
+            print('WARN V52 cotizador live:', exc, flush=True)
+            resp = {'ok': False, 'error': str(exc), 'opciones': []}
+    else:
+        resp = {'ok': True, 'opciones': [], 'modo': 'TABLA_PC_SIN_ENVIA_LIVE'}
+
+    resp = dict(resp or {})
+    raw_ops = list(resp.get('opciones') or [])
+    public_ops = []
+    if not plan.get('requiere_humano'):
+        for c in _envia_v52_public_carriers(carriers, raw_ops):
+            live = _envia_v52_encontrar_op_envia(raw_ops, c)
+            op = _envia_v52_opcion_publica(c, plan, live)
+            if op:
+                public_ops.append(op)
+    orden = {'correos': 1, 'estafeta': 2, 'fedex': 3, 'dhl': 4, 'paquetexpress': 5}
+    public_ops = sorted(public_ops, key=lambda x: (orden.get(x.get('carrier'), 99), float(x.get('precio') or 0)))
+
+    resp['opciones_envia'] = raw_ops
+    resp['opciones'] = public_ops
+    resp['ok'] = True
+    resp['modo_precios'] = 'TABLA_PROGRAMA_PC_V52'
+    resp['volumetrico'] = plan
+    resp['volumetrico_total'] = plan.get('volumetrico_total_raw')
+    resp['peso_volumetrico_kg'] = plan.get('peso_volumetrico_kg')
+    resp['tramo_kg'] = plan.get('tramo_kg')
+    resp['tramo_volumetrico'] = plan.get('tramo_volumetrico')
+    resp['nota_precios'] = 'Precio público basado en envios_config.json del programa de PC; Envia solo valida zona/reexpedición.'
+
+    if plan.get('requiere_humano'):
+        resp['requiere_humano'] = True
+        resp['alerta_envio_mayor_15kg'] = plan.get('motivo_humano') == 'peso_volumetrico_mayor_a_15kg'
+        resp['motivo_humano'] = plan.get('motivo_humano')
+        resp['opciones_auto_bloqueadas'] = public_ops or raw_ops
+        resp['opciones'] = []
+        if plan.get('motivo_humano') == 'productos_sin_volumetrico_configurado':
+            resp['mensaje_admin'] = 'Hay productos sin volumétrico configurado en almacén. Revisar envío manualmente.'
+        else:
+            resp['mensaje_admin'] = (
+                f"Pedido de {plan.get('volumetrico_total_raw')} unidades volumétricas "
+                f"(~{plan.get('peso_volumetrico_kg')} kg), mayor al límite automático de "
+                f"{plan.get('max_auto_volumetrico')} unidades (~{plan.get('max_auto_kg')} kg). Revisar manualmente."
+            )
+    return resp
+
+
+def _envia_v52_formato_publico(cp, cotizacion):
+    cotizacion = cotizacion or {}
+    vol = cotizacion.get('volumetrico') or {}
+    if vol.get('motivo_humano') == 'productos_sin_volumetrico_configurado':
+        faltan = vol.get('items_sin_volumetrico') or []
+        lista = ', '.join([str(x.get('codigo') or x.get('color') or x.get('hilo') or 'producto') for x in faltan[:5]])
+        return (
+            f"Con el CP {cp} necesito revisar el envío manualmente 😊 porque hay productos sin peso volumétrico configurado en almacén"
+            + (f": {lista}." if lista else ".")
+            + " Así evitamos cobrarle mal."
+        )
+    if cotizacion.get('alerta_envio_mayor_15kg') or vol.get('motivo_humano') == 'peso_volumetrico_mayor_a_15kg':
+        kg = vol.get('peso_volumetrico_kg') or cotizacion.get('peso_volumetrico_kg')
+        maxkg = vol.get('max_auto_kg') or 15
+        return (
+            f"Con el CP {cp}, este pedido queda en aproximadamente {kg:g} kg volumétricos. "
+            f"Como pasa de {maxkg:g} kg volumétricos, necesito revisar el envío manualmente para no cobrarle mal 😊. "
+            "También reviso si su zona trae reexpedición y le confirmo el costo final."
+        )
+
+    opciones = cotizacion.get('opciones') or []
+    if not opciones:
+        return f"Con el CP {cp} necesito revisar el envío manualmente 😊 No me aparecen opciones automáticas seguras en este momento."
+    lineas = []
+    vistos = set()
+    for op in opciones[:6]:
+        nombre = op.get('paqueteria') or op.get('carrier') or 'Paquetería'
+        precio = _envia_v52_float(op.get('precio_publico') or op.get('precio'), 0)
+        moneda = op.get('moneda') or 'MXN'
+        key = (str(nombre).lower(), round(precio, 2))
+        if key in vistos:
+            continue
+        vistos.add(key)
+        desc = f"- {nombre}: ${precio:,.2f} {moneda}"
+        if op.get('posible_reexpedicion'):
+            desc += " (zona con posible reexpedición, ya requiere confirmar)"
+        elif op.get('entrega'):
+            desc += f" - {op.get('entrega')}"
+        lineas.append(desc)
+    tramo = cotizacion.get('tramo_kg') or vol.get('tramo_kg')
+    kg_txt = f" para paquete de hasta {float(tramo):g} kg volumétricos" if tramo else ""
+    extra = ''
+    if any(op.get('posible_reexpedicion') for op in opciones):
+        extra = "\n\nOjo: ese CP puede traer reexpedición. Antes de cerrar la nota se confirma el costo final."
+    return (
+        f"Con el CP {cp} le puedo manejar estas opciones de envío{kg_txt}:\n"
+        + "\n".join(lineas)
+        + "\n\n¿Cuál le gustaría usar?"
+        + extra
+    )
+
+
+_envia_v24_formato_publico = _envia_v52_formato_publico
+_wa_v27_envio_formato_publico = _envia_v52_formato_publico
+
+
+def api_envios_debug_tablas_v52():
+    tabla = _envia_v52_tabla_precios()
+    env_tabla, env_fuente = _envia_v52_tabla_precios_desde_env()
+    file_tabla, file_fuente = _envia_v52_tabla_precios_desde_archivo()
+    muestras = []
+    total_con_vol = 0
+    total_productos = 0
+    try:
+        with DB() as db:
+            row = db.execute("SELECT COUNT(*) AS c FROM productos").fetchone()
+            total_productos = int((row or {}).get('c') or 0)
+            row = db.execute("SELECT COUNT(*) AS c FROM productos WHERE COALESCE(volumetrico,0) > 0").fetchone()
+            total_con_vol = int((row or {}).get('c') or 0)
+            rows = db.execute("""
+                SELECT id, codigo, marca, hilo, color, COALESCE(volumetrico,0) AS volumetrico
+                FROM productos
+                WHERE COALESCE(volumetrico,0) > 0
+                ORDER BY id
+                LIMIT 30
+            """).fetchall()
+            muestras = [dict(r) for r in rows]
+    except Exception as exc:
+        muestras = [{'error': str(exc)}]
+    return jsonify(json_safe({
+        'ok': True,
+        'modo': 'V52_DEBUG_TABLAS_ENVIO_PC',
+        'unidades_por_kg': _envia_v52_unidades_por_kg(),
+        'interpretacion': 'envios_config.json usa 50/100/150 como 5/10/15 kg volumétricos comerciales',
+        'tabla_precios_usada': tabla,
+        'fuente_env_detectada': env_fuente,
+        'hay_env_detectado': bool(env_tabla),
+        'fuente_archivo_detectada': file_fuente,
+        'hay_archivo_detectado': bool(file_tabla),
+        'productos_total': total_productos,
+        'productos_con_volumetrico': total_con_vol,
+        'productos_con_volumetrico_muestra': muestras,
+        'ejemplos': {
+            'debug_volumetrico_items': '/api/envios/debug-volumetrico?items=[{"codigo":"55","cantidad":35}]&pin=TU_PIN',
+            'cotizar_nota': '/api/envios/cotizar?cp=97000&nota_id=COT-XXX&pin=TU_PIN',
+        },
+        'nota': 'Para nota/carrito real se usa productos.volumetrico. Si Render muestra productos_con_volumetrico=0, falta sincronizar ese campo desde el almacén.'
+    }))
+
+
+def api_envios_debug_volumetrico_v52():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args.to_dict(flat=True)
+    items = data.get('items') or data.get('items_envio') or []
+    if isinstance(items, str):
+        items = _envia_v50_parse_items_param(items)
+    # Atajos solo para debug. No se usan para carrito real.
+    if not items:
+        atajos = []
+        try:
+            v = int(float(data.get('velluto') or data.get('vellutos') or 0))
+        except Exception:
+            v = 0
+        try:
+            k = int(float(data.get('komfy') or data.get('komfy_mini') or data.get('komfi') or 0))
+        except Exception:
+            k = 0
+        # Estos atajos quedan marcados como prueba; para pedidos reales deben venir de nota/items.
+        if v:
+            atajos.append({'hilo': 'VELLUTO', 'codigo': 'VELLUTO_TEST', 'cantidad': v, 'volumetrico': 50.0/35.0, '_permitir_estimado': True})
+        if k:
+            atajos.append({'hilo': 'KOMFY MINI', 'codigo': 'KOMFY_TEST', 'cantidad': k, 'volumetrico': 0.07, '_permitir_estimado': True})
+        items = atajos
+    plan = _envia_v52_plan_volumetrico(items=items, nota_id=data.get('nota_id') or data.get('nota'), piezas=data.get('piezas'))
+    tabla = _envia_v52_tabla_precios()
+    precios_tramo = {}
+    for carrier in _envia_v52_public_carriers():
+        precio, tier = _envia_v52_precio_publico_por_volumetrico(carrier, plan.get('volumetrico_total_raw'))
+        precios_tramo[carrier] = {'precio': precio, 'tramo': tier}
+    return jsonify(json_safe({
+        'ok': True,
+        'modo': 'V52_DEBUG_VOLUMETRICO_PROGRAMA_PC',
+        'plan_volumetrico': plan,
+        'tabla_precios': tabla,
+        'precios_para_tramo': precios_tramo,
+        'ejemplos': {
+            '35_vellutos_debug': '/api/envios/debug-volumetrico?velluto=35&pin=TU_PIN',
+            '34_vellutos_2_komfy_debug': '/api/envios/debug-volumetrico?velluto=34&komfy=2&pin=TU_PIN',
+            'items_reales': '/api/envios/debug-volumetrico?items=[{"codigo":"55","cantidad":35}]&pin=TU_PIN',
+            'cotizar_nota': '/api/envios/cotizar?cp=97000&nota_id=COT-XXX&pin=TU_PIN',
+        }
+    }))
+
+
+# Reemplazar endpoints existentes sin duplicar rutas.
+try:
+    app.view_functions['api_envios_debug_tablas_v51'] = api_envios_debug_tablas_v52
+except Exception as exc:
+    print('WARN V52 reemplazo debug-tablas:', exc, flush=True)
+try:
+    app.view_functions['api_envios_debug_volumetrico_v50'] = api_envios_debug_volumetrico_v52
+except Exception as exc:
+    print('WARN V52 reemplazo debug-volumetrico:', exc, flush=True)
+try:
+    app.view_functions['api_envios_cotizar_v24'] = api_envios_cotizar_v50
+except Exception as exc:
+    print('WARN V52 reemplazo cotizar:', exc, flush=True)
+
