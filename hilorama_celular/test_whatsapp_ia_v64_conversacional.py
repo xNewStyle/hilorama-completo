@@ -56,6 +56,8 @@ def _inventory_v64():
         _product(8, "Karina", "Komfy Mini", "99", "Negro", 34.00, volumetrico=0.5),
         _product(9, "Karina", "Komfy Mini", "06", "Cielo", 34.00, volumetrico=0.5),
         _product(10, "Karina", "Kurumi", "12", "Crema", 29.00, volumetrico=0.3),
+        _product(11, "Alize", "Velluto", "777", "Registro Viejo", 57.20, stock=0, volumetrico=1.5),
+        _product(12, "Alize", "Velluto", "777", "Verde Stock", 57.20, stock=12, volumetrico=1.5),
     ]
 
 
@@ -76,6 +78,30 @@ def _resource_callback(intencion, normalizado, contexto, extraccion):
             rutas.append(f"/static/tonos/velluto_{codigo}.jpg")
         return {"respuesta": "Claro 😊 le comparto foto de los tonos " + ", ".join(codigos[:6]) + ": " + " ".join(rutas)}
     return {}
+
+
+def _shipping_callback(cp, contexto):
+    pedidos = (contexto or {}).get("pedido_en_proceso_actual") or _pedido_memoria((contexto or {}).get("memoria_previa") or {})
+    if not pedidos:
+        return {}
+    subtotal = sum(float(p.get("precio_venta") or p.get("precio") or 0) * int(p.get("cantidad") or 1) for p in pedidos)
+    puntos = sum(float(p.get("volumetrico") or 0) * int(p.get("cantidad") or 1) for p in pedidos)
+    if puntos <= 50:
+        tramo = 5
+    elif puntos <= 100:
+        tramo = 10
+    else:
+        tramo = 15
+    envio = 150.0 if tramo == 5 else 220.0 if tramo == 10 else 310.0
+    total = subtotal + envio
+    return {
+        "respuesta": (
+            f"Con el CP {cp}, le paso una opción de envío para tramo de hasta {tramo} kg volumétricos. "
+            f"Subtotal de productos: ${subtotal:,.2f} MXN. "
+            f"- Paquetería estándar: envío ${envio:,.2f} MXN, total con productos: ${total:,.2f} MXN."
+        ),
+        "tramo_kg": tramo,
+    }
 
 
 def _pedido_memoria(memoria):
@@ -118,7 +144,7 @@ class WhatsappIAV64ConversacionalTest(unittest.TestCase):
                 {"texto": msg, "tester_mode": True, "dry_run": True},
                 self.products,
                 memoria=memoria,
-                callbacks={"buscar_recurso": _resource_callback},
+                callbacks={"buscar_recurso": _resource_callback, "cotizar_envio": _shipping_callback},
             )
             self.assertTrue(response.get("tester_mode"), raw["case_id"])
             self.assertTrue(response.get("dry_run"), raw["case_id"])

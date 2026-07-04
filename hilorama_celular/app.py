@@ -9201,11 +9201,19 @@ def _wa_memoria_productos_min():
                 SELECT
                     p.id, p.codigo, p.codigo_barras, p.marca, p.hilo, p.color,
                     COALESCE(p.stock,0) AS stock,
-                    COALESCE(p.volumetrico,0) AS volumetrico,
-                    COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta
+                    COALESCE(p.estado,'') AS estado,
+                    COALESCE(p.volumetrico,1) AS volumetrico,
+                    COALESCE(p.es_inventariable, TRUE) AS es_inventariable,
+                    COALESCE(p.tipo_producto, 'INVENTARIO') AS tipo_producto,
+                    COALESCE(NULLIF(p.precio,0), NULLIF(pr.venta,0), 0) AS precio_venta,
+                    COALESCE(p.costo_neto,0) AS costo_neto
                 FROM productos p
                 LEFT JOIN precios pr ON pr.marca = p.marca
-                ORDER BY p.marca, p.hilo, p.codigo
+                ORDER BY
+                    p.marca, p.hilo, p.codigo,
+                    COALESCE(p.es_inventariable, TRUE) DESC,
+                    COALESCE(p.stock,0) DESC,
+                    p.color
                 LIMIT 15000
             """).fetchall()
         return [dict(r) for r in rows]

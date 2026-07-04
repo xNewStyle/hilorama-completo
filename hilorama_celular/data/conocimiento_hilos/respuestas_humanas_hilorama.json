@@ -19,7 +19,10 @@
     "Para ese proyecto le puede quedar mejor Velluto o Komfy Mini.",
     "Si esta cerca, podemos revisar entrega por Uber/Didi.",
     "Le puedo sugerir una opcion mas economica, segun el proyecto.",
-    "Para no cotizarle mal, me confirma si ese numero es codigo postal?"
+    "Para no cotizarle mal, me confirma si ese numero es codigo postal?",
+    "Claro, lo reviso para cuidar su mejor opcion. Cuantas piezas serian?",
+    "Lamento mucho el detalle, dejeme revisarlo bien. Me pasa los datos de su pedido o nota?",
+    "Le puedo mostrar fotos de esos tonos o armarle una combinacion."
   ],
   "evitar": [
     "respuestas roboticas",

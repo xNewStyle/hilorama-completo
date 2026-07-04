@@ -62,6 +62,34 @@
       "origen": "regresion_conversacional_v64",
       "regla": "Preguntas por hilo suavecito, bebe, cobija, peluche, leoncito o economico activan asesoria de venta y una pregunta de seguimiento sobre el proyecto.",
       "respuesta_humana": "Sí 😊 para algo suavecito le recomiendo Velluto o Komfy Mini. ¿Lo busca para amigurumi, bebé, cobija o ropa?"
+    },
+    {
+      "id": "v64_descuento_mayoreo_sin_prometer",
+      "fecha": "2026-07-03",
+      "origen": "auditoria_vendedora_v64_ciclo1",
+      "regla": "Cuando la clienta pide mejor precio, mayoreo o compara con otra tienda, no prometer descuento ni igualar precio. Pedir cantidad/hilo y dejar decision comercial para humano.",
+      "respuesta_humana": "Claro 😊 lo reviso para cuidar su mejor opcion. ¿Cuantas piezas y de que hilo serian?"
+    },
+    {
+      "id": "v64_producto_no_manejado_con_alternativas",
+      "fecha": "2026-07-03",
+      "origen": "auditoria_vendedora_v64_ciclo1",
+      "regla": "Si pregunta por un producto no manejado como La Abuelita, responder sin lenguaje tecnico y ofrecer opciones parecidas reales con stock.",
+      "respuesta_humana": "Por el momento no la manejamos, pero le puedo mostrar opciones parecidas que si tenemos."
+    },
+    {
+      "id": "v64_reclamo_pedir_datos_sin_prometer",
+      "fecha": "2026-07-03",
+      "origen": "auditoria_vendedora_v64_ciclo1",
+      "regla": "Ante reclamo o molestia, calmar y pedir datos del pedido/nota y evidencia. No prometer cambio, devolucion o reembolso sin aprobacion.",
+      "respuesta_humana": "Lamento mucho el detalle 😊 dejeme revisarlo bien. ¿Me pasa los datos de su pedido o nota y una foto?"
+    },
+    {
+      "id": "v64_gusto_tono_a_pedido",
+      "fecha": "2026-07-03",
+      "origen": "auditoria_vendedora_v64_ciclo1",
+      "regla": "Despues de mostrar gama o foto, frases como me gusto el 429 ponme 3 son pedido real: codigo 429, cantidad 3.",
+      "respuesta_humana": "Perfecto, le agrego ese tono a su cotizacion."
     }
   ]
 }

@@ -777,6 +777,9 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         if re.search(r"\b(cuanto|precio|cuesta|sale|vale)\b", texto):
             principal = "pregunta_precio"
             secundaria = "codigo_contextual"
+        elif re.search(r"\b(stock|existencia|disponible|hay|tienes|tiene|manejas|maneja|manejan)\b", texto):
+            principal = "consulta_stock"
+            secundaria = "codigo_contextual"
         else:
             principal = "consulta_tono"
             secundaria = "codigo_informativo"
@@ -805,7 +808,7 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         principal = "pide_foto_tono"
     elif re.search(r"\b(cuanto|precio|cuesta|costo|vale|sale)\b", texto):
         principal = "pregunta_precio"
-    elif re.search(r"\b(manejan|maneja|tienen|tiene|venden|vende|consiguen)\b.*\b(abuelita|sinfonia|omega|red\s+heart|cisne|nako|estambre\s+la\s+moderna)\b", texto):
+    elif re.search(r"\b(manejan|maneja|manejas|tienen|tiene|tienes|tendras|venden|vende|vendes|consiguen)\b.*\b(abuelita|la\s+abuelita|sinfonia|omega|red\s+heart|cisne|nako|estambre\s+la\s+moderna)\b", texto):
         principal = "producto_no_manejado"
     elif re.search(r"\b(?:perdon\s+)?(?:todo|todos|toda|todas)\s+(?:eso\s+)?(?:seria|serian|es|son)?\s*(?:de|en)?\s*(velluto|komfy|kurumi|kairo|trapillo|kotton milk|baby best)\b", texto) and len(re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)) < 2:
         principal = "confirmacion_contexto"
@@ -1105,6 +1108,18 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
         fam = _hilo_family(m.group(1))
         if qty and fam:
             items.append(_item(codigo=m.group(3), cantidad=qty, raw=m.group(0), fuente="hilo_cantidad_codigo", hilo=fam))
+    # V64 vendedor: "me gustó el 429, ponme 3" significa 3 piezas del 429.
+    # No se activa para consultas de foto porque esas salen antes de extraer productos.
+    if intencion.get("principal") == "pedido_lista" or _es_pedido_cantidad_codigo_texto(texto_sin_totales):
+        for m in re.finditer(rf"\b(?:me\s+gusto|me\s+gusta|me\s+late|me\s+quedo)\s+(?:el\s+)?#?({codigo_alpha_pat}|\d{{1,4}})\s+(?:ponme|agrega|agregame|agrégame|dame|deme|quiero|pido|pideme|pídeme|me\s+llevo)\s+({qty_pat})(?!\w)", texto_sin_totales):
+            qty = _qty(m.group(2))
+            if qty:
+                items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_gusto_verbo_cantidad"))
+        for m in re.finditer(rf"(?<!\w)#?({codigo_alpha_pat}|\d{{1,4}})\b.{0,45}\b(?:ponme|agrega|agregame|agrégame|dame|deme|quiero|pido|pideme|pídeme|me\s+llevo)\s+({qty_pat})(?!\w)", texto_sin_totales):
+            qty = _qty(m.group(2))
+            if qty:
+                items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_verbo_cantidad"))
+
     for m in re.finditer(rf"(?<!\w)({qty_pat})\s*(?:piezas?\s*)?(?:del|de|d|codigo|cod|tono)\s*#?({codigo_alpha_pat}|\d{{1,4}})(?!\w)", texto_sin_totales):
         qty = _qty(m.group(1))
         if qty:
@@ -1684,10 +1699,23 @@ def _no_combo(p):
 
 
 def _stock(p):
-    try:
-        return int(p.get("stock") or 0)
-    except Exception:
-        return 0
+    p = p or {}
+    for key in ("stock", "existencia", "existencias", "cantidad_disponible", "disponible"):
+        raw = p.get(key)
+        if raw is None or raw == "":
+            continue
+        if isinstance(raw, bool):
+            return 1 if raw else 0
+        try:
+            return max(0, int(float(str(raw).strip().replace(",", "."))))
+        except Exception:
+            m = re.search(r"-?\d+(?:[.,]\d+)?", str(raw))
+            if m:
+                try:
+                    return max(0, int(float(m.group(0).replace(",", "."))))
+                except Exception:
+                    pass
+    return 0
 
 
 def _precio(p):
@@ -1918,6 +1946,7 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
                 "Responder manualmente",
             ],
             "alta",
+            respuesta_provisional=f"Claro {EMOJI_OK} lo reviso para cuidar su mejor opción. ¿Cuántas piezas y de qué hilo serían? No le prometo cambio de precio sin confirmarlo, pero sí reviso si hay alguna opción.",
         )
 
     if re.search(r"\b(mayoreo|mayorista|precio por volumen|precio de volumen)\b", texto):
@@ -1930,6 +1959,7 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
                 "Responder manualmente",
             ],
             "alta",
+            respuesta_provisional=f"Con gusto {EMOJI_OK} lo reviso según cantidad. ¿Cuántas piezas busca y de qué hilo? Así le confirmo si hay alguna opción de mayoreo sin darle mal el dato.",
         )
 
     if re.search(r"\b(envio gratis|gratis el envio|cambiar envio|otra paqueteria|mas barato el envio|envio por cobrar|entrega especial|mandamelo por|mandemelo por)\b", texto):
@@ -1971,6 +2001,7 @@ def detectar_decision_pendiente(normalizado, intencion, contexto, extraccion, re
             "La clienta expresa queja, molestia fuerte o amenaza. Conviene responder con cuidado y revision humana.",
             ["Responder con disculpa y revision", "Pedir datos del caso", "Responder manualmente"],
             "alta",
+            respuesta_provisional=f"Lamento mucho el detalle {EMOJI_OK} déjeme revisarlo bien para ayudarle. ¿Me pasa los datos de su pedido o nota y una foto del tono que recibió?",
         )
 
     if re.search(r"\b(ya pague|ya pagado|ya quedo el pago|ya transferi|ya deposite)\b", texto):
@@ -2402,10 +2433,10 @@ def _respuesta_recomendacion_producto(texto, productos):
         opciones = ["Komfy Mini o Velluto para algo suave", "Kurumi para amigurumi con más detalle"]
 
     if re.search(r"\b(leon|leoncito)\b", t):
-        return f"Sí {EMOJI_OK} para un leoncito le pueden quedar tonos miel/camel, café o tabaco, y un toque crema/blanco para la carita. Si lo quiere más tierno, también puede ir con mostaza o naranja suave. ¿Lo busca realista o más infantil?"
+        return f"Sí {EMOJI_OK} para un leoncito le pueden quedar tonos miel/camel, café o tabaco, y un toque crema/blanco para la carita. Si lo quiere más tierno, también puede ir con mostaza o naranja suave. ¿Lo busca realista o más infantil? Le puedo mostrar fotos de esos tonos o armarle una combinación."
 
     if re.search(r"\b(suave|suavecito|suavesito|pachoncito|bebe|bebé|cobija|cobijita|mantita|manta|no\s+pique|que\s+no\s+pique)\b", t):
-        return f"Sí {EMOJI_OK} para algo suavecito le recomiendo Velluto o Komfy Mini. Velluto queda muy bonito para amigurumis, mantitas y trabajos pachoncitos. Komfy Mini también es suave y manejable para detalles. ¿Lo busca para amigurumi, bebé, cobija o ropa?"
+        return f"Sí {EMOJI_OK} para algo suavecito le recomiendo Velluto o Komfy Mini. Velluto queda muy bonito para amigurumis, mantitas y trabajos pachoncitos. Komfy Mini también es suave y manejable para detalles. ¿Para qué proyecto lo busca: amigurumi, bebé, cobija o ropa?"
 
     if re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos|peluche)\b", t):
         return f"Para peluche o amigurumi le recomendaría Velluto o Komfy Mini {EMOJI_OK}. Velluto queda más pachoncito y Komfy Mini ayuda mucho en piezas chicas. ¿Qué tamaño de muñeco va a hacer?"
@@ -2652,14 +2683,16 @@ def _producto_por_codigo_contexto(productos, contexto, codigo):
     if not codigo:
         return None
     ctx = _filtrar_contexto(productos, contexto) if (contexto or {}).get("hilo_actual") else list(productos or [])
-    # Primero match exacto por contexto.
-    for p in ctx:
-        if str(p.get("codigo") or "").strip().lstrip("0") == codigo:
-            return p
-    # Luego fallback global.
-    for p in productos or []:
-        if str(p.get("codigo") or "").strip().lstrip("0") == codigo:
-            return p
+    # Primero match exacto por contexto, priorizando filas vendibles/con stock.
+    matches = [p for p in ctx if str(p.get("codigo") or "").strip().lstrip("0") == codigo]
+    if matches:
+        normales = [p for p in matches if _no_combo(p)] or matches
+        return sorted(normales, key=lambda p: (_score_producto_codigo(p, contexto, codigo), _stock(p)), reverse=True)[0]
+    # Luego fallback global con la misma preferencia.
+    matches = [p for p in productos or [] if str(p.get("codigo") or "").strip().lstrip("0") == codigo]
+    if matches:
+        normales = [p for p in matches if _no_combo(p)] or matches
+        return sorted(normales, key=lambda p: (_score_producto_codigo(p, contexto, codigo), _stock(p)), reverse=True)[0]
     return None
 
 
@@ -2672,7 +2705,8 @@ def _productos_por_codigo_contexto(productos, contexto, codigo):
         p for p in ctx
         if str(p.get("codigo") or "").strip().lstrip("0") == codigo
     ]
-    return [p for p in matches if _no_combo(p)] or matches
+    normales = [p for p in matches if _no_combo(p)] or matches
+    return sorted(normales, key=lambda p: (_score_producto_codigo(p, contexto, codigo), _stock(p)), reverse=True)
 
 
 def _respuesta_codigo_contextual(texto, contexto, productos, modo="stock"):
