@@ -1,5 +1,5 @@
 {
-  "version": "v63",
+  "version": "v64",
   "politica": {
     "usar_para_cliente_solo_si_validado": true,
     "no_usar_para_precios_hilorama": true,
@@ -27,6 +27,41 @@
       "origen": "tester_real_v61_1000",
       "regla": "Para pedidos mixtos con tarifa de envio configurada y segura, mostrar opciones de paqueteria y total; si falta volumetrico o es Velluto puro arriba del limite, mandar a revision humana.",
       "respuesta_humana": "Le paso las opciones con envio."
+    },
+    {
+      "id": "v64_cp_5_digitos_no_producto",
+      "fecha": "2026-07-03",
+      "origen": "regresion_conversacional_v64",
+      "regla": "Si el mensaje trae cotiza, envio, postal, CP, al codigo o a el codigo y aparece un numero de 5 digitos, tratarlo como codigo postal antes que como codigo de producto.",
+      "respuesta_humana": "Claro 😊 ¿te refieres al código postal para calcular envío? Pásame qué productos quieres cotizar y con gusto te doy el total con envío."
+    },
+    {
+      "id": "v64_consulta_no_agrega_pedido",
+      "fecha": "2026-07-03",
+      "origen": "regresion_conversacional_v64",
+      "regla": "Frases como me muestras, foto, que color es, tienes el codigo o si me gusta te pido no deben dejar productos en memoria ni encender cotizacion activa.",
+      "respuesta_humana": "Claro 😊 le reviso la foto o disponibilidad. Si le gusta, me dice cuántas piezas le agrego a su cotización."
+    },
+    {
+      "id": "v64_envio_local_uber_didi",
+      "fecha": "2026-07-03",
+      "origen": "regresion_conversacional_v64",
+      "regla": "Uber, Didi o entrega local se atienden pidiendo colonia o ubicacion aproximada; paqueteria nacional pide CP.",
+      "respuesta_humana": "Sí podemos revisar entrega por Uber/Didi si está dentro de zona local. Pásame tu colonia o ubicación aproximada."
+    },
+    {
+      "id": "v64_lista_color_parentesis",
+      "fecha": "2026-07-03",
+      "origen": "regresion_conversacional_v64",
+      "regla": "Listas tipo 2 Ocean (16) usan el numero entre parentesis como codigo de tono dentro del hilo actual; no interpretarlo como medida de accesorio.",
+      "respuesta_humana": "Perfecto, le agrego esos tonos a su cotizacion."
+    },
+    {
+      "id": "v64_recomendacion_vendedora",
+      "fecha": "2026-07-03",
+      "origen": "regresion_conversacional_v64",
+      "regla": "Preguntas por hilo suavecito, bebe, cobija, peluche, leoncito o economico activan asesoria de venta y una pregunta de seguimiento sobre el proyecto.",
+      "respuesta_humana": "Sí 😊 para algo suavecito le recomiendo Velluto o Komfy Mini. ¿Lo busca para amigurumi, bebé, cobija o ropa?"
     }
   ]
 }

@@ -117,6 +117,9 @@ NORMALIZACIONES = [
     (r"\bnesecito\b|\bnececito\b", "necesito"),
     (r"\bmanejaz\b|\bmanejas\b", "manejas"),
     (r"\btendras\b|\btendrias\b", "tienes"),
+    (r"\btndrs\b|\btndras\b|\btndrias\b", "tienes"),
+    (r"\bkolor\b|\bkolores\b", "color"),
+    (r"\bkfe\b|\bkaf[eé]\b", "cafe"),
     (r"\brojo\s+escolr\b", "rojo escolar"),
     (r"\bme\s+surte\b|\bsurteme\b|\bsurteme\b", "quiero pedir"),
     (r"\bme\s+lo\s+pone\b|\bme\s+lo\s+agrega\b", "agregar al pedido"),
@@ -187,13 +190,30 @@ def _compact(texto):
     return re.sub(r"\s+", " ", str(texto or "")).strip()
 
 
+def _limpiar_ruido_whatsapp_crudo(texto):
+    """Quita encabezados pegados de WhatsApp sin borrar el mensaje util."""
+    lineas = []
+    for linea in str(texto or "").splitlines():
+        l = str(linea or "").strip()
+        if not l:
+            continue
+        l = re.sub(r"^\[?\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?\s*\]?\s*", "", l, flags=re.I)
+        l = re.sub(r"^\+?\d[\d\s()+-]{7,}\s*:\s*", "", l)
+        l = re.sub(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ._-]{2,35}:\s*", "", l)
+        if l:
+            lineas.append(l)
+    return "\n".join(lineas).strip()
+
+
 def _ratio(a, b):
     return SequenceMatcher(None, _norm(a), _norm(b)).ratio()
 
 
 def normalizar_texto_cliente(texto):
     original = "" if texto is None else str(texto)
-    limpio = _norm(original)
+    original_limpio = _limpiar_ruido_whatsapp_crudo(original) or original
+    lineas_originales = [ln.strip() for ln in original_limpio.splitlines() if ln.strip()]
+    limpio = _norm(original_limpio)
     correcciones = []
     for patron, reemplazo in NORMALIZACIONES:
         nuevo = re.sub(patron, reemplazo, limpio, flags=re.I)
@@ -209,6 +229,7 @@ def normalizar_texto_cliente(texto):
         "original": original,
         "texto": limpio,
         "lineas": [ln.strip() for ln in limpio.splitlines() if ln.strip()],
+        "lineas_originales": lineas_originales,
         "correcciones": correcciones,
     }
 
@@ -336,7 +357,11 @@ def _detectar_cp(texto, memoria=None):
     m = re.search(r"\b(\d{5})\b", t)
     if not m:
         return ""
-    if re.search(r"\b(cp|codigo postal|postal|envio|paqueteria)\b", t):
+    if re.search(r"\b(cp|codigo postal|postal|envio|paqueteria|cotiza|cotizar|cotizas|cotizacion)\b", t):
+        return m.group(1)
+    if re.search(r"\b(?:a\s+el|al|para\s+el|mi)\s+codigo\b", t):
+        return m.group(1)
+    if re.search(r"\bcodigo\b.{0,18}\b(?:envio|postal|paqueteria)\b|\b(?:envio|postal|paqueteria)\b.{0,18}\bcodigo\b", t):
         return m.group(1)
     estado = str((memoria or {}).get("estado_actual") or (memoria or {}).get("ultima_intencion") or "")
     if estado in ("esperando_cp", "envio", "pregunta_envio") or (memoria or {}).get("datos_envio_pendientes"):
@@ -524,11 +549,17 @@ def _es_consulta_recomendacion(texto):
     if _es_saludo_simple(t):
         return False
     return bool(
-        re.search(r"\b(recomienda|recomiendas|recomendacion|conviene|sirve\s+para|cual\s+me\s+sirve|que\s+hilo\s+uso|que\s+hilo\s+me\s+conviene)\b", t)
-        or re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos|peluche|elefante|oso|conejo)\b", t)
-        or re.search(r"\b(tipo\s+chenille|chenille|suave|barato|economico|económico|no\s+salga\s+tan\s+caro|no\s+quede\s+duro|quede\s+duro|duro|esponjoso|rellenito)\b", t)
-        or re.search(r"\b(busco\s+algo\s+para|algo\s+para\s+(?:peluche|amigurumi|muñeco|muneco))\b", t)
+        re.search(r"\b(recomienda|recomiendas|recomendacion|conviene|sirve\s+para|cual\s+me\s+sirve|que\s+hilo\s+uso|que\s+hilo\s+me\s+conviene|que\s+colores\s+(?:usar|uso|recomiendas)|colores\s+me\s+recomiendas)\b", t)
+        or re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos|peluche|elefante|oso|conejo|leon|leoncito|abeja|jirafa)\b", t)
+        or re.search(r"\b(tipo\s+chenille|chenille|suave|suavecito|suavesito|pachoncito|pachon|barato|economico|económico|bonito|no\s+salga\s+tan\s+caro|no\s+quede\s+duro|quede\s+duro|duro|esponjoso|rellenito|no\s+pique|que\s+no\s+pique)\b", t)
+        or re.search(r"\b(bebe|bebé|cobija|cobijita|mantita|manta|bufanda|ropa|decoracion|decoración)\b", t)
+        or re.search(r"\b(busco\s+algo\s+para|algo\s+para\s+(?:peluche|amigurumi|muñeco|muneco|bebe|bebé|cobija|bufanda|ropa))\b", t)
     )
+
+
+def _es_envio_local_uber(texto):
+    t = _norm(texto)
+    return bool(re.search(r"\b(uber|didi|entrega\s+local|envio\s+local|envios\s+locales|mandadito|rappi|taxi|moto)\b", t))
 
 
 # V53: conocimiento técnico de hilos (Karina/Hilorama) + modismos de venta.
@@ -684,11 +715,18 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         estado = "esperando_comprobante"
     elif re.search(r"\b(queja|molesta|molesto|enojada|enojado|mal servicio|profeco|denuncia|demandar|fraude|estafa|robo|me voy a quejar|amenaza)\b", texto):
         principal = "queja"
-    elif re.search(r"\b(cancelar|cancela|cancelame|cancelar mi pedido|cancelacion|ya no quiero|me arrepenti)\b", texto) and re.search(r"\b(pedido|compra|nota|todo|producto|productos)\b", texto):
+    elif (
+        re.search(r"\b(cancelar|cancela|cancelame|cancelar mi pedido|cancelacion|ya no quiero|me arrepenti)\b", texto)
+        and re.search(r"\b(pedido|compra|nota|todo|producto|productos|lista)\b", texto)
+    ) or re.search(r"\b(borra|borrar|borremos|elimina|limpia|empecemos)\b.*\b(todo|lista|pedido|nuevo|nueva)\b", texto):
         principal = "cancelacion_pedido"
     elif cp:
         principal = "cp_envio"
         estado = "esperando_datos_envio"
+    elif _es_envio_local_uber(texto):
+        principal = "envio"
+        secundaria = "envio_local"
+        estado = "esperando_ubicacion"
     elif re.search(r"\b(envio|envios|paqueteria|cuanto sale el envio|costo de envio)\b", texto):
         principal = "envio"
         estado = "esperando_cp"
@@ -774,6 +812,9 @@ def detectar_intencion(normalizado, memoria=None, productos=None):
         estado = "preparando_cotizacion"
     elif re.search(r"\b(quita|quite|quitar|quitame|quítame|corrige|corregir|me equivoque|cambia)\b", texto):
         principal = "correccion_pedido"
+    elif re.search(r"\b(?:te\s+)?(?:paso|mando|envio|envío|voy\s+a\s+pasar|va)\b.*\b(?:lista|listita)\b|\b(?:lista|listita)\s+de\s+(?:velluto|komfy|kurumi|kairo|trapillo|kotton milk|baby best)\b", texto):
+        principal = "iniciar_pedido"
+        estado = "esperando_lista_de_colores"
     elif _parece_lista_o_pedido(texto, memoria):
         principal = "pedido_lista"
         estado = "preparando_cotizacion"
@@ -942,7 +983,7 @@ def extraer_contexto_conversacion(normalizado, intencion, memoria=None, producto
     if intencion["principal"] == "pedido_lista" and not hilo:
         estado = "esperando_confirmacion_hilo"
     if intencion["principal"] == "envio":
-        estado = "esperando_cp"
+        estado = "esperando_ubicacion" if intencion.get("secundaria") == "envio_local" else "esperando_cp"
     if intencion["principal"] == "cp_envio":
         estado = "esperando_datos_envio"
     if intencion["principal"] in ("pago", "comprobante"):
@@ -1034,6 +1075,21 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # esa familia y no contra el contexto previo de la conversación.
     hilo_pat_v62 = r"velluto|veluto|belluto|komfy mini|komfy|komfi|konfy|comfy|kurumi|kairo|trapillo(?: kraft)?|kotton milk|cotton milk|baby best|diva|fiorentino maxi"
     codigo_alpha_pat = r"\d{1,4}[a-z]{1,4}"
+    # V64: listas humanas copiadas de catálogos: "2 Ocean (16)".
+    # El número entre paréntesis es tono/código, no medida de accesorio.
+    lineas_parentesis = normalizado.get("lineas_originales") or normalizado.get("lineas") or [texto_sin_totales]
+    for linea in lineas_parentesis:
+        l = _sin_acentos(linea).lower().replace("\u00d7", "x")
+        l = re.sub(r"[^\w\s#,$.\-/()\n]+", " ", l, flags=re.UNICODE)
+        l = re.sub(r"[ \t\r\f\v]+", " ", l).strip()
+        l = re.sub(r"^(?:tambien|también|y\s+estos\s+tambien|y\s+estos\s+también|estos\s+tambien|estos\s+también|va\s+otra\s+parte|otra\s+parte)\s*:?\s*", "", l)
+        l = re.sub(r"^(?:quiero|dame|deme|ponme|agregame|agrega)\s+", "", l)
+        m = re.fullmatch(rf"({qty_pat})\s+([a-z0-9 áéíóúñü]+?)\s*\(\s*({codigo_alpha_pat}|\d{{1,4}})\s*\)", l)
+        if m:
+            qty = _qty(m.group(1))
+            if qty:
+                items.append(_item(codigo=m.group(3), cantidad=qty, desc=m.group(2), raw=linea, fuente="cantidad_color_parentesis"))
+
     for m in re.finditer(rf"\b({hilo_pat_v62})\s+#?({codigo_alpha_pat})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
         qty = _qty(m.group(3))
         fam = _hilo_family(m.group(1))
@@ -1134,7 +1190,7 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # Pares raros de WhatsApp:
     # "55 2 60 5 429 1" = codigo/cantidad
     # "2 55 3 60 1 429" = cantidad/codigo
-    if not re.search(r"\b(?:del|de|d|codigo|cod|tono|piezas)\b|(?:x|\*)", texto_sin_totales):
+    if not any((it.get("fuente") or "") == "cantidad_color_parentesis" for it in items) and not re.search(r"\b(?:del|de|d|codigo|cod|tono|piezas)\b|(?:x|\*)", texto_sin_totales):
         nums_pair = re.findall(r"(?<!\d)(\d{1,4})(?!\d)", texto_sin_totales)
         if len(nums_pair) >= 4 and len(nums_pair) % 2 == 0:
             pairs = list(zip(nums_pair[0::2], nums_pair[1::2]))
@@ -2300,6 +2356,31 @@ def _respuesta_catalogo_general(texto, productos):
     return f"Sí {EMOJI_OK} manejamos " + ("; ".join(resumen) if resumen else "hilos y accesorios para tejer") + ". ¿Qué proyecto quiere hacer?"
 
 
+def _respuesta_consulta_varios_hilos(texto, intencion, productos):
+    hilos = intencion.get("hilos_mencionados") or detectar_hilos(texto, productos)
+    familias = []
+    for h in hilos:
+        fam = _hilo_family(h)
+        if fam and fam not in familias:
+            familias.append(fam)
+    if len(familias) < 2:
+        return ""
+    nombres = [_hilo_display(f) for f in familias[:4]]
+    t = _norm(texto)
+    if "VELLUTO" in familias and "KOMFY MINI" in familias:
+        return f"Sí {EMOJI_OK} manejamos Velluto y Komfy Mini. Sobre Komfy, ¿te refieres a Komfy normal o Komfy Mini? Le puedo revisar disponibilidad por tono o pasarle la gama."
+    return f"Sí {EMOJI_OK} manejamos {', '.join(nombres)}. Le puedo revisar disponibilidad por tono o pasarle la gama de cada uno."
+
+
+def _respuesta_mensaje_pegado_alize(texto):
+    t = _norm(texto)
+    if "alize" not in t:
+        return ""
+    if re.search(r"\b(de\s+este|de\s+ese|este|ese)\b.*\b(maneja|manejas|manejan|tienen|tienes)\b|\b(maneja|manejas|manejan|tienen|tienes)\b.*\b(de\s+este|de\s+ese|este|ese)\b", t):
+        return f"Sí {EMOJI_OK} de Alize manejamos Velluto. Si se refiere a otro hilo de Alize, mándeme foto o nombre y se lo reviso para no darle mal el dato."
+    return ""
+
+
 def _respuesta_recomendacion_producto(texto, productos):
     t = _norm(texto)
     # V53: si la recomendación pregunta por un hilo específico, usar ficha técnica primero.
@@ -2320,11 +2401,17 @@ def _respuesta_recomendacion_producto(texto, productos):
     if not opciones:
         opciones = ["Komfy Mini o Velluto para algo suave", "Kurumi para amigurumi con más detalle"]
 
-    if re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos)\b", t):
-        return f"Para amigurumi le recomendaría {opciones[0]} {EMOJI_OK}. También puedo mostrarle opciones por presupuesto: económica, suave o con más definición. ¿Qué tamaño de muñeco va a hacer?"
+    if re.search(r"\b(leon|leoncito)\b", t):
+        return f"Sí {EMOJI_OK} para un leoncito le pueden quedar tonos miel/camel, café o tabaco, y un toque crema/blanco para la carita. Si lo quiere más tierno, también puede ir con mostaza o naranja suave. ¿Lo busca realista o más infantil?"
 
-    if re.search(r"\b(chenille|suave|barato|economico|no salga tan caro)\b", t):
-        return f"Para algo suave tipo chenille y económico, le recomiendo revisar {opciones[0]} {EMOJI_OK}. Si quiere, le muestro colores disponibles y precio para comparar."
+    if re.search(r"\b(suave|suavecito|suavesito|pachoncito|bebe|bebé|cobija|cobijita|mantita|manta|no\s+pique|que\s+no\s+pique)\b", t):
+        return f"Sí {EMOJI_OK} para algo suavecito le recomiendo Velluto o Komfy Mini. Velluto queda muy bonito para amigurumis, mantitas y trabajos pachoncitos. Komfy Mini también es suave y manejable para detalles. ¿Lo busca para amigurumi, bebé, cobija o ropa?"
+
+    if re.search(r"\b(amigurumi|amigurumis|muneco|munecos|muñeco|muñecos|peluche)\b", t):
+        return f"Para peluche o amigurumi le recomendaría Velluto o Komfy Mini {EMOJI_OK}. Velluto queda más pachoncito y Komfy Mini ayuda mucho en piezas chicas. ¿Qué tamaño de muñeco va a hacer?"
+
+    if re.search(r"\b(barato|economico|económico|bonito|no\s+salga\s+tan\s+caro)\b", t):
+        return f"Claro {EMOJI_OK} le puedo sugerir una opción bonita y más económica, pero depende del proyecto. ¿Lo busca para amigurumi, ropa, cobija o decoración?"
 
     return f"Con gusto {EMOJI_OK} le recomiendo según el proyecto: {', '.join(opciones[:3])}. ¿Qué va a tejer?"
 
@@ -2334,8 +2421,18 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     recursos = recursos or {}
     envio = envio or {}
 
+    resp_alize = _respuesta_mensaje_pegado_alize(texto)
+    if resp_alize and not (resolucion.get("pedidos") or []):
+        return resp_alize
+
+    resp_varios = _respuesta_consulta_varios_hilos(texto, intencion, productos)
+    if resp_varios and principal in ("consulta_stock", "catalogo_general"):
+        return resp_varios
+
     # V53: ficha técnica de hilos (composición, gancho, metraje, usos) con base editable.
     if intencion.get("secundaria") == "ficha_hilo":
+        if _es_consulta_recomendacion(texto) and not _producto_kb_por_texto(texto, contexto):
+            return _respuesta_recomendacion_producto(texto, productos)
         if recursos.get("respuesta"):
             return recursos["respuesta"]
         return _respuesta_conocimiento_hilo(texto, contexto)
@@ -2427,6 +2524,8 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
         return _respuesta_consulta_stock_detallada(contexto, productos, texto, resolucion, extraccion)
 
     if principal == "envio":
+        if intencion.get("secundaria") == "envio_local":
+            return f"Hola {EMOJI_OK} sí podemos revisar entrega por Uber/Didi si está dentro de zona local. Para confirmarte si se puede, pásame tu colonia o ubicación aproximada. Si no entra por Uber, también te puedo cotizar paquetería con tu CP."
         if recursos.get("respuesta") and re.search(r"\b(info|informacion|costos|zonas|reexpedicion|tabla|imagen|foto)\b", texto):
             return recursos["respuesta"]
         return f"Claro {EMOJI_OK} para decirle el costo exacto de envío necesito su código postal (CP), por favor."
@@ -2435,6 +2534,11 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
         if envio.get("respuesta"):
             return envio["respuesta"]
         cp = extraccion.get("cp") or contexto.get("cp_actual") or ""
+        pedido_activo = _cargar_pedido_en_proceso((contexto or {}).get("memoria_previa") or {})
+        if not pedido_activo and not (resolucion.get("pedidos") or []):
+            if re.search(r"\b(envio|envíos|envios|paqueteria|paquetería|sale|costo)\b", texto):
+                return f"Con gusto {EMOJI_OK} para calcularlo necesito saber qué productos llevaría, porque el envío depende del volumen del paquete. Ya tengo el CP {cp}."
+            return f"Claro {EMOJI_OK} ¿te refieres al código postal {cp} para calcular envío? Pásame qué productos quieres cotizar y con gusto te doy el total con envío."
         return f"Perfecto {EMOJI_OK} con el CP {cp} reviso opciones de paqueteria para su pedido."
 
     if principal in ("pago", "comprobante"):
@@ -2460,9 +2564,11 @@ def generar_respuesta_vendedora(normalizado, intencion, contexto, extraccion, re
     if principal == "saludo":
         return f"Hola {EMOJI_OK} con gusto le atiendo. ¿Busca algún hilo, color, accesorio o quiere que le muestre lo que manejamos?"
 
-    if principal == "correccion_pedido":
+    if principal in ("correccion_pedido", "cancelacion_pedido"):
         if (resolucion.get("correccion_pedido") or {}).get("respuesta"):
             return resolucion["correccion_pedido"]["respuesta"]
+        if principal == "cancelacion_pedido":
+            return f"Claro {EMOJI_OK} cancelo la lista de la cotización para no dejar nada agregado."
         nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)
         mem = contexto.get("memoria_previa") or {}
         prev = _cargar_lista_pendiente(mem)
@@ -2911,6 +3017,12 @@ def _aplicar_correccion_pedido(normalizado, intencion, memoria, productos, conte
     texto = normalizado["texto"] if isinstance(normalizado, dict) else _norm(normalizado)
     prev = _cargar_pedido_en_proceso(memoria or {})
     if not prev:
+        if principal == "cancelacion_pedido":
+            return {
+                "accion": "cancelar_lista_sin_activa",
+                "pedido_en_proceso_actualizado": [],
+                "respuesta": f"Claro {EMOJI_OK} dejo la cotización en cero para empezar de nuevo cuando guste.",
+            }
         return {
             "respuesta": f"Claro {EMOJI_OK} le ayudo a corregirlo. Ahorita no tengo una lista activa en memoria; me confirma que codigo o cantidad cambiamos?",
             "pedido_en_proceso_actualizado": [],
@@ -2922,6 +3034,38 @@ def _aplicar_correccion_pedido(normalizado, intencion, memoria, productos, conte
             "respuesta": f"Claro {EMOJI_OK} cancelo la lista de la cotizacion para no dejar nada agregado.",
         }
     nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", texto)
+    m_quita_agrega = re.search(
+        r"\b(?:quita|quitame|quitar|borra|elimina|saca)\b.*?#?(\d{1,4}).*?\b(?:ponme|agrega|agregame|agrégame|mete|añade|anade)\b\s*(?:(\d{1,3})\s*(?:del|de|d)?\s*)?(?:(?:otro|otra|un|una|uno|el)\s*)?#?(\d{1,4})\b",
+        texto,
+    )
+    if m_quita_agrega:
+        viejo = _codigo_key(m_quita_agrega.group(1))
+        nuevo = _codigo_key(m_quita_agrega.group(3))
+        cantidad = int(m_quita_agrega.group(2) or 1)
+        base = _pedido_filtrar_codigos(prev, [viejo])
+        if len(base) == len(prev):
+            return {
+                "accion": "quitar_agregar_no_encontrado",
+                "pedido_en_proceso_actualizado": prev[:80],
+                "respuesta": f"Le reviso {EMOJI_OK} no veo el codigo {viejo} en la lista activa. Me confirma cual quitamos antes de agregar el {nuevo}?",
+            }
+        pedido_nuevo, res_nuevo = _resolver_codigo_para_correccion(nuevo, cantidad, productos, contexto)
+        if not pedido_nuevo:
+            pregunta = (res_nuevo.get("preguntas") or ["me confirma el tono nuevo para cambiarlo bien?"])[0]
+            return {
+                "accion": "quitar_agregar_pendiente",
+                "pedido_en_proceso_actualizado": prev[:80],
+                "respuesta": f"Claro {EMOJI_OK} antes de cambiarlo, {pregunta}",
+            }
+        actualizado = _merge_pedidos(base + [pedido_nuevo])[:80]
+        return {
+            "accion": "quitar_agregar",
+            "quitar": viejo,
+            "agregar": nuevo,
+            "pedido_en_proceso_actualizado": actualizado,
+            "respuesta": f"Listo {EMOJI_OK} quito el codigo {viejo} y agrego {_linea_producto(pedido_nuevo)} a su cotizacion.",
+        }
+
     m_sust = re.search(r"\b(?:cambia|cambiar|sustituye|sustituir|reemplaza|reemplazar)\b.*?#?(\d{1,4}).*?\b(?:por|a|al)\b\s*#?(\d{1,4})\b", texto)
     if m_sust:
         viejo = _codigo_key(m_sust.group(1))
@@ -3019,7 +3163,7 @@ def guardar_memoria_conversacion(memoria, normalizado, intencion, contexto, extr
     if "pedido_en_proceso_actualizado" in resolucion:
         nueva["cotizacion_activa"] = bool(resolucion.get("pedido_en_proceso_actualizado") or [])
     elif pedidos:
-        nueva["cotizacion_activa"] = True
+        nueva["cotizacion_activa"] = bool(_cargar_pedido_en_proceso({"pedido_en_proceso": pedido_en_proceso}))
     return nueva
 
 
