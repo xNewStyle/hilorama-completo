@@ -63,6 +63,7 @@ HILO_ALIASES = {
     "KURUMI": ["kurumi"],
     "KAIRO": ["kairo"],
     "TRAPILLO": ["trapillo", "trapillo kraft", "kraft"],
+    "OJO NEGRO": ["ojo negro", "ojos negros", "ojo seguridad", "ojos seguridad", "ojo de seguridad", "ojos de seguridad"],
     # V38: hilos reales que antes se podían confundir con texto libre si venían con typo.
     "KOTTON MILK": ["kotton milk", "cotton milk", "koton milk", "kotton", "cotton"],
     "BABY BEST": ["baby best", "beby best", "baby", "bebe best"],
@@ -579,10 +580,15 @@ def _es_seguimiento_recomendacion(texto, memoria=None):
 
 def _es_status_pedido(texto):
     t = _norm(texto)
+    nums = re.findall(r"(?<!\d)\d{1,4}(?!\d)", t)
+    if len(nums) >= 4 and re.search(r"\b(?:piezas?|pzas?|del|codigo|cod|tono|x)\b|#", t):
+        return False
     return bool(
         re.search(r"\b(?:como\s+va|estatus|status|seguimiento|rastrear|rastreo|revisar)\b.*\b(?:pedido|nota|orden)\b", t)
         or re.search(r"\b(?:pedido|nota|orden|cot|ped)\s*(?:hil|hlr|wa|cot|ped)?[-\s]?\d{3,}\b", t)
-        or re.search(r"\b(?:guia|guía|paquete|rastreo|referencia|mandaron|mandado|salio|salió|movio|movió)\b", t)
+        or re.search(r"\b(?:guia|guía|rastreo|mandaron|mandado|salio|salió|movio|movió)\b", t)
+        or re.search(r"\bpaquete\b.*\b(?:ya|movio|movió|mandaron|mandado|salio|salió|rastreo|guia|guía|llego|llegó)\b", t)
+        or re.search(r"\breferencia\b.*\b(?:pago|falta|pedido|nota|orden)\b", t)
         or re.search(r"\bno\s+quiero\s+que\s+se\s+(?:duplique|dupliquen)\b|\bduplicar\s+(?:la\s+)?nota\b", t)
     )
 
@@ -1150,7 +1156,7 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
     # "kurumi 12 x5 y velluto 429 x2".
     # Guardamos el hilo en el item para que el código se resuelva contra
     # esa familia y no contra el contexto previo de la conversación.
-    hilo_pat_v62 = r"velluto|veluto|belluto|komfy mini|komfy|komfi|konfy|comfy|kurumi|kairo|trapillo(?: kraft)?|kotton milk|cotton milk|baby best|diva|fiorentino maxi"
+    hilo_pat_v62 = r"velluto|veluto|belluto|komfy mini|komfy|komfi|konfy|comfy|kurumi|kairo|trapillo(?: kraft)?|ojo negro|ojos negros|ojo(?:s)?(?: de)? seguridad|kotton milk|cotton milk|baby best|diva|fiorentino maxi"
     codigo_alpha_pat = r"\d{1,4}[a-z]{1,4}"
     # V64: listas humanas copiadas de catálogos: "2 Ocean (16)".
     # El número entre paréntesis es tono/código, no medida de accesorio.
@@ -1232,6 +1238,10 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             bloques_sin_del = [_quitar_intro_lista(x) for x in lineas_para_sin_del]
             bloques_sin_del = [x for x in bloques_sin_del if x]
         for bloque in bloques_sin_del:
+            for m in re.finditer(rf"\b#?({codigo_alpha_pat}|\d{{1,4}})\s*(?:x|\*)\s*({qty_pat})(?!\w)", bloque):
+                qty = _qty(m.group(2))
+                if qty and qty <= 300:
+                    items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_x_cantidad"))
             for m in re.finditer(rf"\b({qty_pat})\s+(?:piezas?\s*)?(?:el\s+)?#?({codigo_alpha_pat}|\d{{1,4}})(?!\w)", bloque):
                 qty = _qty(m.group(1))
                 verbo_cercano = bool(re.search(r"\b(ponme|agrega|agregame|dame|deme|quiero|ocupo|necesito|cotiza|cotizar|me\s+llevo)\b", bloque[:m.start()], re.I))
@@ -1267,11 +1277,11 @@ def extraer_productos_y_cantidades(normalizado, intencion, contexto):
             items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_cantidad_texto"))
 
     # 55 x2 / 55 x dos / 55 * 3
-    for m in re.finditer(rf"(?<!\w)({codigo_alpha_pat})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
+    for m in re.finditer(rf"(?<!\w)#?({codigo_alpha_pat})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
         qty = _qty(m.group(2))
         if qty:
             items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_x_cantidad"))
-    for m in re.finditer(rf"(?<!\d)(\d{{1,4}})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
+    for m in re.finditer(rf"(?<!\d)#?(\d{{1,4}})\s*(?:x|\*)\s*({qty_pat})(?!\w)", texto_sin_totales):
         qty = _qty(m.group(2))
         if qty:
             items.append(_item(codigo=m.group(1), cantidad=qty, raw=m.group(0), fuente="codigo_x_cantidad"))
@@ -1502,9 +1512,12 @@ def _segmentos_lista(normalizado, texto_fallback=""):
 
     segmentos = []
     for linea in fuentes:
-        partes = re.split(r"\s*(?:\*+|\||;|,|/)\s*", linea.replace("\u00d7", "x"))
+        linea = linea.replace("\u00d7", "x")
+        linea = re.sub(r"(?i)(?<![\w)])(#\d{1,4}[a-z]{0,4})\s*\*\s*(\d{1,4}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta)", r"\1 x \2", linea)
+        partes = re.split(r"\s*(?:\*+|\||;|,|/)\s*", linea)
         for parte in partes:
             seg = _quitar_intro_lista(parte)
+            seg = re.sub(r"\bpzas?\b|\bpiezas?\b|\bmadejas?\b", "piezas", seg)
             if seg:
                 segmentos.append(seg)
     return segmentos
@@ -3218,6 +3231,26 @@ def _resolver_codigo_para_correccion(codigo, cantidad, productos, contexto):
     return (res.get("pedido") or {}), res
 
 
+def _cantidad_codigo_pendiente(memoria, codigo):
+    key = _codigo_key(codigo)
+    if not key:
+        return 0
+    total = 0
+    for campo in ("items_pendientes_resolver", "ultima_lista_pendiente"):
+        raw = (memoria or {}).get(campo)
+        try:
+            items = json.loads(raw) if isinstance(raw, str) and raw.strip() else (raw or [])
+        except Exception:
+            items = []
+        for it in items or []:
+            if _codigo_key((it or {}).get("codigo") or (it or {}).get("codigo_raw")) == key:
+                try:
+                    total += int((it or {}).get("cantidad") or 1)
+                except Exception:
+                    total += 1
+    return total
+
+
 def _aplicar_correccion_pedido(normalizado, intencion, memoria, productos, contexto):
     principal = (intencion or {}).get("principal") or ""
     if principal not in ("correccion_pedido", "cancelacion_pedido"):
@@ -3336,7 +3369,7 @@ def _aplicar_correccion_pedido(normalizado, intencion, memoria, productos, conte
         viejo = _codigo_key(m_sust.group(1))
         nuevo = _codigo_key(m_sust.group(2))
         quitados = [p for p in prev if _codigo_key(p.get("codigo") or p.get("codigo_raw")) == viejo]
-        cantidad = sum(int(p.get("cantidad") or 1) for p in quitados) or 1
+        cantidad = sum(int(p.get("cantidad") or 1) for p in quitados) or _cantidad_codigo_pendiente(memoria, viejo) or 1
         pedido_nuevo, res_nuevo = _resolver_codigo_para_correccion(nuevo, cantidad, productos, contexto)
         if not pedido_nuevo:
             pregunta = (res_nuevo.get("preguntas") or ["me confirma el tono nuevo para cambiarlo bien?"])[0]
