@@ -27,8 +27,8 @@ from core.almacen_api import obtener_todos_los_productos, obtener_producto_por_c
 from auditoria import registrar_cambio
 from hilorama_desktop.security.authorization import (
     get_admin_override_key,
-    get_legacy_sales_override_key,
     is_admin_override_key,
+    is_legacy_sales_override_key,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -477,7 +477,6 @@ def seleccionar_o_crear_cliente(parent):
 
     return resultado["cliente"]
 
-PASSWORD = get_legacy_sales_override_key()
 def pedir_password(parent=None):
     if parent is None:
         parent = root
@@ -513,7 +512,10 @@ def pedir_password(parent=None):
     entry.focus()
 
     def confirmar():
-        if pwd_var.get() == PASSWORD:
+        if is_legacy_sales_override_key(
+            pwd_var.get(),
+            {"accion": "ver_cotizaciones_autorizacion"},
+        ):
             resultado["ok"] = True
             modal.destroy()
         else:
@@ -3029,7 +3031,10 @@ def editar_cotizacion(win, tree):
         parent=ed,
         show="*"
     )
-     if pwd != PASSWORD:
+     if not is_legacy_sales_override_key(
+        pwd,
+        {"accion": "ver_cotizaciones_cambiar_precio_item"},
+     ):
         messagebox.showerror(
             "Error",
             "Contraseña incorrecta",

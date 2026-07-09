@@ -15,7 +15,10 @@ def pedir_password(win):
         parent=win,
         show="*"
     )
-    return is_legacy_sales_override_key(pwd)
+    return is_legacy_sales_override_key(
+        pwd,
+        {"accion": "visor_imagen_cambiar_comprobante"},
+    )
 
 
 def visor_imagen(parent, ruta_inicial=None, on_save=None):

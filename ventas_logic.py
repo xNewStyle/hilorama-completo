@@ -27,7 +27,16 @@ def validar_stock(marca, hilo, color, cantidad):
         return False
 
     pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
-    return is_legacy_sales_override_key(pwd)
+    return is_legacy_sales_override_key(
+        pwd,
+        {
+            "accion": "ventas_logic_stock_insuficiente",
+            "marca": marca,
+            "hilo": hilo,
+            "color": color,
+            "cantidad": cantidad,
+        },
+    )
 
 
 def aplicar_venta(marca, hilo, color, cantidad):

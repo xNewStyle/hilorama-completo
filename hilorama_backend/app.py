@@ -486,6 +486,51 @@ def _require_license_api():
     return auth, None
 
 
+BACKEND_LEGACY_ADMIN_OVERRIDE_FALLBACK = "12587987521"
+
+
+def _backend_admin_override_key():
+    return (
+        os.environ.get("HILORAMA_ADMIN_OVERRIDE_KEY", "").strip()
+        or BACKEND_LEGACY_ADMIN_OVERRIDE_FALLBACK
+    )
+
+
+@app.route("/api/autorizaciones/validar", methods=["POST"])
+def api_autorizaciones_validar():
+    auth, error = _require_license_api()
+    if error:
+        return error
+
+    data = _body_json()
+    tipo = str(data.get("tipo") or "").strip()
+    clave = str(data.get("clave") or "")
+    contexto = data.get("contexto") if isinstance(data.get("contexto"), dict) else {}
+    accion = str(contexto.get("accion") or "").strip()
+
+    if tipo != "admin_legacy":
+        return jsonify({
+            "ok": False,
+            "autorizado": False,
+            "error": "Tipo de autorizacion no soportado.",
+        }), 400
+
+    esperado = _backend_admin_override_key()
+    autorizado = bool(esperado) and secrets.compare_digest(clave, esperado)
+    if not autorizado:
+        app.logger.warning(
+            "Autorizacion rechazada tipo=%s accion=%s usuario_id=%s",
+            tipo,
+            accion,
+            auth.get("usuario_id"),
+        )
+
+    return jsonify({
+        "ok": True,
+        "autorizado": autorizado,
+    })
+
+
 @app.route("/api/productos", methods=["GET"])
 def api_productos_listar():
     _, error = _require_license_api()
