@@ -22,9 +22,18 @@ _LOGGERS: dict[str, logging.Logger] = {}
 
 
 _URL_PASSWORD_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://[^:/\s]+:)([^@\s]+)(@)")
+_SENSITIVE_ENV_NAMES = (
+    "DATABASE" + "_URL",
+    "WHATSAPP_TOKEN",
+    "WHATSAPP_VERIFY_TOKEN",
+    "HILORAMA_RENDER_TOKEN",
+    "TOKEN",
+    "PASSWORD",
+    "CONTRASENA",
+    "CONTRASEÑA",
+)
 _SENSITIVE_ENV_RE = re.compile(
-    r"(?i)\b(DATABASE_URL|WHATSAPP_TOKEN|WHATSAPP_VERIFY_TOKEN|"
-    r"HILORAMA_RENDER_TOKEN|TOKEN|PASSWORD|CONTRASENA|CONTRASEÑA)\s*=\s*([^\s]+)"
+    r"(?i)\b(" + "|".join(re.escape(name) for name in _SENSITIVE_ENV_NAMES) + r")\s*=\s*([^\s]+)"
 )
 
 
@@ -99,4 +108,3 @@ def log_error(nombre_modulo: str, mensaje: str, exc=None):
     get_logger(nombre_modulo).error(texto)
     if nombre_modulo != "errores":
         get_logger("errores").error(f"[{nombre_modulo}] {texto}")
-

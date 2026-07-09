@@ -6,6 +6,7 @@ entorno o del flujo seguro de autenticacion.
 
 import os
 import sys
+from pathlib import Path
 
 APP_NAME = "Hilorama Desktop"
 APP_VERSION = "0.2.0-fase2"
@@ -14,7 +15,16 @@ HILORAMA_ENV = os.environ.get("HILORAMA_ENV", "production").strip().lower()
 BUILD_CHANNEL = os.environ.get("BUILD_CHANNEL", "development").strip().lower()
 IS_FROZEN_BUILD = bool(getattr(sys, "frozen", False))
 HILORAMA_CLIENT_MODE = os.environ.get("HILORAMA_CLIENT_MODE", "production").strip().lower()
-HILORAMA_DATA_MODE = os.environ.get("HILORAMA_DATA_MODE", "local").strip().lower()
+
+
+def _default_data_mode():
+    project_root = Path(__file__).resolve().parents[1]
+    if (project_root / "database").exists():
+        return "local"
+    return "api"
+
+
+HILORAMA_DATA_MODE = os.environ.get("HILORAMA_DATA_MODE", _default_data_mode()).strip().lower()
 DATA_MODE = HILORAMA_DATA_MODE
 
 RENDER_API_BASE_URL = os.environ.get(

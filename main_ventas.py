@@ -41,13 +41,23 @@ from hilorama_desktop.security.authorization import get_admin_override_key
 PASSWORD = get_admin_override_key()
 
 try:
-    from hilorama_desktop.config import HILORAMA_DATA_MODE
+    from hilorama_desktop.config import HILORAMA_DATA_MODE, require_local_mode
 except Exception:
     HILORAMA_DATA_MODE = "local"
+    def require_local_mode(area=""):
+        if os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api":
+            detalle = f" ({area})" if area else ""
+            raise RuntimeError(f"Base local bloqueada en modo API cliente{detalle}.")
 
 
 def _modo_api():
     return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def _get_conn_local(area="ventas"):
+    require_local_mode(area)
+    from database.connection import get_conn
+    return get_conn()
 
 
 def _validar_acceso_inicial_ventas():
@@ -390,7 +400,6 @@ def abrir_panel_asignacion():
             listar_notas_asignacion_empacador,
         )
     else:
-        from database.connection import get_conn
         from empacadores import listar_empacadores_activos
 
     def _fecha_para_orden(valor):
@@ -464,7 +473,7 @@ def abrir_panel_asignacion():
         if modo_api:
             notas = listar_notas_asignacion_empacador()
         else:
-            conn = get_conn()
+            conn = _get_conn_local("panel asignacion")
             notas = conn.execute("""
             SELECT 
                 n.id,
@@ -540,7 +549,7 @@ def abrir_panel_asignacion():
         nuevas_notas = recargar_datos()
 
         if not modo_api:
-            conn = get_conn()
+            conn = _get_conn_local("panel asignacion")
 
             for n in nuevas_notas:
                 if n["requeridas"] > 0:
@@ -730,7 +739,7 @@ def abrir_panel_asignacion():
         if modo_api:
             nuevas_notas = listar_notas_asignacion_empacador()
         else:
-            conn = get_conn()
+            conn = _get_conn_local("panel asignacion")
            
             nuevas_notas = conn.execute("""
                 SELECT 
@@ -836,7 +845,7 @@ def abrir_panel_asignacion():
             if modo_api:
                 asignar_notas_empacador(nota_ids, emp["id"])
             else:
-                conn = get_conn()
+                conn = _get_conn_local("panel asignacion")
 
                 for nota_id in nota_ids:
                     conn.execute("""
@@ -922,7 +931,7 @@ def abrir_panel_asignacion():
             if modo_api:
                 desasignar_notas_empacador(nota_ids)
             else:
-                conn = get_conn()
+                conn = _get_conn_local("panel asignacion")
 
                 for nota_id in nota_ids:
                     conn.execute("""
@@ -1021,7 +1030,7 @@ def abrir_panel_envios():
     if modo_api:
         from hilorama_desktop.services.envios_api_service import listar_envios, actualizar_envio_nota
     else:
-        from database.connection import get_conn
+        pass
 
     estado_filtro = tk.StringVar(value="COMPLETAS")
 
@@ -1036,7 +1045,7 @@ def abrir_panel_envios():
         if modo_api:
             return listar_envios({"estado": estado, "limit": 500})
 
-        conn = get_conn()
+        conn = _get_conn_local("panel envios")
         where_extra = ""
 
         if estado == "COMPLETAS":
@@ -1254,7 +1263,7 @@ def abrir_panel_envios():
                     datos["paqueteria"] = paqueteria
                 actualizar_envio_nota(nota_id, datos)
             else:
-                conn = get_conn()
+                conn = _get_conn_local("panel envios")
                 if paqueteria:
                     conn.execute("""
                         UPDATE notas
@@ -1484,8 +1493,7 @@ def eliminar_pedido_opciones():
         ):
             return
 
-        from database.connection import get_conn
-        conn = get_conn()
+        conn = _get_conn_local("eliminar pedido")
 
         # borrar errores
         conn.execute("""
@@ -1537,8 +1545,7 @@ def eliminar_pedido_opciones():
         if not nuevo:
             return
 
-        from database.connection import get_conn
-        conn = get_conn()
+        conn = _get_conn_local("mover notas de pedido")
 
         conn.execute("""
             UPDATE notas
@@ -2587,8 +2594,7 @@ def obtener_ranking():
         from hilorama_desktop.services.reportes_api_service import ranking_empacadores
         return ranking_empacadores({"limit": 3})
 
-    from database.connection import get_conn
-    conn = get_conn()
+    conn = _get_conn_local("ranking ventas")
 
     rows = conn.execute("""
         SELECT 

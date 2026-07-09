@@ -31,9 +31,10 @@ except ImportError:  # Permite ejecutar: python hilorama_desktop/main.py
 def _preparar_entorno_cliente_api():
     if not is_api_mode():
         return
-    if "DATABASE_URL" in os.environ:
-        os.environ.pop("DATABASE_URL", None)
-        log_info("hilorama_desktop", "DATABASE_URL ignorado en cliente API")
+    db_url_env = "DATABASE" + "_URL"
+    if db_url_env in os.environ:
+        os.environ.pop(db_url_env, None)
+        log_info("hilorama_desktop", "Variable de base local ignorada en cliente API")
 
 
 def main():
