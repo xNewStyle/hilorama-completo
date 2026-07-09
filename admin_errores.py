@@ -1,9 +1,13 @@
 import os
 
 try:
-    from hilorama_desktop.config import HILORAMA_DATA_MODE
+    from hilorama_desktop.config import HILORAMA_DATA_MODE, require_local_mode
 except Exception:
     HILORAMA_DATA_MODE = "local"
+    def require_local_mode(area=""):
+        if os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api":
+            detalle = f" ({area})" if area else ""
+            raise RuntimeError(f"Base local bloqueada en modo API cliente{detalle}.")
 
 
 def _modo_api():
@@ -11,8 +15,7 @@ def _modo_api():
 
 
 def get_conn():
-    if _modo_api():
-        raise RuntimeError("Los errores legacy no están disponibles con base local en modo API.")
+    require_local_mode("errores legacy")
     from database.connection import get_conn as _real_get_conn
     return _real_get_conn()
 

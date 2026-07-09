@@ -3,17 +3,20 @@ import os
 import unicodedata
 
 try:
-    from hilorama_desktop.config import HILORAMA_DATA_MODE
+    from hilorama_desktop.config import HILORAMA_DATA_MODE, require_local_mode
 except Exception:
     HILORAMA_DATA_MODE = "local"
+    def require_local_mode(area=""):
+        if os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api":
+            detalle = f" ({area})" if area else ""
+            raise RuntimeError(f"Base local bloqueada en modo API cliente{detalle}.")
 
 
 ACCION_NO_DISPONIBLE_API = "Esta acción todavía no está disponible en modo API."
 
 
 def get_conn():
-    if _modo_api():
-        raise RuntimeError("La base local de clientes no está disponible en modo API.")
+    require_local_mode("clientes")
     from database.connection import get_conn as _real_get_conn
     return _real_get_conn()
 

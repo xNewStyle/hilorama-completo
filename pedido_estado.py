@@ -2,9 +2,13 @@ import os
 from datetime import datetime
 
 try:
-    from hilorama_desktop.config import HILORAMA_DATA_MODE
+    from hilorama_desktop.config import HILORAMA_DATA_MODE, require_local_mode
 except Exception:
     HILORAMA_DATA_MODE = "local"
+    def require_local_mode(area=""):
+        if os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api":
+            detalle = f" ({area})" if area else ""
+            raise RuntimeError(f"Base local bloqueada en modo API cliente{detalle}.")
 
 
 def _modo_api():
@@ -12,8 +16,7 @@ def _modo_api():
 
 
 def _get_conn():
-    if _modo_api():
-        raise RuntimeError("La base local de pedido activo no está disponible en modo API.")
+    require_local_mode("pedido activo")
     from database.connection import get_conn
     return get_conn()
 

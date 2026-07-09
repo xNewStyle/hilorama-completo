@@ -3,6 +3,7 @@
 Fase 1A: ventana base sin integrar todavia los modulos reales.
 """
 from pathlib import Path
+import os
 import sys
 
 
@@ -14,18 +15,29 @@ for path in (PROJECT_ROOT, APP_DIR):
         sys.path.insert(0, path_str)
 
 try:
+    from .config import is_api_mode
     from .ui.main_window import run_app
     from .ui.login_window import solicitar_login
     from .services.auth_service import AuthService
     from .utils.logger import log_error, log_info
 except ImportError:  # Permite ejecutar: python hilorama_desktop/main.py
+    from config import is_api_mode
     from ui.main_window import run_app
     from ui.login_window import solicitar_login
     from services.auth_service import AuthService
     from utils.logger import log_error, log_info
 
 
+def _preparar_entorno_cliente_api():
+    if not is_api_mode():
+        return
+    if "DATABASE_URL" in os.environ:
+        os.environ.pop("DATABASE_URL", None)
+        log_info("hilorama_desktop", "DATABASE_URL ignorado en cliente API")
+
+
 def main():
+    _preparar_entorno_cliente_api()
     log_info("hilorama_desktop", "Iniciando Hilorama Desktop")
     try:
         auth_service = AuthService()
