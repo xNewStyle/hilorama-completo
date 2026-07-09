@@ -113,6 +113,8 @@ EXCLUDED_NAMES = {
 }
 
 EXCLUDED_RELATIVE = {
+    Path("hilorama_desktop") / "HiloramaCliente.spec",
+    Path("hilorama_desktop") / "build_exe.py",
     Path("hilorama_desktop") / "build_client_package.py",
     Path("hilorama_desktop") / "test_fase2_security.py",
 }
