@@ -12,6 +12,8 @@ def _modo_api():
 
 
 def _get_conn():
+    if _modo_api():
+        raise RuntimeError("La base local de pedido activo no está disponible en modo API.")
     from database.connection import get_conn
     return get_conn()
 

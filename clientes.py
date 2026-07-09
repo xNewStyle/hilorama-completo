@@ -12,6 +12,8 @@ ACCION_NO_DISPONIBLE_API = "Esta acción todavía no está disponible en modo AP
 
 
 def get_conn():
+    if _modo_api():
+        raise RuntimeError("La base local de clientes no está disponible en modo API.")
     from database.connection import get_conn as _real_get_conn
     return _real_get_conn()
 

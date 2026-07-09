@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
-from database.connection import get_conn
 from datetime import datetime, timedelta
 import math
 import os
@@ -124,6 +123,13 @@ MENSAJE_ACCION_ALMACEN_API = (
 def _bloquear_escritura_local_api(accion):
     if _modo_api():
         raise RuntimeError(f"{MENSAJE_ACCION_ALMACEN_API} Acción: {accion}.")
+
+
+def get_conn():
+    if _modo_api():
+        raise RuntimeError("La base local de Almacén no está disponible en modo API.")
+    from database.connection import get_conn as _real_get_conn
+    return _real_get_conn()
 
 
 def _productos_api_service():

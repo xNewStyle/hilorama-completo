@@ -26,6 +26,8 @@ except Exception:
 
 
 def get_conn():
+    if _modo_api():
+        raise RuntimeError("La base local de notas no está disponible en modo API.")
     from database.connection import get_conn as _real_get_conn
     return _real_get_conn()
 

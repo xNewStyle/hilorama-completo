@@ -1,4 +1,20 @@
-from database.connection import get_conn
+import os
+
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
+
+
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def get_conn():
+    if _modo_api():
+        raise RuntimeError("Las métricas legacy no están disponibles con base local en modo API.")
+    from database.connection import get_conn as _real_get_conn
+    return _real_get_conn()
 
 def obtener_metricas_empacadores():
 

@@ -1,9 +1,26 @@
 # auditoria.py
 
-from database.connection import get_conn
+import os
 from datetime import datetime
 
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
+
 USUARIO_ACTUAL = "ADMIN"
+
+
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def get_conn():
+    if _modo_api():
+        raise RuntimeError("La base local de auditoría no está disponible en modo API.")
+    from database.connection import get_conn as _real_get_conn
+    return _real_get_conn()
+
 
 def registrar_cambio(nota_id, accion, detalle):
 
@@ -22,7 +39,7 @@ def registrar_cambio(nota_id, accion, detalle):
 
     conn.commit()
     conn.close()
-from database.connection import get_conn
+
 
 def obtener_registros():
 
@@ -36,9 +53,8 @@ def obtener_registros():
 
     conn.close()
 
-    return [dict(r) for r in rows]    
-from database.connection import get_conn
-from datetime import datetime
+    return [dict(r) for r in rows]
+
 
 def registrar_evento(nota_id, tipo, descripcion):
     conn = get_conn()
