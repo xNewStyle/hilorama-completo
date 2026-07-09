@@ -1,13 +1,36 @@
 from datetime import datetime
-from database.connection import get_conn
+import os
+
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
+
+try:
+    from hilorama_desktop.utils.logger import log_error
+except Exception:
+    def log_error(nombre_modulo, mensaje, exc=None):
+        return None
 
 STOCK_MINIMO = 50
+MENSAJE_ACCION_ALMACEN_API = (
+    "Esta acción de Almacén todavía no está disponible en modo API. "
+    "Se migrará en una fase posterior."
+)
 _schema_ok = False
+_productos_api_service = None
+
+
+def get_conn():
+    from database.connection import get_conn as _real_get_conn
+    return _real_get_conn()
 
 
 def ensure_almacen_schema():
     """Migración segura para que ventas/cotizaciones entiendan los items de cotización."""
     global _schema_ok
+    if os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api":
+        return
     if _schema_ok:
         return
     conn = get_conn()
@@ -120,6 +143,34 @@ def _producto_para_venta(producto):
     return producto
 
 
+def _modo_datos():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower()
+
+
+def _usar_api_lectura():
+    return _modo_datos() == "api"
+
+
+def _bloquear_escritura_local_api(accion):
+    if _usar_api_lectura():
+        raise RuntimeError(f"{MENSAJE_ACCION_ALMACEN_API} Acción: {accion}.")
+
+
+def _api_productos():
+    global _productos_api_service
+    if _productos_api_service is None:
+        from hilorama_desktop.services import productos_api_service
+        _productos_api_service = productos_api_service
+    return _productos_api_service
+
+
+def _error_api_lectura(accion, exc):
+    detalle = str(exc).strip()
+    mensaje = detalle or f"No se pudo {accion} desde la API."
+    log_error("almacen", mensaje, exc)
+    raise RuntimeError(mensaje) from exc
+
+
 def registrar_movimiento(
     tipo,
     marca=None,
@@ -135,6 +186,7 @@ def registrar_movimiento(
     motivo="",
     conn=None
 ):
+    _bloquear_escritura_local_api("registrar movimiento de almacén")
     cerrar = False
     try:
         if conn is None:
@@ -179,6 +231,15 @@ def registrar_movimiento(
 
 # ================= CONSULTAS =================
 def obtener_todos_los_productos():
+    if _usar_api_lectura():
+        try:
+            productos = _api_productos().listar_todos_los_productos({
+                "incluir_items_cotizacion": "true",
+            })
+            return [dict(p) for p in productos]
+        except Exception as exc:
+            _error_api_lectura("listar productos", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     productos = conn.execute("""
@@ -191,6 +252,12 @@ def obtener_todos_los_productos():
 
 
 def obtener_marcas():
+    if _usar_api_lectura():
+        try:
+            return _api_productos().listar_marcas()
+        except Exception as exc:
+            _error_api_lectura("listar marcas", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     rows = conn.execute("SELECT DISTINCT marca FROM productos ORDER BY marca").fetchall()
@@ -199,6 +266,12 @@ def obtener_marcas():
 
 
 def obtener_hilos(marca):
+    if _usar_api_lectura():
+        try:
+            return _api_productos().listar_hilos(marca)
+        except Exception as exc:
+            _error_api_lectura("listar hilos", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     rows = conn.execute(
@@ -210,6 +283,18 @@ def obtener_hilos(marca):
 
 
 def obtener_productos(marca=None, hilo=None):
+    if _usar_api_lectura():
+        try:
+            params = {"incluir_items_cotizacion": "true"}
+            if marca:
+                params["marca"] = marca
+            if hilo:
+                params["hilo"] = hilo
+            productos = _api_productos().listar_todos_los_productos(params)
+            return [_producto_para_venta(dict(p)) for p in productos]
+        except Exception as exc:
+            _error_api_lectura("obtener productos", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     query = "SELECT * FROM productos WHERE 1=1"
@@ -227,6 +312,18 @@ def obtener_productos(marca=None, hilo=None):
 
 
 def _buscar_producto_por_args(args):
+    if _usar_api_lectura():
+        try:
+            if len(args) == 1:
+                return _api_productos().obtener_producto_por_codigo(args[0])
+            if len(args) >= 3:
+                return _api_productos().obtener_producto_por_marca_hilo_codigo(
+                    args[0], args[1], args[2]
+                )
+            return None
+        except Exception as exc:
+            _error_api_lectura("buscar producto", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     try:
@@ -268,6 +365,12 @@ def es_stock_bajo(*args):
 
 
 def obtener_precio_venta(marca):
+    if _usar_api_lectura():
+        try:
+            return _api_productos().obtener_precio_venta(marca=marca)
+        except Exception as exc:
+            _error_api_lectura("obtener precio de venta", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     row = conn.execute("SELECT venta FROM precios WHERE marca=%s", (marca,)).fetchone()
@@ -277,6 +380,7 @@ def obtener_precio_venta(marca):
 
 # ================= STOCK =================
 def descontar_stock(marca, hilo, codigo, cantidad, *args, **kwargs):
+    _bloquear_escritura_local_api("descontar stock local")
     ensure_almacen_schema()
     conn = get_conn()
     try:
@@ -347,6 +451,7 @@ def descontar_stock(marca, hilo, codigo, cantidad, *args, **kwargs):
 
 
 def aplicar_venta(items):
+    _bloquear_escritura_local_api("aplicar venta local")
     ensure_almacen_schema()
     for p in items:
         descontar_stock(
@@ -359,6 +464,13 @@ def aplicar_venta(items):
 
 
 def obtener_producto_por_codigo(codigo):
+    if _usar_api_lectura():
+        try:
+            producto = _api_productos().obtener_producto_por_codigo(codigo)
+            return _producto_para_venta(producto) if producto else None
+        except Exception as exc:
+            _error_api_lectura("obtener producto por codigo", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     row = conn.execute("""
@@ -373,6 +485,12 @@ def obtener_producto_por_codigo(codigo):
 
 
 def obtener_precio_distribuidor(marca):
+    if _usar_api_lectura():
+        try:
+            return _api_productos().obtener_precio_distribuidor(marca=marca)
+        except Exception as exc:
+            _error_api_lectura("obtener precio distribuidor", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     row = conn.execute("SELECT distribuidor FROM precios WHERE marca=%s", (marca,)).fetchone()
@@ -381,6 +499,13 @@ def obtener_precio_distribuidor(marca):
 
 
 def obtener_producto_por_codigo_barras(codigo_barras):
+    if _usar_api_lectura():
+        try:
+            producto = _api_productos().obtener_producto_por_codigo_barras(codigo_barras)
+            return _producto_para_venta(producto) if producto else None
+        except Exception as exc:
+            _error_api_lectura("obtener producto por codigo de barras", exc)
+
     ensure_almacen_schema()
     conn = get_conn()
     row = conn.execute("SELECT * FROM productos WHERE codigo_barras=%s LIMIT 1", (codigo_barras,)).fetchone()

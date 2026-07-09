@@ -1,35 +1,50 @@
-# pedidos.py
+import os
+from datetime import datetime
 
-from database.connection import get_conn
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
 
 
-# ===============================
-# 🔵 LISTAR
-# ===============================
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def _get_conn():
+    from database.connection import get_conn
+    return get_conn()
+
+
+def _pedidos_api():
+    from hilorama_desktop.services import pedidos_api_service
+    return pedidos_api_service
+
+
 def listar_pedidos():
-    conn = get_conn()
+    if _modo_api():
+        return _pedidos_api().listar_pedidos()
 
+    conn = _get_conn()
     rows = conn.execute("""
         SELECT numero, desde, hasta
         FROM pedidos
         ORDER BY numero DESC
     """).fetchall()
-
     conn.close()
-
     return [dict(r) for r in rows]
 
 
-# ===============================
-# 🔵 CREAR
-# ===============================
-from datetime import datetime
-
 def crear_pedido(numero, desde, hasta):
+    if _modo_api():
+        try:
+            return _pedidos_api().crear_pedido(numero, desde, hasta)
+        except Exception as exc:
+            if "duplicado" in str(exc).lower():
+                raise ValueError("Pedido duplicado") from exc
+            raise
 
-    conn = get_conn()
-
-    # 🔥 convertir a objeto date real
+    conn = _get_conn()
     desde_date = datetime.strptime(desde, "%d/%m/%Y").date()
     hasta_date = datetime.strptime(hasta, "%d/%m/%Y").date()
 
@@ -54,23 +69,21 @@ def crear_pedido(numero, desde, hasta):
     return {
         "numero": numero,
         "desde": desde,
-        "hasta": hasta
+        "hasta": hasta,
+        "fecha_inicio": desde,
+        "fecha_fin": hasta,
     }
 
 
-
-# ===============================
-# 🔵 OBTENER
-# ===============================
 def obtener_pedido(numero):
-    conn = get_conn()
+    if _modo_api():
+        return _pedidos_api().obtener_pedido(numero)
 
+    conn = _get_conn()
     r = conn.execute("""
         SELECT numero, desde, hasta
         FROM pedidos
         WHERE numero=%s
     """, (numero,)).fetchone()
-
     conn.close()
-
     return dict(r) if r else None

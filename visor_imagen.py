@@ -1,4 +1,5 @@
 import os
+import tempfile
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -220,12 +221,30 @@ def visor_imagen(parent, ruta_inicial=None, on_save=None):
             return
 
         # 🔴 guardar automático (sin explorador)
-        ruta_temp = "_temp_comprobante.png"
+        fd, ruta_temp = tempfile.mkstemp(
+            prefix="hilorama_comprobante_",
+            suffix=".png"
+        )
+        os.close(fd)
 
-        img_data["img_original"].save(ruta_temp)
+        try:
+            img_data["img_original"].save(ruta_temp)
 
-        if on_save:
-            on_save(ruta_temp)
+            if on_save:
+                on_save(ruta_temp)
+        except Exception as exc:
+            messagebox.showerror(
+                "Error",
+                f"No se pudo guardar el comprobante.\n\n{exc}",
+                parent=win
+            )
+            return
+        finally:
+            try:
+                if os.path.exists(ruta_temp):
+                    os.remove(ruta_temp)
+            except Exception:
+                pass
 
         win.destroy()
 

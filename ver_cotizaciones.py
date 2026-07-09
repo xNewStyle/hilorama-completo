@@ -4,10 +4,11 @@ import shutil
 import json
 import urllib.request
 import urllib.error
-from tkinter import ttk, simpledialog, messagebox
-from notas import listar_cotizaciones, obtener_cotizacion, cambiar_cliente_nota
-from notas import actualizar_cotizacion, convertir_cotizacion_a_venta, eliminar_cotizacion, eliminar_nota, guardar_nota_actualizada
-from core.almacen_api import descontar_stock, obtener_producto_por_codigo
+from pathlib import Path
+from tkinter import ttk, simpledialog, messagebox, filedialog
+from notas import listar_cotizaciones, obtener_cotizacion, cambiar_cliente_nota, calcular_totales_nota
+from notas import ajustar_items_nota_pagada_admin, actualizar_cotizacion, actualizar_nota_admin, convertir_cotizacion_a_venta, eliminar_cotizacion, eliminar_nota, guardar_nota_actualizada
+from core.almacen_api import STOCK_MINIMO, descontar_stock, obtener_producto_por_codigo
 from clientes import cliente_completo, obtener_cliente_por_id, listar_clientes
 from PIL import Image, ImageTk   
 from visor_imagen import visor_imagen
@@ -24,6 +25,375 @@ import customtkinter as ctk
 from parser_whatsapp import extraer_pedidos
 from core.almacen_api import obtener_todos_los_productos, obtener_producto_por_codigo, obtener_precio_venta
 from auditoria import registrar_cambio
+
+BASE_DIR = Path(__file__).resolve().parent
+COMPROBANTES_DIR = BASE_DIR / "comprobantes"
+EXTENSIONES_COMPROBANTE = (".png", ".jpg", ".jpeg", ".webp", ".pdf")
+
+try:
+    from hilorama_desktop.ui.dialogs import (
+        alerta_moderna,
+        confirmar_moderno,
+        pedir_clave_autorizacion,
+        pedir_autorizacion_anulacion,
+        pedir_autorizacion_stock,
+    )
+except Exception:
+    alerta_moderna = None
+    confirmar_moderno = None
+    pedir_clave_autorizacion = None
+    pedir_autorizacion_anulacion = None
+    pedir_autorizacion_stock = None
+
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
+
+
+ACCION_NO_DISPONIBLE_API = "Esta acción todavía no está disponible en modo API."
+
+
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def _bloquear_accion_api(parent=None):
+    if not _modo_api():
+        return
+    messagebox.showwarning("Modo API", ACCION_NO_DISPONIBLE_API, parent=parent)
+    raise RuntimeError(ACCION_NO_DISPONIBLE_API)
+
+
+MENSAJE_COTIZACION_NO_PAGABLE = (
+    "No puedes marcar como pagada una cotización. Primero conviértela a venta "
+    "y completa los datos de envío."
+)
+ESTADOS_COTIZACION_NO_PAGABLE = {"COTIZACION", "COTIZACION_PENDIENTE"}
+ESTADOS_VENTA_PAGABLE = {"VENTA", "VENTA_PENDIENTE", "EN_PROCESO", "COMPLETA"}
+ESTADOS_NOTA_PAGADA_UI = {"PAGADA", "COMPLETA", "VENTA_PAGADA"}
+
+
+def _normalizar_estado_pago(estado):
+    return str(estado or "").strip().upper().replace("Ó", "O")
+
+
+def _nota_requiere_stock_pagado_ui(nota):
+    if not nota:
+        return False
+    estado = _normalizar_estado_pago(nota.get("estado"))
+    if estado in ESTADOS_NOTA_PAGADA_UI:
+        return True
+    if nota.get("fecha_pago"):
+        return True
+    pagos = nota.get("pagos")
+    return bool(pagos)
+
+
+def _validar_nota_pagable_ui(nota, parent=None):
+    if not nota:
+        messagebox.showwarning("Aviso", "No se encontró la nota seleccionada.", parent=parent)
+        return False
+
+    estado = _normalizar_estado_pago(nota.get("estado"))
+    if estado in ESTADOS_COTIZACION_NO_PAGABLE:
+        messagebox.showwarning("Aviso", MENSAJE_COTIZACION_NO_PAGABLE, parent=parent)
+        return False
+    if not _modo_api():
+        if estado != "VENTA_PENDIENTE":
+            messagebox.showwarning("Aviso", "La venta no está pendiente de pago", parent=parent)
+            return False
+        return True
+    if estado not in ESTADOS_VENTA_PAGABLE:
+        messagebox.showwarning("Aviso", "Solo una venta puede marcarse como pagada.", parent=parent)
+        return False
+
+    envio = nota.get("envio") or {}
+    if isinstance(envio, str):
+        try:
+            envio = json.loads(envio)
+        except Exception:
+            envio = {}
+    if not isinstance(envio, dict) or not envio:
+        messagebox.showwarning(
+            "Aviso",
+            "Primero completa los datos de envío antes de marcar la venta como pagada.",
+            parent=parent
+        )
+        return False
+
+    cliente = obtener_cliente_por_id(nota.get("cliente_id"))
+    if not cliente_completo(cliente):
+        messagebox.showwarning(
+            "Aviso",
+            "Primero completa los datos del cliente y su dirección de envío.",
+            parent=parent
+        )
+        return False
+
+    return True
+
+
+def _stock_afectado_items_ui(items):
+    afectados = []
+    for item in items or []:
+        codigo = str(item.get("codigo") or "").strip()
+        producto = obtener_producto_por_codigo(codigo) if codigo else None
+        if producto and producto.get("es_item_cotizacion"):
+            continue
+        cantidad = int(float(item.get("cantidad") or 0))
+        stock_actual = int((producto or {}).get("stock_real", (producto or {}).get("stock", 0)) or 0)
+        faltante = max(cantidad - stock_actual, 0)
+        estado = None
+        if not producto or stock_actual <= 0:
+            estado = "STOCK NULO"
+            faltante = cantidad
+        elif stock_actual < cantidad:
+            estado = "STOCK INSUFICIENTE"
+        elif stock_actual < STOCK_MINIMO:
+            estado = "STOCK BAJO"
+            faltante = 0
+
+        if estado:
+            afectados.append({
+                "codigo": codigo,
+                "marca": item.get("marca") or (producto or {}).get("marca") or "",
+                "hilo": item.get("hilo") or (producto or {}).get("hilo") or "",
+                "color": item.get("color") or (producto or {}).get("color") or "",
+                "cantidad_solicitada": cantidad,
+                "stock_actual": stock_actual,
+                "faltante": faltante,
+                "estado": estado,
+            })
+    return afectados
+
+
+def _texto_alerta_stock(afectados):
+    partes = ["Hay productos con stock bajo o insuficiente:\n"]
+    for p in afectados:
+        partes.append(
+            f"Código {p.get('codigo')} - {p.get('marca')} - {p.get('hilo')} - {p.get('color')}\n"
+            f"Solicitado: {p.get('cantidad_solicitada')}\n"
+            f"Stock actual: {p.get('stock_actual')}\n"
+            f"Faltante: {p.get('faltante')}\n"
+            f"Estado: {p.get('estado')}\n"
+        )
+    partes.append("Para continuar, ingresa clave de autorización.")
+    return "\n".join(partes)
+
+
+def _pedir_autorizacion_stock_si_necesaria(parent, items):
+    afectados = _stock_afectado_items_ui(items)
+    if not afectados:
+        return True, None, []
+
+    if pedir_autorizacion_stock:
+        if pedir_autorizacion_stock(parent, afectados):
+            return True, "1", afectados
+        return False, None, afectados
+
+    clave = simpledialog.askstring(
+        "Autorización por stock",
+        _texto_alerta_stock(afectados),
+        parent=parent,
+        show="*"
+    )
+    if clave != "1":
+        messagebox.showwarning(
+            "Operación cancelada",
+            "Clave incorrecta. No se convirtió, no se marcó pagada y no se descontó stock.",
+            parent=parent
+        )
+        return False, None, afectados
+    return True, "1", afectados
+
+
+def _pagos_detalle_nota(nota):
+    pagos = nota.get("pagos")
+    if pagos is not None:
+        return pagos
+    try:
+        from pagos import listar_pagos
+        return listar_pagos(nota.get("id"))
+    except Exception:
+        return []
+
+
+def _agregar_pagos_ctk(parent, nota):
+    pagos_card = ctk.CTkFrame(parent, fg_color="#F8FAFC", corner_radius=10)
+    pagos_card.pack(fill="x", padx=12, pady=(8, 10))
+
+    ctk.CTkLabel(
+        pagos_card,
+        text="Pagos registrados",
+        font=("Segoe UI", 12, "bold")
+    ).pack(anchor="w", padx=10, pady=(8, 3))
+
+    pagos = _pagos_detalle_nota(nota)
+    if not pagos:
+        ctk.CTkLabel(
+            pagos_card,
+            text="Sin pagos registrados",
+            text_color="#6B7280"
+        ).pack(anchor="w", padx=10, pady=(0, 8))
+        return
+
+    for pago in pagos:
+        fecha = pago.get("fecha") or pago.get("created_at") or ""
+        comprobante = pago.get("comprobante") or ""
+        texto = f"{fecha} - {comprobante}" if fecha else comprobante or "Pago registrado"
+        ctk.CTkLabel(
+            pagos_card,
+            text=texto,
+            justify="left",
+            wraplength=310,
+            text_color="#374151"
+        ).pack(anchor="w", padx=10, pady=2)
+
+
+def _agregar_pagos_ttk(parent, nota):
+    frame = ttk.LabelFrame(parent, text="Pagos registrados")
+    frame.pack(fill="x", padx=10, pady=(0, 10))
+
+    pagos = _pagos_detalle_nota(nota)
+    if not pagos:
+        ttk.Label(frame, text="Sin pagos registrados").pack(anchor="w", padx=8, pady=6)
+        return
+
+    for pago in pagos:
+        fecha = pago.get("fecha") or pago.get("created_at") or ""
+        comprobante = pago.get("comprobante") or ""
+        texto = f"{fecha} - {comprobante}" if fecha else comprobante or "Pago registrado"
+        ttk.Label(frame, text=texto).pack(anchor="w", padx=8, pady=2)
+
+
+def _nombre_archivo_comprobante(ruta):
+    if not ruta:
+        return ""
+    ruta_txt = str(ruta).strip()
+    if not ruta_txt:
+        return ""
+    return ruta_txt.replace("\\", "/").rstrip("/").split("/")[-1]
+
+
+def _buscar_comprobante_legacy(nombre_archivo):
+    if not nombre_archivo:
+        return None
+
+    nombre = _nombre_archivo_comprobante(nombre_archivo)
+    base = Path(nombre)
+    stem = base.stem or nombre
+    suffix = base.suffix.lower()
+
+    candidatos = []
+    if suffix:
+        candidatos.extend([
+            f"{stem}{suffix}",
+            f"{stem.lower()}{suffix}",
+        ])
+
+    for ext in EXTENSIONES_COMPROBANTE:
+        candidatos.extend([
+            f"{stem}{ext}",
+            f"{stem.lower()}{ext}",
+        ])
+
+    vistos = set()
+    for candidato in candidatos:
+        if not candidato or candidato in vistos:
+            continue
+        vistos.add(candidato)
+        ruta = COMPROBANTES_DIR / candidato
+        if ruta.exists():
+            return ruta.resolve()
+
+    if COMPROBANTES_DIR.exists():
+        objetivo = {c.lower() for c in vistos}
+        for archivo in COMPROBANTES_DIR.iterdir():
+            if archivo.is_file() and archivo.name.lower() in objetivo:
+                return archivo.resolve()
+
+    return None
+
+
+def resolver_ruta_comprobante(ruta):
+    if not ruta:
+        return None
+
+    ruta_txt = str(ruta).strip()
+    if not ruta_txt:
+        return None
+
+    ruta_path = Path(ruta_txt)
+    if ruta_path.is_absolute():
+        if ruta_path.exists():
+            return ruta_path
+        nombre = _nombre_archivo_comprobante(ruta_txt)
+        encontrada = _buscar_comprobante_legacy(nombre)
+        if encontrada:
+            return encontrada
+        return (COMPROBANTES_DIR / nombre).resolve() if nombre else ruta_path
+
+    ruta_resuelta = (BASE_DIR / ruta_path).resolve()
+    if ruta_resuelta.exists():
+        return ruta_resuelta
+
+    nombre = _nombre_archivo_comprobante(ruta_txt)
+    encontrada = _buscar_comprobante_legacy(nombre)
+    if encontrada:
+        return encontrada
+
+    return (COMPROBANTES_DIR / nombre).resolve() if nombre else ruta_resuelta
+
+
+def obtener_ruta_destino_comprobante(id_nota, extension=".png"):
+    COMPROBANTES_DIR.mkdir(parents=True, exist_ok=True)
+
+    ext = str(extension or ".png").lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
+
+    return COMPROBANTES_DIR / f"{id_nota}{ext}"
+
+
+def _ruta_relativa_comprobante(id_nota, extension=".png"):
+    ext = str(extension or ".png").lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
+
+    return Path("comprobantes") / f"{id_nota}{ext}"
+
+
+def guardar_comprobante_en_proyecto(id_nota, ruta_origen):
+    ext = Path(str(ruta_origen)).suffix.lower() or ".png"
+    destino = obtener_ruta_destino_comprobante(id_nota, ext)
+    origen = Path(str(ruta_origen)).resolve()
+    if origen != destino.resolve():
+        shutil.copy(str(origen), str(destino))
+    return _ruta_relativa_comprobante(id_nota, ext).as_posix()
+
+
+def guardar_comprobante_legacy_en_proyecto(nota, ruta_origen):
+    nombre_original = _nombre_archivo_comprobante(nota.get("comprobante"))
+    stem = Path(nombre_original).stem or str(nota.get("id") or "comprobante")
+    ext = Path(str(ruta_origen)).suffix.lower() or Path(nombre_original).suffix.lower() or ".png"
+
+    COMPROBANTES_DIR.mkdir(parents=True, exist_ok=True)
+    destino = COMPROBANTES_DIR / f"{stem}{ext}"
+
+    origen = Path(str(ruta_origen)).resolve()
+    if origen != destino.resolve():
+        shutil.copy(str(origen), str(destino))
+
+    return (Path("comprobantes") / destino.name).as_posix()
+
+
+def _ruta_comprobante_existente(ruta):
+    ruta_resuelta = resolver_ruta_comprobante(ruta)
+    if ruta_resuelta and ruta_resuelta.exists():
+        return str(ruta_resuelta)
+    return None
+
 
 def seleccionar_o_crear_cliente(parent):
 
@@ -174,12 +544,49 @@ def eliminar_venta_desde_lista(tree, win):
         return
 
     # ✅ AHORA PERMITE AMBOS
-    if nota["estado"] not in ("VENTA_PENDIENTE", "PAGADA"):
+    estado_nota = _normalizar_estado_pago(nota.get("estado"))
+    nota_con_stock_pagado = _nota_requiere_stock_pagado_ui(nota)
+    estados_anulables = {"COTIZACION", "COTIZACION_PENDIENTE", "VENTA", "VENTA_PENDIENTE", "EN_PROCESO"}
+    if estado_nota not in estados_anulables and not nota_con_stock_pagado:
         messagebox.showwarning(
             "Aviso",
-            "Solo ventas se pueden eliminar",
+            "Solo cotizaciones o ventas se pueden anular",
             parent=win
         )
+        return
+
+    if _modo_api():
+        autorizacion_stock = None
+        if nota_con_stock_pagado:
+            autorizado = pedir_autorizacion_anulacion(win, nota, nota.get("items", [])) if pedir_autorizacion_anulacion else pedir_password(win)
+            if not autorizado:
+                return
+            autorizacion_stock = "1"
+        else:
+            mensaje = f"¿Anular la venta {id_nota}?\n\nNo se tocará stock porque todavía no está pagada."
+            confirmado = confirmar_moderno(win, "Anular venta", mensaje, "Anular") if confirmar_moderno else messagebox.askyesno(
+                "Confirmar",
+                mensaje,
+                parent=win
+            )
+            if not confirmado:
+                return
+
+        try:
+            eliminar_nota(id_nota, autorizacion_stock=autorizacion_stock)
+        except Exception as exc:
+            if alerta_moderna:
+                alerta_moderna(win, "No se pudo anular", str(exc))
+            else:
+                messagebox.showerror("Error", f"No se pudo anular la nota.\n\n{exc}", parent=win)
+            return
+
+        if alerta_moderna:
+            alerta_moderna(win, "Nota anulada", "La nota fue anulada correctamente.")
+        else:
+            messagebox.showinfo("Anulada", "La nota fue anulada correctamente.", parent=win)
+        win.destroy()
+        abrir_visor(win.master)
         return
 
     if not pedir_password(win):
@@ -244,14 +651,20 @@ def eliminar_cotizacion_desde_lista(tree, win):
         )
         return
 
-    if not messagebox.askyesno(
+    mensaje = f"¿Eliminar la cotización {id_nota}?\n\nEsta acción no se puede deshacer."
+    confirmado = confirmar_moderno(win, "Eliminar cotización", mensaje, "Eliminar") if confirmar_moderno else messagebox.askyesno(
         "Confirmar",
-        f"¿Eliminar la cotización {id_nota}?\n\nEsta acción no se puede deshacer.",
+        mensaje,
         parent=win
-    ):
+    )
+    if not confirmado:
         return
 
-    ok = eliminar_cotizacion(id_nota)
+    try:
+        ok = eliminar_cotizacion(id_nota)
+    except Exception as exc:
+        messagebox.showerror("Error", f"No se pudo eliminar/anular la cotización.\n\n{exc}", parent=win)
+        return
 
     if ok:
         messagebox.showinfo(
@@ -281,7 +694,7 @@ def crear_visor_imagen(parent, ruta_img):
         corner_radius=15,
         fg_color="#F8FAFC"   # 🔵 fondo suave moderno
     )
-    frame.pack(side="right", fill="both", expand=True, padx=(8, 15), pady=10)
+    frame.pack(fill="both", expand=True, padx=(8, 15), pady=10)
 
     canvas = tk.Canvas(
         frame,
@@ -493,29 +906,137 @@ def ver_detalles(tree, parent):
         envio_card,
         text=(
             f"🚚 {envio.get('paqueteria','-')} | "
-            f"${envio.get('precio',0):.2f} | "
+            f"${calcular_totales_nota(nota)['envio_precio']:.2f} | "
             f"{envio.get('volumetrico','-')} kg\n"
             f"📅 Fecha salida: {nota.get('fecha_envio','-')}"
         )
     ).pack(anchor="w", padx=10, pady=6)
 
     # ================= TOTALES =================
-    total_final = total_productos + envio.get("precio", 0)
+    totales_nota = calcular_totales_nota(nota)
 
     totales = ctk.CTkFrame(frame_tabla)
     totales.pack(fill="x", padx=10, pady=5)
 
     ctk.CTkLabel(
         totales,
-        text=f"TOTAL: ${total_final:.2f}",
+        text=(
+            f"Subtotal productos: ${totales_nota['subtotal_productos']:.2f}\n"
+            f"Envío: ${totales_nota['envio_precio']:.2f}\n"
+            f"Total final: ${totales_nota['total_final']:.2f}"
+        ),
         font=("Segoe UI", 16, "bold"),
-        text_color="#1976D2"
+        text_color="#1976D2",
+        justify="right"
     ).pack(anchor="e", padx=10, pady=8)
 
     # ================= COMPROBANTE =================
-    ruta = nota.get("comprobante")
-    if ruta and os.path.exists(ruta):
-        crear_visor_imagen(content, ruta)
+    comprobante_card = ctk.CTkFrame(content)
+    comprobante_card.pack(side="right", fill="both", padx=(5, 10), pady=10)
+    comprobante_card.configure(width=360)
+    comprobante_card.pack_propagate(False)
+
+    ctk.CTkLabel(
+        comprobante_card,
+        text="Comprobante de pago",
+        font=("Segoe UI", 14, "bold")
+    ).pack(anchor="w", padx=12, pady=(10, 4))
+
+    _agregar_pagos_ctk(comprobante_card, nota)
+
+    ruta_original = nota.get("comprobante")
+    ruta_resuelta = resolver_ruta_comprobante(ruta_original)
+    nombre_buscado = _nombre_archivo_comprobante(ruta_original)
+    ruta_esperada = (
+        (COMPROBANTES_DIR / nombre_buscado).resolve()
+        if nombre_buscado else ruta_resuelta
+    )
+
+    def buscar_comprobante_legacy():
+        ruta_seleccionada = filedialog.askopenfilename(
+            parent=win,
+            title="Buscar comprobante",
+            filetypes=[
+                ("Comprobantes", "*.png *.jpg *.jpeg *.webp *.pdf"),
+                ("Todos los archivos", "*.*"),
+            ],
+        )
+        if not ruta_seleccionada:
+            return
+
+        nota_actualizada = obtener_cotizacion(nota["id"]) or nota
+        nota_actualizada["comprobante"] = guardar_comprobante_legacy_en_proyecto(
+            nota_actualizada,
+            ruta_seleccionada
+        )
+        guardar_nota_actualizada(nota_actualizada)
+
+        messagebox.showinfo(
+            "Comprobante vinculado",
+            "El comprobante se copió a la carpeta del programa y la nota quedó actualizada.",
+            parent=win
+        )
+        win.destroy()
+        ver_detalles(tree, parent)
+
+    def copiar_ruta_esperada():
+        win.clipboard_clear()
+        win.clipboard_append(str(ruta_esperada or ""))
+        messagebox.showinfo(
+            "Ruta copiada",
+            "La ruta esperada se copió al portapapeles.",
+            parent=win
+        )
+
+    if ruta_resuelta and ruta_resuelta.exists():
+        if ruta_resuelta.suffix.lower() == ".pdf":
+            ctk.CTkLabel(
+                comprobante_card,
+                text=f"Comprobante PDF registrado:\n{ruta_resuelta}",
+                justify="left",
+                wraplength=320,
+                text_color="#374151"
+            ).pack(anchor="w", padx=12, pady=10)
+        else:
+            crear_visor_imagen(comprobante_card, str(ruta_resuelta))
+    elif ruta_original:
+        ctk.CTkLabel(
+            comprobante_card,
+            text=(
+                "Esta nota tiene un comprobante registrado, pero el archivo no se encontró. "
+                "Puede ser una nota antigua o el archivo no fue copiado al programa nuevo.\n\n"
+                f"Ruta guardada original:\n{ruta_original}\n\n"
+                f"Ruta esperada actual:\n{ruta_esperada}\n\n"
+                f"Nombre buscado:\n{nombre_buscado or '-'}"
+            ),
+            justify="left",
+            wraplength=320,
+            text_color="#B45309"
+        ).pack(anchor="w", padx=12, pady=10)
+
+        acciones_comprobante = ctk.CTkFrame(comprobante_card, fg_color="transparent")
+        acciones_comprobante.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkButton(
+            acciones_comprobante,
+            text="Buscar comprobante",
+            command=buscar_comprobante_legacy
+        ).pack(fill="x", pady=(0, 6))
+
+        ctk.CTkButton(
+            acciones_comprobante,
+            text="Copiar ruta esperada",
+            fg_color="#6B7280",
+            hover_color="#4B5563",
+            command=copiar_ruta_esperada
+        ).pack(fill="x")
+    else:
+        ctk.CTkLabel(
+            comprobante_card,
+            text="Sin comprobante registrado",
+            justify="left",
+            text_color="#6B7280"
+        ).pack(anchor="w", padx=12, pady=10)
 
 
     # ================= BOTONES =================
@@ -817,17 +1338,26 @@ def abrir_editor_venta(parent, nota):
             return
 
         def guardar_imagen(ruta):
-            os.makedirs("comprobantes", exist_ok=True)
-
-            destino = f"comprobantes/{nota['id']}.png"
-            shutil.copy(ruta, destino)
-
-            nota["comprobante"] = destino
-            guardar_nota_actualizada(nota)
+            try:
+                destino_relativo = guardar_comprobante_en_proyecto(nota["id"], ruta)
+                nota["comprobante"] = destino_relativo
+                guardar_nota_actualizada(nota)
+                messagebox.showinfo(
+                    "Comprobante guardado",
+                    "El comprobante se guardó correctamente.",
+                    parent=ed
+                )
+            except Exception as exc:
+                messagebox.showerror(
+                    "Error",
+                    f"No se pudo guardar el comprobante.\n\n{exc}",
+                    parent=ed
+                )
+                raise
 
         visor_imagen(
             parent=ed,
-            ruta_inicial=nota.get("comprobante"),
+            ruta_inicial=_ruta_comprobante_existente(nota.get("comprobante")),
             on_save=guardar_imagen
         )
 
@@ -967,8 +1497,9 @@ def abrir_visor(root):
         "Teléfono",
         "Fecha",
         "Estado",
-        "Total",
-        "Envío"
+        "Subtotal",
+        "Envio",
+        "Total final"
     )
 
     tree = ttk.Treeview(
@@ -1060,8 +1591,10 @@ def abrir_visor(root):
                 except:
                     envio = {}
 
+            totales_nota = calcular_totales_nota(n)
+
             envio_txt = (
-                f"{envio.get('paqueteria','-')} ${envio.get('precio',0):.2f}"
+                f"{envio.get('paqueteria','-')} ${totales_nota['envio_precio']:.2f}"
                 if envio else "-"
             )
 
@@ -1076,8 +1609,9 @@ def abrir_visor(root):
                     tel,
                     fecha,
                     n["estado"],
-                    f"${n['total']:.2f}",
-                    envio_txt
+                    f"${totales_nota['subtotal_productos']:.2f}",
+                    envio_txt,
+                    f"${totales_nota['total_final']:.2f}"
                 )
             )
     ctk.CTkButton(
@@ -1238,6 +1772,12 @@ def abrir_visor(root):
         if not envio:
             return
 
+        autorizacion_stock = None
+        if _modo_api():
+            ok_stock, autorizacion_stock, _ = _pedir_autorizacion_stock_si_necesaria(win, nota["items"])
+            if not ok_stock:
+                return
+
 
     # =========================
     # DESCONTAR STOCK
@@ -1251,6 +1791,9 @@ def abrir_visor(root):
                     parent=win
                 )
                 return
+
+            if _modo_api():
+                continue
 
             descontar_stock(
                 item["marca"],
@@ -1269,7 +1812,8 @@ def abrir_visor(root):
             id_nota,
             nota["items"],
             cliente,
-            envio
+            envio,
+            autorizacion_stock=autorizacion_stock
         )
 
         if ok:
@@ -1316,10 +1860,6 @@ def abrir_visor(root):
 
     def editar_venta_desde_lista(tree, win):
 
-        if not pedir_password(win):
-            messagebox.showerror("Error", "Contraseña incorrecta", parent=win)
-            return
-
         sel = tree.focus()
         if not sel:
             return
@@ -1328,6 +1868,32 @@ def abrir_visor(root):
         nota = obtener_cotizacion(id_nota)
 
         if not nota:
+            return
+
+        nota_pagada = _nota_requiere_stock_pagado_ui(nota)
+        clave_admin_pagada = None
+
+        if nota_pagada:
+            mensaje_autorizacion = (
+                "Esta nota ya está pagada. Los cambios de productos, cantidades "
+                "o precios ajustarán stock y totales. Ingresa clave de autorización."
+            )
+            autorizado = pedir_clave_autorizacion(
+                win,
+                "Editor admin de nota pagada",
+                mensaje_autorizacion,
+                "1",
+            ) if pedir_clave_autorizacion else simpledialog.askstring(
+                "Autorizacion",
+                f"{mensaje_autorizacion}\n\nClave temporal:",
+                show="*",
+                parent=win,
+            ) == "1"
+            if not autorizado:
+                return
+            clave_admin_pagada = "1"
+        elif not pedir_password(win):
+            messagebox.showerror("Error", "Contraseña incorrecta", parent=win)
             return
 
 
@@ -1412,6 +1978,9 @@ def abrir_visor(root):
         entry_parser.pack(side="left", fill="x", expand=True, padx=(0,8))
 
         def agregar_producto():
+            if bloquear_edicion_productos_pagada():
+                return
+
             texto = texto_parser.get().strip()
             if not texto:
                 return
@@ -1556,7 +2125,7 @@ def abrir_visor(root):
         def recalcular():
             total = 0
             for i in tree_ed.get_children():
-                _, _, _, _, _, sub = tree_ed.item(i, "values")
+                *_, sub = tree_ed.item(i, "values")
 
                 total += float(sub)
 
@@ -1568,11 +2137,36 @@ def abrir_visor(root):
 
         recalcular()
 
+        MENSAJE_ITEMS_PAGADA = (
+            "Esta nota ya está pagada. Los cambios de productos o cantidades "
+            "se guardan con ajuste administrativo de stock."
+        )
+
+        def bloquear_edicion_productos_pagada():
+            return False
+
+        def snapshot_items(items):
+            normalizados = []
+            for item in items or []:
+                normalizados.append((
+                    str(item.get("codigo") or ""),
+                    str(item.get("marca") or ""),
+                    str(item.get("hilo") or ""),
+                    str(item.get("color") or ""),
+                    int(float(item.get("cantidad") or 0)),
+                    round(float(item.get("precio") or 0), 2),
+                ))
+            return sorted(normalizados)
+
+        snapshot_original_pagada = snapshot_items(nota.get("items", []))
+
 
         # =====================================================
         # 🔵 ACCIONES PRODUCTOS
         # =====================================================
         def editar_celda_cantidad(event):
+            if bloquear_edicion_productos_pagada():
+                return
 
             item = tree_ed.identify_row(event.y)
             col = tree_ed.identify_column(event.x)
@@ -1622,6 +2216,8 @@ def abrir_visor(root):
 
 
         def editar_celda_precio(event):
+            if bloquear_edicion_productos_pagada():
+                return
 
             item = tree_ed.identify_row(event.y)
             col = tree_ed.identify_column(event.x)
@@ -1630,7 +2226,7 @@ def abrir_visor(root):
             if not item or col != "#6":
                 return
 
-            if not pedir_password(ed):
+            if not nota_pagada and not pedir_password(ed):
                 return
 
             x, y, width, height = tree_ed.bbox(item, col)
@@ -1684,12 +2280,14 @@ def abrir_visor(root):
 
         tree_ed.bind("<Double-1>", editar_celda)
         def cambiar_precio_seleccion():
+            if bloquear_edicion_productos_pagada():
+                return
 
             items = tree_ed.selection()
             if not items:
                 return
 
-            if not pedir_password(ed):
+            if not nota_pagada and not pedir_password(ed):
                 return
 
             nuevo = simpledialog.askfloat(
@@ -1705,11 +2303,13 @@ def abrir_visor(root):
             for item in items:
                 vals = list(tree_ed.item(item, "values"))
                 vals[5] = round(nuevo, 2)
-                vals[6] = round(vals[4] * nuevo, 2)
+                vals[6] = round(float(vals[4]) * nuevo, 2)
                 tree_ed.item(item, values=vals)
 
             recalcular()
         def cambiar_precio_por_contexto():
+            if bloquear_edicion_productos_pagada():
+                return
 
             marca_ctx = combo_marca_contexto.get().strip().upper()
             hilo_ctx = combo_hilo_contexto.get().strip().upper()
@@ -1717,7 +2317,7 @@ def abrir_visor(root):
             if not marca_ctx or not hilo_ctx:
                 return
 
-            if not pedir_password(ed):
+            if not nota_pagada and not pedir_password(ed):
                 return
 
             nuevo = simpledialog.askfloat(
@@ -1733,13 +2333,15 @@ def abrir_visor(root):
             for item in tree_ed.get_children():
                 vals = list(tree_ed.item(item, "values"))
 
-                if vals[1].upper() == marca_ctx and vals[2].upper() == hilo_ctx:
+                if str(vals[1]).upper() == marca_ctx and str(vals[2]).upper() == hilo_ctx:
                     vals[5] = round(nuevo, 2)
-                    vals[6] = round(vals[4] * nuevo, 2)
+                    vals[6] = round(float(vals[4]) * nuevo, 2)
                     tree_ed.item(item, values=vals)
 
             recalcular()
         def eliminar_item():
+            if bloquear_edicion_productos_pagada():
+                return
             tree_ed.delete(tree_ed.focus())
             recalcular()
 
@@ -1755,13 +2357,17 @@ def abrir_visor(root):
                 return
 
             nota["envio"] = envio
+            nota["paqueteria"] = envio.get("paqueteria") or envio.get("tipo")
             recalcular()
 
-            registrar_cambio(
-                nota["id"],
-                "Cambio de envío",
-                f"{envio['paqueteria']} - ${envio['precio']}"
-            )
+            try:
+                registrar_cambio(
+                    nota["id"],
+                    "Cambio de envío",
+                    f"{envio['paqueteria']} - ${envio['precio']}"
+                )
+            except Exception:
+                pass
 
        # =====================================================
        # 🔵 CAMBIAR COMPROBANTE
@@ -1772,21 +2378,48 @@ def abrir_visor(root):
 
             from visor_imagen import visor_imagen
 
+            def guardar_imagen(ruta):
+                try:
+                    nota["comprobante"] = guardar_comprobante_en_proyecto(nota["id"], ruta)
+                    if nota_pagada:
+                        nota["admin_edicion_pagada"] = True
+                        nota["clave_autorizacion"] = clave_admin_pagada
+                    guardar_nota_actualizada(nota)
+                    messagebox.showinfo(
+                        "Comprobante guardado",
+                        "El comprobante se guardó correctamente.",
+                        parent=ed
+                    )
+                except Exception as exc:
+                    messagebox.showerror(
+                        "Error",
+                        f"No se pudo guardar el comprobante.\n\n{exc}",
+                        parent=ed
+                    )
+                    raise
+
             visor_imagen(
                 parent=ed,
-                ruta_inicial=nota.get("comprobante"),
-                on_save=lambda r: nota.update({"comprobante": r})
+                ruta_inicial=_ruta_comprobante_existente(nota.get("comprobante")),
+                on_save=guardar_imagen
             )
-            registrar_cambio(
-                nota["id"],
-                "Cambio de comprobante",
-                "Se actualizó imagen de comprobante"
-            )
+            try:
+                registrar_cambio(
+                    nota["id"],
+                    "Cambio de comprobante",
+                    "Se actualizó imagen de comprobante"
+                )
+            except Exception:
+                pass
 
         # =====================================================
         # 🔵 ELIMINAR VENTA
         # =====================================================
         def eliminar_venta():
+            if _modo_api():
+                eliminar_venta_desde_lista(tree, win)
+                return
+
             if not pedir_password(ed):
                 return
 
@@ -1799,6 +2432,87 @@ def abrir_visor(root):
         # =====================================================
         # 🔵 GUARDAR CAMBIOS
         # =====================================================
+        def _clave_item_admin(item):
+            return (
+                str(item.get("marca") or "").strip().upper(),
+                str(item.get("hilo") or "").strip().upper(),
+                str(item.get("codigo") or "").strip().upper(),
+            )
+
+        def _agrupar_items_admin(items):
+            grupos = {}
+            for item in items or []:
+                clave = _clave_item_admin(item)
+                if clave not in grupos:
+                    grupos[clave] = {
+                        "cantidad": 0,
+                        "precio": float(item.get("precio") or 0),
+                        "item": dict(item),
+                    }
+                grupos[clave]["cantidad"] += int(float(item.get("cantidad") or 0))
+                grupos[clave]["precio"] = float(item.get("precio") or 0)
+            return grupos
+
+        def _total_final_admin(items):
+            subtotal = sum(float(item.get("cantidad") or 0) * float(item.get("precio") or 0) for item in items or [])
+            envio = nota.get("envio") or {}
+            envio_precio = float((envio or {}).get("precio") or 0) if isinstance(envio, dict) else 0
+            return subtotal + envio_precio
+
+        def _resumen_ajuste_admin(nuevos):
+            originales_grupo = _agrupar_items_admin(nota.get("items", []))
+            nuevos_grupo = _agrupar_items_admin(nuevos)
+            lineas = []
+            afectados = []
+
+            for clave in sorted(set(originales_grupo) | set(nuevos_grupo)):
+                anterior = originales_grupo.get(clave, {})
+                nuevo = nuevos_grupo.get(clave, {})
+                item = nuevo.get("item") or anterior.get("item") or {}
+                cantidad_anterior = int(anterior.get("cantidad") or 0)
+                cantidad_nueva = int(nuevo.get("cantidad") or 0)
+                diferencia = cantidad_nueva - cantidad_anterior
+                etiqueta = f"{item.get('marca','')} {item.get('hilo','')} {item.get('codigo','')}".strip()
+
+                if cantidad_anterior == 0 and cantidad_nueva > 0:
+                    lineas.append(f"Agregado: {etiqueta} x{cantidad_nueva}")
+                elif cantidad_nueva == 0 and cantidad_anterior > 0:
+                    lineas.append(f"Eliminado: {etiqueta} x{cantidad_anterior} (regresa stock)")
+                elif diferencia > 0:
+                    lineas.append(f"Aumenta: {etiqueta} {cantidad_anterior} -> {cantidad_nueva} (descuenta {diferencia})")
+                elif diferencia < 0:
+                    lineas.append(f"Reduce: {etiqueta} {cantidad_anterior} -> {cantidad_nueva} (regresa {abs(diferencia)})")
+
+                precio_anterior = float(anterior.get("precio") or 0)
+                precio_nuevo = float(nuevo.get("precio") or 0)
+                if cantidad_anterior and cantidad_nueva and round(precio_anterior, 2) != round(precio_nuevo, 2):
+                    lineas.append(f"Precio: {etiqueta} ${precio_anterior:.2f} -> ${precio_nuevo:.2f}")
+
+                if diferencia > 0:
+                    try:
+                        producto = obtener_producto_por_codigo(item.get("codigo"))
+                    except Exception:
+                        producto = None
+                    stock_actual = int((producto or {}).get("stock") or 0)
+                    faltante = max(diferencia - stock_actual, 0)
+                    if faltante or stock_actual - diferencia < STOCK_MINIMO:
+                        afectados.append({
+                            "codigo": item.get("codigo", ""),
+                            "marca": item.get("marca", ""),
+                            "hilo": item.get("hilo", ""),
+                            "color": item.get("color", ""),
+                            "cantidad_solicitada": diferencia,
+                            "stock_actual": stock_actual,
+                            "faltante": faltante,
+                            "estado": "STOCK INSUFICIENTE" if faltante else "STOCK BAJO",
+                        })
+
+            total_anterior = calcular_totales_nota(nota).get("total_final", 0)
+            total_nuevo = _total_final_admin(nuevos)
+            lineas.append(f"Total anterior: ${float(total_anterior):.2f}")
+            lineas.append(f"Total nuevo: ${float(total_nuevo):.2f}")
+            return "\n".join(lineas), afectados, total_anterior, total_nuevo
+
         def guardar():
 
             # 🔵 1. Guardar estado original
@@ -1828,6 +2542,64 @@ def abrir_visor(root):
                 })
 
                 actuales[(codigo, marca, hilo)] = int(cantidad)
+
+            if nota_pagada and _modo_api():
+                resumen, afectados_ui, total_anterior, total_nuevo = _resumen_ajuste_admin(nuevos)
+                mensaje = (
+                    "Esta nota ya está pagada. Los cambios ajustarán stock y totales.\n\n"
+                    f"{resumen}\n\n¿Deseas continuar?"
+                )
+                confirmado = confirmar_moderno(
+                    ed,
+                    "Ajuste administrativo",
+                    mensaje,
+                    "Guardar ajuste",
+                    "Cancelar",
+                ) if confirmar_moderno else messagebox.askyesno("Ajuste administrativo", mensaje, parent=ed)
+                if not confirmado:
+                    return
+
+                if afectados_ui:
+                    autorizado_stock = pedir_autorizacion_stock(
+                        ed,
+                        afectados_ui,
+                        titulo="Autorización por stock",
+                        descripcion="El ajuste necesita descontar stock bajo o insuficiente.",
+                    ) if pedir_autorizacion_stock else simpledialog.askstring(
+                        "Autorización por stock",
+                        "Clave temporal:",
+                        show="*",
+                        parent=ed,
+                    ) == "1"
+                    if not autorizado_stock:
+                        return
+
+                nota["items"] = nuevos
+                try:
+                    respuesta = ajustar_items_nota_pagada_admin(
+                        nota,
+                        nuevos,
+                        clave_autorizacion=clave_admin_pagada,
+                        motivo="Edición administrativa de nota pagada autorizada",
+                    )
+                except Exception as exc:
+                    messagebox.showerror(
+                        "Guardar cambios",
+                        f"No se pudo guardar el ajuste administrativo.\n\n{exc}",
+                        parent=ed
+                    )
+                    return
+
+                if isinstance(respuesta, dict) and respuesta.get("aviso_total_pago"):
+                    aviso = "El total cambió. Revisa si hay diferencia entre total y pago registrado."
+                    if alerta_moderna:
+                        alerta_moderna(ed, "Revisar diferencia", aviso)
+                    else:
+                        messagebox.showwarning("Revisar diferencia", aviso, parent=ed)
+
+                ed.destroy()
+                cargar_notas()
+                return
 
             # 🔵 3. Ajustar stock SOLO si NO es cotización
             if nota["estado"] != "COTIZACION":
@@ -2190,7 +2962,7 @@ def editar_cotizacion(win, tree):
     def recalcular_total():
         total = 0
         for i in tree_ed.get_children():
-            _, _, _, _, _, _, sub = tree_ed.item(i, "values")
+            *_, sub = tree_ed.item(i, "values")
             total += float(sub)
         lbl_total.configure(text=f"${total:.2f}")
 
@@ -2497,8 +3269,13 @@ def editar_cotizacion(win, tree):
                     return
                 envio = envio_sel
 
-            # 3️⃣ Guardar envío en la nota
             nota["envio"] = envio
+
+            autorizacion_stock = None
+            if _modo_api():
+                ok_stock, autorizacion_stock, _ = _pedir_autorizacion_stock_si_necesaria(ed, items_finales)
+                if not ok_stock:
+                    return
 
             # 4️⃣ Descontar stock
             for item in items_finales:
@@ -2510,6 +3287,9 @@ def editar_cotizacion(win, tree):
                         parent=ed
                     )
                     return
+
+                if _modo_api():
+                    continue
 
                 descontar_stock(
                     item["marca"],
@@ -2524,7 +3304,8 @@ def editar_cotizacion(win, tree):
                 id_nota,
                 items_finales,
                 cliente_actualizado,
-                envio
+                envio,
+                autorizacion_stock=autorizacion_stock
             )
 
             if not ok:
@@ -2608,6 +3389,43 @@ def editar_cotizacion(win, tree):
 
         nota["total"] = round(total_productos + envio["precio"], 2)
 
+        if _modo_api() and _normalizar_estado_pago(nota.get("estado")) in ESTADOS_COTIZACION_NO_PAGABLE:
+            cliente = obtener_cliente_por_id(nota["cliente_id"])
+            if not cliente or not cliente_completo(cliente):
+                messagebox.showinfo(
+                    "Datos incompletos",
+                    "Completa los datos del cliente para continuar",
+                    parent=ed
+                )
+                editar_cliente_por_id(
+                    nota["cliente_id"],
+                    ed,
+                    on_guardar=lambda _cliente: configurar_envio_cotizacion()
+                )
+                return
+
+            ok_stock, autorizacion_stock, _ = _pedir_autorizacion_stock_si_necesaria(ed, items)
+            if not ok_stock:
+                return
+
+            convertir_cotizacion_a_venta(
+                nota["id"],
+                items,
+                cliente,
+                envio,
+                autorizacion_stock=autorizacion_stock
+            )
+            cargar_envios()
+            messagebox.showinfo(
+                "Venta creada",
+                f"Envío guardado y venta pendiente: {envio['paqueteria']} • ${envio['precio']:.2f}",
+                parent=ed
+            )
+            ed.destroy()
+            win.destroy()
+            abrir_visor(win.master)
+            return
+
         guardar_nota_actualizada(nota)
 
         cargar_envios()
@@ -2680,6 +3498,54 @@ def editar_cotizacion(win, tree):
             "manual": True
         }
 
+        if _modo_api() and _normalizar_estado_pago(nota.get("estado")) in ESTADOS_COTIZACION_NO_PAGABLE:
+            items = []
+            for i in tree_ed.get_children():
+                codigo, marca, hilo, color, cantidad, precio_item, _ = tree_ed.item(i, "values")
+                items.append({
+                    "codigo": codigo,
+                    "marca": marca,
+                    "hilo": hilo,
+                    "color": color,
+                    "cantidad": int(cantidad),
+                    "precio": float(precio_item)
+                })
+
+            cliente = obtener_cliente_por_id(nota["cliente_id"])
+            if not cliente or not cliente_completo(cliente):
+                messagebox.showinfo(
+                    "Datos incompletos",
+                    "Completa los datos del cliente para continuar",
+                    parent=ed
+                )
+                editar_cliente_por_id(
+                    nota["cliente_id"],
+                    ed,
+                    on_guardar=lambda _cliente: aplicar_envio_manual()
+                )
+                return
+
+            ok_stock, autorizacion_stock, _ = _pedir_autorizacion_stock_si_necesaria(ed, items)
+            if not ok_stock:
+                return
+
+            convertir_cotizacion_a_venta(
+                nota["id"],
+                items,
+                cliente,
+                nota["envio"],
+                autorizacion_stock=autorizacion_stock
+            )
+            messagebox.showinfo(
+                "Venta creada",
+                f"Envío manual aplicado y venta pendiente: ${precio:.2f}",
+                parent=ed
+            )
+            ed.destroy()
+            win.destroy()
+            abrir_visor(win.master)
+            return
+
         guardar_nota_actualizada(nota)
 
         messagebox.showinfo(
@@ -2702,9 +3568,6 @@ def editar_cotizacion(win, tree):
 
     
 
-
-from tkinter import filedialog
-import shutil
 
 CONTABILIDAD_API_URL = os.environ.get(
     "CONTABILIDAD_API_URL",
@@ -3058,27 +3921,33 @@ def marcar_como_pagada(tree, win):
     id_nota = tree.item(sel, "values")[0]
     nota = obtener_cotizacion(id_nota)
 
-    if nota["estado"] != "VENTA_PENDIENTE":
-        messagebox.showwarning(
-            "Aviso",
-            "La venta no está pendiente de pago",
-            parent=win
-        )
+    if not _validar_nota_pagable_ui(nota, win):
         return
 
     # ✅ ESTA FUNCIÓN DEBE IR ANTES
     def guardar_imagen(ruta_imagen):
-        os.makedirs("comprobantes", exist_ok=True)
+        autorizacion_stock = None
+        if _modo_api():
+            ok_stock, autorizacion_stock, _ = _pedir_autorizacion_stock_si_necesaria(win, nota.get("items", []))
+            if not ok_stock:
+                return
 
-        ext = os.path.splitext(ruta_imagen)[1].lower()
-        destino = f"comprobantes/{id_nota}{ext}"
-
-        shutil.copy(ruta_imagen, destino)
+        destino = guardar_comprobante_en_proyecto(id_nota, ruta_imagen)
 
         nota["estado"] = "PAGADA"
         nota["comprobante"] = destino
         nota["fecha_pago"] = datetime.datetime.now().isoformat(timespec="seconds")
-        guardar_nota_actualizada(nota)
+        if autorizacion_stock:
+            nota["autorizacion_stock"] = autorizacion_stock
+        try:
+            guardar_nota_actualizada(nota)
+        except Exception as exc:
+            messagebox.showerror(
+                "Pago no confirmado",
+                f"No se pudo marcar como pagada.\n\n{exc}",
+                parent=win
+            )
+            return
 
         registrar_cambio(
             id_nota,
@@ -3114,7 +3983,7 @@ def marcar_como_pagada(tree, win):
     # 🔍 ABRIR VISOR CON DRAG & DROP
     visor_imagen(
     parent=win,
-    ruta_inicial=nota.get("comprobante"),
+    ruta_inicial=_ruta_comprobante_existente(nota.get("comprobante")),
     on_save=guardar_imagen
 )
 
@@ -3128,11 +3997,41 @@ def ver_comprobante(tree, win):
     id_nota = tree.item(sel, "values")[0]
     nota = obtener_cotizacion(id_nota)
 
-    if nota["estado"] != "PAGADA" or "comprobante" not in nota:
+    ruta_comprobante = nota.get("comprobante")
+
+    if nota["estado"] != "PAGADA" or not ruta_comprobante:
         messagebox.showwarning("Aviso", "No hay comprobante", parent=win)
         return
 
-    visor_imagen(win, ruta_inicial=nota["comprobante"])
+    ruta_resuelta = resolver_ruta_comprobante(ruta_comprobante)
+
+    if not ruta_resuelta or not ruta_resuelta.exists():
+        nombre_buscado = _nombre_archivo_comprobante(ruta_comprobante)
+        ruta_esperada = (
+            (COMPROBANTES_DIR / nombre_buscado).resolve()
+            if nombre_buscado else ruta_resuelta
+        )
+        messagebox.showwarning(
+            "Aviso",
+            "Comprobante registrado, pero archivo no encontrado.\n\n"
+            f"Ruta guardada original:\n{ruta_comprobante}\n\n"
+            f"Ruta esperada actual:\n{ruta_esperada}\n\n"
+            f"Nombre buscado:\n{nombre_buscado or '-'}",
+            parent=win
+        )
+        return
+
+    if ruta_resuelta.suffix.lower() == ".pdf":
+        messagebox.showinfo(
+            "Comprobante PDF",
+            f"Comprobante PDF registrado:\n{ruta_resuelta}",
+            parent=win
+        )
+        return
+
+    visor_imagen(win, ruta_inicial=str(ruta_resuelta))
+
+
 def mostrar_detalle_nota(nota, parent):
     det = tk.Toplevel(parent)
     det.title(f"Nota {nota['id']}")
@@ -3172,11 +4071,68 @@ def mostrar_detalle_nota(nota, parent):
 
         )
 
+    totales_nota = calcular_totales_nota(nota)
+    frame_totales = ttk.Frame(det)
+    frame_totales.pack(fill="x", padx=10, pady=10)
+
     ttk.Label(
-        det,
-        text=f"TOTAL: ${nota['total']:.2f}",
+        frame_totales,
+        text=f"Subtotal productos: ${totales_nota['subtotal_productos']:.2f}"
+    ).pack(anchor="e")
+    ttk.Label(
+        frame_totales,
+        text=f"Envío: ${totales_nota['envio_precio']:.2f}"
+    ).pack(anchor="e")
+    ttk.Label(
+        frame_totales,
+        text=f"Total final: ${totales_nota['total_final']:.2f}",
         font=("Segoe UI", 14, "bold")
-    ).pack(pady=10)
+    ).pack(anchor="e")
+
+    comprobante_frame = ttk.LabelFrame(det, text="Comprobante de pago")
+    comprobante_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+    ruta_comprobante = nota.get("comprobante")
+    ruta_resuelta = resolver_ruta_comprobante(ruta_comprobante)
+
+    if ruta_resuelta and ruta_resuelta.exists():
+        ttk.Label(
+            comprobante_frame,
+            text=f"Comprobante registrado: {ruta_resuelta.name}"
+        ).pack(anchor="w", padx=8, pady=(6, 3))
+
+        if ruta_resuelta.suffix.lower() == ".pdf":
+            ttk.Label(
+                comprobante_frame,
+                text=f"PDF: {ruta_resuelta}"
+            ).pack(anchor="w", padx=8, pady=(0, 6))
+        else:
+            ttk.Button(
+                comprobante_frame,
+                text="Ver comprobante",
+                command=lambda: visor_imagen(det, ruta_inicial=str(ruta_resuelta))
+            ).pack(anchor="w", padx=8, pady=(0, 6))
+    elif ruta_comprobante:
+        nombre_buscado = _nombre_archivo_comprobante(ruta_comprobante)
+        ruta_esperada = (
+            (COMPROBANTES_DIR / nombre_buscado).resolve()
+            if nombre_buscado else ruta_resuelta
+        )
+        ttk.Label(
+            comprobante_frame,
+            text=(
+                "Comprobante registrado, pero archivo no encontrado.\n"
+                f"Ruta guardada original: {ruta_comprobante}\n"
+                f"Ruta esperada actual: {ruta_esperada}"
+            )
+        ).pack(anchor="w", padx=8, pady=6)
+    else:
+        ttk.Label(
+            comprobante_frame,
+            text="Sin comprobante registrado"
+        ).pack(anchor="w", padx=8, pady=6)
+
+    _agregar_pagos_ttk(det, nota)
 
 import customtkinter as ctk
 
@@ -3391,8 +4347,3 @@ def seleccionar_envio(root, volumetrico):
 
 
     
-
-
-
-
-

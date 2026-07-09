@@ -9,6 +9,29 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASSWORD = "1"
 STOCK_MINIMO = 50
+TIPOS_NO_INVENTARIO_FISICO = {
+    "ITEM",
+    "ITEM_COTIZACION",
+    "ANULADO",
+    "INACTIVO",
+    "COTIZACION",
+    "PAQUETE",
+    "PAQUETES",
+    "COMBO",
+    "COMBOS",
+    "SERVICIO",
+}
+
+try:
+    from hilorama_desktop.utils.logger import log_info
+except Exception:
+    def log_info(nombre_modulo, mensaje):
+        return None
+
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
 
 # Parámetros para sugerencia de compra.
 # Se pueden ajustar después sin tocar la base de datos.
@@ -49,6 +72,67 @@ btn_bajo = None
 btn_ok = None
 btn_items = None
 var_es_inventariable = None
+_diagnostico_inventario_logueado = False
+_productos_tabla = {}
+
+ALMACEN_CAMPOS_EDITABLES_API = {
+    "color",
+    "codigo_barras",
+    "costo_neto",
+    "precio",
+    "volumetrico",
+    "tipo_producto",
+    "estado",
+}
+ALMACEN_TIPOS_PRODUCTO_API = {
+    "INVENTARIO": "INVENTARIO",
+    "ITEM": "ITEM",
+    "ITEM_COTIZACION": "ITEM",
+    "ITEM COTIZACION": "ITEM",
+    "ANULADO": "ANULADO",
+    "INACTIVO": "ANULADO",
+    "COTIZACION": "COTIZACION",
+    "PAQUETE": "PAQUETE",
+    "PAQUETES": "PAQUETES",
+    "COMBO": "COMBO",
+    "COMBOS": "COMBOS",
+    "SERVICIO": "SERVICIO",
+}
+ALMACEN_ESTADOS_PRODUCTO_API = {
+    "OK": "OK",
+    "RESURTIR": "RESURTIR",
+    "STOCK BAJO": "RESURTIR",
+    "STOCK_BAJO": "RESURTIR",
+    "SIN STOCK": "SIN STOCK",
+    "SIN_STOCK": "SIN STOCK",
+    "ANULADO": "ANULADO",
+    "INACTIVO": "ANULADO",
+    "ITEM": "ITEM",
+}
+
+
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+MENSAJE_ACCION_ALMACEN_API = (
+    "Esta acción de Almacén todavía no está disponible en modo API. "
+    "Se migrará en una fase posterior."
+)
+
+
+def _bloquear_escritura_local_api(accion):
+    if _modo_api():
+        raise RuntimeError(f"{MENSAJE_ACCION_ALMACEN_API} Acción: {accion}.")
+
+
+def _productos_api_service():
+    from hilorama_desktop.services import productos_api_service
+    return productos_api_service
+
+
+def _normalizar_clave_api(valor):
+    return str(valor or "").strip().upper().replace("-", "_")
 
 # ================= UTIL =================
 def to_float(valor, default=0.0):
@@ -64,6 +148,43 @@ def to_float(valor, default=0.0):
         return default
 
 
+def normalizar_valor_edicion_api(campo, valor):
+    if campo == "color":
+        valor = str(valor or "").strip().upper()
+        if not valor:
+            raise ValueError("Color invalido")
+        return valor
+    if campo == "codigo_barras":
+        return str(valor or "").strip()
+    if campo in {"costo_neto", "precio"}:
+        try:
+            numero = float(str(valor).replace("$", "").replace(",", ".").strip())
+        except Exception:
+            raise ValueError("Debe capturar un numero valido")
+        if numero < 0:
+            raise ValueError("No se aceptan valores negativos")
+        return numero
+    if campo == "volumetrico":
+        try:
+            numero = float(str(valor).replace(",", ".").strip())
+        except Exception:
+            raise ValueError("Volumetrico invalido")
+        if numero <= 0:
+            raise ValueError("Volumetrico debe ser mayor a 0")
+        return numero
+    if campo == "tipo_producto":
+        clave = _normalizar_clave_api(valor).replace(" ", "_")
+        if clave not in ALMACEN_TIPOS_PRODUCTO_API:
+            raise ValueError("Tipo de producto no permitido")
+        return ALMACEN_TIPOS_PRODUCTO_API[clave]
+    if campo == "estado":
+        clave = _normalizar_clave_api(valor)
+        if clave not in ALMACEN_ESTADOS_PRODUCTO_API:
+            raise ValueError("Estado no permitido")
+        return ALMACEN_ESTADOS_PRODUCTO_API[clave]
+    raise ValueError("Campo no disponible en modo API")
+
+
 def money(valor):
     return f"${to_float(valor):,.2f}"
 
@@ -72,6 +193,13 @@ def es_inventariable_producto(p):
     """True si el producto debe contar en stock físico, inversión, ganancia de almacén y resurtido sugerido."""
     if p is None:
         return True
+    try:
+        tipo = str(p.get("tipo_producto") or p.get("tipo") or "").strip().upper()
+    except Exception:
+        tipo = ""
+    tipo = tipo.replace(" ", "_").replace("-", "_")
+    if tipo in TIPOS_NO_INVENTARIO_FISICO:
+        return False
     valor = True
     try:
         valor = p.get("es_inventariable", True)
@@ -87,11 +215,20 @@ def es_inventariable_producto(p):
 
 
 def tipo_producto_texto(p):
+    tipo = str((p or {}).get("tipo_producto") or (p or {}).get("tipo") or "").strip().upper().replace(" ", "_")
+    estado = str((p or {}).get("estado") or "").strip().upper().replace(" ", "_")
+    if tipo in {"ANULADO", "INACTIVO"} or estado in {"ANULADO", "INACTIVO"}:
+        return "Anulado"
     return "Inventario" if es_inventariable_producto(p) else "Item cotización"
 
 
 def stock_inventario(p):
-    return int(p.get("stock") or 0) if es_inventariable_producto(p) else 0
+    if not es_inventariable_producto(p):
+        return 0
+    try:
+        return max(0, int(float(p.get("stock") or 0)))
+    except Exception:
+        return 0
 
 
 def set_status(texto):
@@ -103,6 +240,8 @@ def set_status(texto):
 def ensure_almacen_schema():
     """Migración segura: solo agrega columnas/tablas si faltan. No borra datos."""
     global _schema_ok
+    if _modo_api():
+        return
     if _schema_ok:
         return
 
@@ -185,6 +324,7 @@ def registrar_movimiento(
     motivo="",
     conn=None
 ):
+    _bloquear_escritura_local_api("registrar movimiento de almacén")
     cerrar = False
     if conn is None:
         ensure_almacen_schema()
@@ -224,14 +364,45 @@ def valores_financieros_producto(p):
     # Por eso su stock financiero se toma como 0 y no inflan costo, venta ni ganancia del inventario.
     stock = stock_inventario(p)
     costo_unitario = to_float(p.get("costo_neto")) or to_float(p.get("distribuidor"))
-    venta_unitaria = to_float(p.get("precio")) or to_float(p.get("venta"))
+    venta_unitaria = to_float(p.get("precio")) or to_float(p.get("venta")) or to_float(p.get("precio_venta"))
     valor_costo = costo_unitario * stock
     valor_venta = venta_unitaria * stock
     ganancia = valor_venta - valor_costo
     return costo_unitario, venta_unitaria, valor_costo, valor_venta, ganancia
 
 
+def actualizar_fila_producto_api(item, producto):
+    if not item or not producto:
+        return
+    producto = dict(producto)
+    costo_unitario, venta_unitaria, valor_costo, valor_venta, ganancia = valores_financieros_producto(producto)
+    inv = es_inventariable_producto(producto)
+    estado = (producto.get("estado") or "OK") if inv else "ITEM"
+    stock_mostrar = producto.get("stock") if inv else "—"
+    tabla.item(
+        item,
+        values=(
+            producto.get("hilo") or "",
+            producto.get("color") or "",
+            producto.get("codigo") or "",
+            stock_mostrar,
+            producto.get("codigo_barras") or "",
+            money(costo_unitario),
+            money(venta_unitaria),
+            f"{float(producto.get('volumetrico') or 1):.2f}",
+            tipo_producto_texto(producto),
+            estado,
+            money(valor_costo),
+            money(valor_venta),
+            money(ganancia),
+        ),
+    )
+    _productos_tabla[item] = producto
+
+
 def marcas_existentes():
+    if _modo_api():
+        return _productos_api_service().listar_marcas()
     ensure_almacen_schema()
     conn = get_conn()
     rows = conn.execute("SELECT DISTINCT marca FROM productos ORDER BY marca").fetchall()
@@ -240,10 +411,15 @@ def marcas_existentes():
 
 
 def obtener_productos():
+    if _modo_api():
+        return _productos_api_service().listar_todos_los_productos({
+            "incluir_items_cotizacion": "true",
+        })
     ensure_almacen_schema()
     conn = get_conn()
     productos = conn.execute("""
         SELECT
+            p.id,
             p.marca,
             p.hilo,
             p.color,
@@ -287,7 +463,7 @@ def filtrar_productos(productos, filtro=None, modo=None):
         inv = es_inventariable_producto(p)
         if filtro and filtro not in texto:
             continue
-        if modo == "BAJO" and (not inv or p.get("estado") != "RESURTIR"):
+        if modo == "BAJO" and (not inv or str(p.get("estado") or "").upper() not in {"RESURTIR", "SIN STOCK", "STOCK BAJO"}):
             continue
         if modo == "OK" and (not inv or p.get("estado") != "OK"):
             continue
@@ -297,33 +473,99 @@ def filtrar_productos(productos, filtro=None, modo=None):
     return resultado
 
 
-def calcular_totales(productos):
-    stock_total = 0
-    valor_costo_total = 0.0
-    valor_venta_total = 0.0
-    ganancia_total = 0.0
-    stock_bajo = 0
-    marcas = set()
-
-    for r in productos:
-        marcas.add(r.get("marca"))
-        if es_inventariable_producto(r):
-            stock_total += int(r.get("stock") or 0)
-            if r.get("estado") == "RESURTIR":
-                stock_bajo += 1
-        _, _, valor_costo, valor_venta, ganancia = valores_financieros_producto(r)
-        valor_costo_total += valor_costo
-        valor_venta_total += valor_venta
-        ganancia_total += ganancia
-
+def _producto_resumen_log(p):
     return {
-        "tonos": len(productos),
-        "stock_total": stock_total,
-        "stock_bajo": stock_bajo,
-        "marcas": len(marcas),
-        "valor_costo": valor_costo_total,
-        "valor_venta": valor_venta_total,
-        "ganancia": ganancia_total,
+        "marca": p.get("marca"),
+        "hilo": p.get("hilo"),
+        "color": p.get("color"),
+        "codigo": p.get("codigo"),
+        "stock": p.get("stock"),
+        "costo_neto": p.get("costo_neto") or p.get("distribuidor"),
+        "precio_venta": p.get("precio") or p.get("venta") or p.get("precio_venta"),
+        "tipo_producto": p.get("tipo_producto") or p.get("tipo"),
+        "estado": p.get("estado"),
+    }
+
+
+def calcular_resumen_inventario_real(productos):
+    resumen = {}
+    total_piezas = 0
+    total_costo = 0.0
+    total_venta = 0.0
+    stock_bajo = 0
+    tonos = 0
+    marcas = set()
+    productos_stock_negativo = []
+    productos_no_inventario = []
+
+    for p in productos:
+        if not es_inventariable_producto(p):
+            productos_no_inventario.append(_producto_resumen_log(p))
+            continue
+
+        try:
+            stock_bruto = int(float(p.get("stock") or 0))
+        except Exception:
+            stock_bruto = 0
+        if stock_bruto < 0:
+            productos_stock_negativo.append(_producto_resumen_log(p))
+            continue
+        if stock_bruto <= 0:
+            continue
+
+        piezas = stock_inventario(p)
+        marca = str(p.get("marca") or "Sin marca").strip() or "Sin marca"
+        hilo = str(p.get("hilo") or "Sin hilo").strip() or "Sin hilo"
+        clave = (marca, hilo)
+
+        _, _, valor_costo, valor_venta, _ = valores_financieros_producto(p)
+        item = resumen.setdefault(clave, {
+            "marca": marca,
+            "hilo": hilo,
+            "piezas": 0,
+            "costo": 0.0,
+            "venta": 0.0,
+        })
+        item["piezas"] += piezas
+        item["costo"] += valor_costo
+        item["venta"] += valor_venta
+
+        tonos += 1
+        marcas.add(marca)
+        total_piezas += piezas
+        total_costo += valor_costo
+        total_venta += valor_venta
+        if p.get("estado") == "RESURTIR":
+            stock_bajo += 1
+
+    grupos = sorted(resumen.values(), key=lambda r: (r["marca"], r["hilo"]))
+    total_ganancia = total_venta - total_costo
+    return {
+        "grupos": grupos,
+        "total_general": {
+            "tonos": tonos,
+            "piezas": total_piezas,
+            "stock_bajo": stock_bajo,
+            "marcas": len(marcas),
+            "valor_costo": total_costo,
+            "valor_venta": total_venta,
+            "ganancia": total_ganancia,
+        },
+        "productos_stock_negativo": productos_stock_negativo,
+        "productos_no_inventario": productos_no_inventario,
+    }
+
+
+def calcular_totales(productos):
+    total = calcular_resumen_inventario_real(productos)["total_general"]
+    return {
+        "tonos": total["tonos"],
+        "stock_total": total["piezas"],
+        "stock_bajo": total["stock_bajo"],
+        "marcas": total["marcas"],
+        "valor_costo": total["valor_costo"],
+        "valor_venta": total["valor_venta"],
+        "ganancia": total["ganancia"],
     }
 
 
@@ -332,8 +574,55 @@ def set_card(widget, valor):
         widget.config(text=valor)
 
 
-def actualizar_dashboard(productos_filtrados):
-    tot = calcular_totales(productos_filtrados)
+def _clave_producto_diagnostico(p):
+    return (
+        str(p.get("marca") or "").strip().upper(),
+        str(p.get("hilo") or "").strip().upper(),
+        str(p.get("color") or "").strip().upper(),
+        str(p.get("codigo") or "").strip().upper(),
+    )
+
+
+def _diagnosticar_inventario_real(productos_visibles, productos_inventario, resumen_real):
+    global _diagnostico_inventario_logueado
+    if _diagnostico_inventario_logueado:
+        return
+    _diagnostico_inventario_logueado = True
+
+    try:
+        visibles = {_clave_producto_diagnostico(p) for p in productos_visibles}
+        fuera_de_vista = [
+            _producto_resumen_log(p)
+            for p in productos_inventario
+            if (
+                _clave_producto_diagnostico(p) not in visibles
+                and es_inventariable_producto(p)
+                and stock_inventario(p) > 0
+            )
+        ][:10]
+        total = resumen_real["total_general"]
+        log_info(
+            "almacen",
+            "Diagnostico inventario real | "
+            f"tarjetas_piezas={total['piezas']} | "
+            f"tarjetas_valor_costo={total['valor_costo']:.2f} | "
+            f"tarjetas_valor_venta={total['valor_venta']:.2f} | "
+            f"tarjetas_ganancia={total['ganancia']:.2f} | "
+            f"resumen_piezas={total['piezas']} | "
+            f"resumen_valor_costo={total['valor_costo']:.2f} | "
+            f"resumen_valor_venta={total['valor_venta']:.2f} | "
+            f"resumen_ganancia={total['ganancia']:.2f} | "
+            f"productos_fuera_de_vista={fuera_de_vista} | "
+            f"stock_negativo_excluido={resumen_real['productos_stock_negativo'][:10]}",
+        )
+    except Exception:
+        pass
+
+
+def actualizar_dashboard(productos_filtrados, productos_inventario=None):
+    productos_inventario = productos_inventario if productos_inventario is not None else productos_filtrados
+    resumen_real = calcular_resumen_inventario_real(productos_inventario)
+    tot = calcular_totales(productos_inventario)
     set_card(card_total_tonos, str(tot["tonos"]))
     set_card(card_stock_total, str(tot["stock_total"]))
     set_card(card_stock_bajo, str(tot["stock_bajo"]))
@@ -345,11 +634,12 @@ def actualizar_dashboard(productos_filtrados):
     if lbl_ganancia is not None:
         lbl_ganancia.config(
             text=(
-                f"Resumen actual  •  Tonos: {tot['tonos']}  •  Stock: {tot['stock_total']}  •  "
+                f"Inventario real  •  Tonos: {tot['tonos']}  •  Stock: {tot['stock_total']}  •  "
                 f"Costo: {money(tot['valor_costo'])}  •  Venta: {money(tot['valor_venta'])}  •  "
                 f"Ganancia estimada: {money(tot['ganancia'])}"
             )
         )
+    _diagnosticar_inventario_real(productos_filtrados, productos_inventario, resumen_real)
 
 
 def limpiar_formulario():
@@ -364,7 +654,9 @@ def limpiar_formulario():
 
 
 def refrescar_tabla(filtro=None, modo=None):
-    ensure_almacen_schema()
+    global _productos_tabla
+    if not _modo_api():
+        ensure_almacen_schema()
     filtro = entry_buscar.get() if filtro is None and entry_buscar is not None else (filtro or "")
     modo = modo or filtro_modo_actual
 
@@ -377,6 +669,7 @@ def refrescar_tabla(filtro=None, modo=None):
                     abiertos.append((tabla.item(item, "text"), tabla.item(sub, "text")))
 
     tabla.delete(*tabla.get_children())
+    _productos_tabla = {}
 
     productos = obtener_productos()
     productos_filtrados = filtrar_productos(productos, filtro=filtro, modo=modo)
@@ -405,7 +698,7 @@ def refrescar_tabla(filtro=None, modo=None):
                 tag = f"{base_tag}_{stripe_tag}"
                 stock_mostrar = p["stock"] if inv else "—"
 
-                tabla.insert(
+                item_producto = tabla.insert(
                     hilo_id,
                     "end",
                     text="",
@@ -426,14 +719,16 @@ def refrescar_tabla(filtro=None, modo=None):
                     ),
                     tags=(tag,)
                 )
+                _productos_tabla[item_producto] = dict(p)
 
-    actualizar_dashboard(productos_filtrados)
+    actualizar_dashboard(productos_filtrados, productos)
     set_status(f"Vista actual: {len(productos_filtrados)} tonos mostrados • filtro: {modo}")
     actualizar_estilo_botones_filtro()
 
 # ================= ACCIONES =================
 def agregar_producto():
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
     marca = combo_marca.get().strip().upper()
     hilo = entry_hilo.get().strip().upper()
     color = entry_color.get().strip().upper()
@@ -472,6 +767,41 @@ def agregar_producto():
     else:
         # Los paquetes/combos/items de cotización se guardan con stock 0 para que no inflen cálculos.
         stock = 0
+
+    if _modo_api():
+        if stock < 0:
+            messagebox.showerror("Error", "No se permite stock negativo")
+            return
+
+        tipo_producto = "INVENTARIO" if inventariable else "ITEM"
+        payload = {
+            "marca": marca,
+            "hilo": hilo,
+            "color": color,
+            "codigo": codigo,
+            "codigo_barras": codigo_barras,
+            "stock": stock,
+            "costo_neto": 0,
+            "precio": 0,
+            "volumetrico": volumetrico,
+            "tipo_producto": tipo_producto,
+            "motivo": "Alta rapida desde Almacen",
+        }
+        try:
+            _productos_api_service().crear_producto(payload)
+        except Exception as exc:
+            messagebox.showerror("No se pudo crear", str(exc))
+            return
+
+        try:
+            combo_marca["values"] = marcas_existentes()
+        except Exception:
+            pass
+        refrescar_tabla()
+        limpiar_formulario()
+        set_status(f"Producto agregado por API: {marca} / {hilo} / {color} / {codigo}")
+        messagebox.showinfo("Producto agregado", "El producto se guardo correctamente por API.")
+        return
 
     conn = get_conn()
     existe = conn.execute("""
@@ -516,13 +846,59 @@ def agregar_producto():
 
 
 def eliminar_tono():
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
     item = tabla.focus()
     if not item:
         return
 
     item_data = tabla.item(item)
     if not item_data["values"]:
+        return
+
+    if _modo_api():
+        _, producto = _producto_api_seleccionado()
+        if not producto or not producto.get("id"):
+            messagebox.showerror("Modo API", "No se encontro el id del producto. Actualiza la vista e intenta de nuevo.")
+            return
+        try:
+            from hilorama_desktop.ui.dialogs import confirmar_anular_tono
+            clave = confirmar_anular_tono(_parent_dialogo_almacen(), producto)
+        except Exception:
+            if not messagebox.askyesno(
+                "Anular tono",
+                "Este producto no se borrara fisicamente. Se marcara como anulado para conservar historial.\n\n"
+                f"Codigo: {producto.get('codigo')}\n"
+                f"Marca: {producto.get('marca')}\n"
+                f"Hilo: {producto.get('hilo')}\n"
+                f"Color: {producto.get('color')}\n"
+                f"Stock actual: {producto.get('stock') or 0}\n"
+                f"Estado actual: {producto.get('estado') or ''}\n\n"
+                "¿Continuar?",
+            ):
+                return
+            clave = simpledialog.askstring("Autorizacion", "Clave de autorizacion:", show="*")
+            if clave != PASSWORD:
+                messagebox.showwarning("No autorizado", "Clave incorrecta. No se anulo el producto.")
+                return
+        if not clave:
+            return
+        try:
+            respuesta = _productos_api_service().anular_producto(
+                producto.get("id"),
+                clave,
+                motivo="Anulacion de tono desde Almacen",
+            )
+        except Exception as exc:
+            _alerta_almacen("No se pudo anular", f"No se pudo anular el producto: {exc}")
+            return
+        advertencias = respuesta.get("advertencias") or []
+        refrescar_tabla()
+        mensaje = "Producto anulado por API."
+        if advertencias:
+            mensaje += "\n\n" + "\n".join(f"- {adv}" for adv in advertencias)
+        set_status("Producto anulado por API")
+        _alerta_almacen("Tono anulado", mensaje)
         return
 
     pwd = simpledialog.askstring("Contraseña", "Contraseña:", show="*")
@@ -603,7 +979,8 @@ def doble_click_editar(event):
 
 
 def editar_celda(columna, campo):
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
     item = tabla.focus()
     if not item:
         return
@@ -616,6 +993,11 @@ def editar_celda(columna, campo):
     if campo == "stock" and len(valores_item) > 8 and "sin inventario" in str(valores_item[8]).lower():
         messagebox.showinfo("No aplica", "Este producto está marcado como item de cotización. No maneja stock físico.")
         return
+
+    if _modo_api():
+        if campo != "stock" and campo not in ALMACEN_CAMPOS_EDITABLES_API:
+            messagebox.showinfo("Modo API", "Esta edicion todavia no esta disponible en modo API.")
+            return
 
     global autorizado, editor_activo
     if editor_activo and editor_activo.winfo_exists():
@@ -658,6 +1040,87 @@ def editar_celda(columna, campo):
         parent_hilo = tabla.parent(item)
         parent_marca = tabla.parent(parent_hilo)
         marca = tabla.item(parent_marca)["text"]
+
+        if _modo_api():
+            producto_base = _productos_tabla.get(item) or {}
+            producto_id = producto_base.get("id")
+            if not producto_id:
+                messagebox.showerror(
+                    "Modo API",
+                    "No se encontro el id del producto. Actualiza la vista e intenta de nuevo."
+                )
+                return
+            if campo == "stock":
+                try:
+                    numero_stock = float(str(nuevo_valor).replace(",", ".").strip())
+                    if not numero_stock.is_integer():
+                        raise ValueError
+                    stock_nuevo = int(numero_stock)
+                except Exception:
+                    messagebox.showerror("Dato invalido", "Stock invalido. Capture un numero entero.")
+                    return
+
+                clave_autorizacion = None
+                if stock_nuevo < 0:
+                    clave_autorizacion = simpledialog.askstring(
+                        "Autorizacion",
+                        "Stock negativo requiere clave:",
+                        show="*",
+                    )
+                    if clave_autorizacion != PASSWORD:
+                        messagebox.showwarning("No autorizado", "No se aplico el stock negativo.")
+                        return
+
+                try:
+                    producto_actualizado = _productos_api_service().actualizar_stock_producto(
+                        producto_id,
+                        stock_nuevo,
+                        motivo="Ajuste manual de stock desde Almacen",
+                        clave_autorizacion=clave_autorizacion,
+                    )
+                except Exception as exc:
+                    messagebox.showerror(
+                        "No se pudo guardar",
+                        f"No se pudo actualizar el stock por API:\n{exc}"
+                    )
+                    return
+
+                if not producto_actualizado:
+                    producto_actualizado = dict(producto_base)
+                    producto_actualizado["stock"] = stock_nuevo
+                actualizar_fila_producto_api(item, producto_actualizado)
+                entry.destroy()
+                editor_activo = None
+                refrescar_tabla()
+                set_status("Stock actualizado por API")
+                return
+
+            try:
+                valor_api = normalizar_valor_edicion_api(campo, nuevo_valor)
+            except Exception as exc:
+                messagebox.showerror("Dato invalido", str(exc))
+                return
+            try:
+                producto_actualizado = _productos_api_service().actualizar_producto(
+                    producto_id,
+                    {campo: valor_api},
+                    motivo=f"Edicion manual de {campo} desde Almacen",
+                )
+            except Exception as exc:
+                messagebox.showerror(
+                    "No se pudo guardar",
+                    f"No se pudo actualizar el producto por API:\n{exc}"
+                )
+                return
+
+            if not producto_actualizado:
+                producto_actualizado = dict(producto_base)
+                producto_actualizado[campo] = valor_api
+            actualizar_fila_producto_api(item, producto_actualizado)
+            set_status(f"Campo actualizado por API: {campo}")
+            entry.destroy()
+            editor_activo = None
+            return
 
         conn = get_conn()
         anterior = conn.execute("""
@@ -796,11 +1259,137 @@ def editar_celda(columna, campo):
     entry.bind("<Escape>", lambda e: entry.destroy())
 
 
+def _parent_dialogo_almacen():
+    try:
+        return tabla.winfo_toplevel()
+    except Exception:
+        return root
+
+
+def _alerta_almacen(titulo, mensaje):
+    try:
+        from hilorama_desktop.ui.dialogs import alerta_moderna
+        alerta_moderna(_parent_dialogo_almacen(), titulo, mensaje)
+    except Exception:
+        messagebox.showinfo(titulo, mensaje)
+
+
+def _confirmar_cambio_masivo_almacen(titulo, accion, marca=None, hilo=None, cantidad=None, valor_nuevo=None):
+    try:
+        from hilorama_desktop.ui.dialogs import confirmar_cambio_masivo
+        return confirmar_cambio_masivo(
+            _parent_dialogo_almacen(),
+            titulo=titulo,
+            accion=accion,
+            marca=marca,
+            hilo=hilo,
+            cantidad=cantidad,
+            valor_nuevo=valor_nuevo,
+        )
+    except Exception:
+        detalle = [
+            accion,
+            f"Marca: {marca or ''}",
+            f"Hilo: {hilo or 'Todos'}",
+            f"Productos afectados: {cantidad if cantidad is not None else 'por confirmar'}",
+            f"Valor nuevo: {valor_nuevo}",
+            "",
+            "Este cambio afectara varios productos. Revisa antes de continuar.",
+        ]
+        return messagebox.askyesno(titulo, "\n".join(detalle))
+
+
+def _contar_productos_actuales(marca, hilo=None):
+    marca_cmp = str(marca or "").strip().upper()
+    hilo_cmp = str(hilo or "").strip().upper()
+    try:
+        productos = obtener_productos()
+    except Exception:
+        return None
+    total = 0
+    for producto in productos:
+        if str(producto.get("marca") or "").strip().upper() != marca_cmp:
+            continue
+        if hilo_cmp and str(producto.get("hilo") or "").strip().upper() != hilo_cmp:
+            continue
+        total += 1
+    return total
+
+
+def _producto_api_seleccionado():
+    item = tabla.focus()
+    if not item:
+        return None, None
+    producto = _productos_tabla.get(item)
+    if not producto:
+        return item, None
+    return item, dict(producto)
+
+
+def _confirmar_tipo_producto_almacen(producto, tipo_nuevo, stock_nuevo):
+    try:
+        from hilorama_desktop.ui.dialogs import confirmar_cambio_tipo_producto
+        return confirmar_cambio_tipo_producto(
+            _parent_dialogo_almacen(),
+            codigo=producto.get("codigo"),
+            marca=producto.get("marca"),
+            hilo=producto.get("hilo"),
+            color=producto.get("color"),
+            tipo_actual=tipo_producto_texto(producto),
+            tipo_nuevo=tipo_nuevo,
+            stock_actual=producto.get("stock"),
+            stock_nuevo=stock_nuevo,
+        )
+    except Exception:
+        return messagebox.askyesno(
+            "Cambiar tipo de producto",
+            "Este cambio modifica si el producto cuenta como inventario fisico.\n\n"
+            f"Codigo: {producto.get('codigo')}\n"
+            f"Marca: {producto.get('marca')}\n"
+            f"Hilo: {producto.get('hilo')}\n"
+            f"Color: {producto.get('color')}\n"
+            f"Tipo nuevo: {tipo_nuevo}\n"
+            f"Stock nuevo: {stock_nuevo}\n\n"
+            "¿Aplicar cambio?",
+        )
+
+
 def editar_precios_marca():
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
     marca = combo_marca.get().strip().upper()
     if not marca:
         messagebox.showerror("Error", "Selecciona una marca")
+        return
+
+    if _modo_api():
+        dist = simpledialog.askfloat("Distribuidor", f"Precio distribuidor para {marca}:", minvalue=0.0)
+        venta = simpledialog.askfloat("Venta", f"Precio venta para {marca}:", minvalue=0.0)
+        if dist is None or venta is None:
+            return
+        cantidad = _contar_productos_actuales(marca)
+        if not _confirmar_cambio_masivo_almacen(
+            "Confirmar precio por marca",
+            "Actualizar precio por marca",
+            marca=marca,
+            cantidad=cantidad,
+            valor_nuevo=f"Distribuidor {money(dist)} / Venta {money(venta)}",
+        ):
+            return
+        try:
+            respuesta = _productos_api_service().actualizar_precio_marca(
+                marca,
+                dist,
+                venta,
+                motivo="Actualizacion masiva de precio por marca desde Almacen",
+            )
+        except Exception as exc:
+            _alerta_almacen("No se pudo actualizar precio", f"No se pudo actualizar precio: {exc}")
+            return
+        refrescar_tabla()
+        afectados = respuesta.get("cantidad_actualizada", cantidad)
+        set_status(f"Precios por marca actualizados por API: {marca} ({afectados} productos)")
+        _alerta_almacen("Precios actualizados", f"Se actualizaron precios para {afectados} productos.")
         return
 
     pwd = simpledialog.askstring("Contraseña", "Contraseña:", show="*")
@@ -843,12 +1432,47 @@ def editar_precios_marca():
 
 
 def asignar_volumetrico_hilo():
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
     marca = combo_marca.get().strip().upper()
     hilo = entry_hilo.get().strip().upper()
 
     if not marca or not hilo:
         messagebox.showerror("Error", "Selecciona una marca y escribe el hilo")
+        return
+
+    if _modo_api():
+        vol = simpledialog.askfloat(
+            "Peso volumetrico",
+            f"Peso volumetrico para {marca} / {hilo}:",
+            minvalue=0.01
+        )
+        if vol is None:
+            return
+        cantidad = _contar_productos_actuales(marca, hilo)
+        if not _confirmar_cambio_masivo_almacen(
+            "Confirmar volumetrico por hilo",
+            "Actualizar volumetrico por hilo",
+            marca=marca,
+            hilo=hilo,
+            cantidad=cantidad,
+            valor_nuevo=f"{vol:.2f}",
+        ):
+            return
+        try:
+            respuesta = _productos_api_service().actualizar_volumetrico_hilo(
+                marca,
+                hilo,
+                vol,
+                motivo="Actualizacion de volumetrico por hilo desde Almacen",
+            )
+        except Exception as exc:
+            _alerta_almacen("No se pudo actualizar volumetrico", f"No se pudo actualizar volumetrico: {exc}")
+            return
+        refrescar_tabla()
+        afectados = respuesta.get("cantidad_actualizada", cantidad)
+        set_status(f"Volumetrico actualizado por API en {afectados} productos")
+        _alerta_almacen("Volumetrico actualizado", f"Se actualizaron {afectados} productos.")
         return
 
     pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
@@ -915,12 +1539,47 @@ def obtener_producto_por_codigo(codigo):
 
 
 def actualizar_precio_hilo():
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
     marca = combo_marca.get().strip().upper()
     hilo = entry_hilo.get().strip().upper()
 
     if not marca or not hilo:
         messagebox.showerror("Error", "Selecciona marca y escribe hilo")
+        return
+
+    if _modo_api():
+        nuevo_precio = simpledialog.askfloat(
+            "Precio multiple",
+            f"Nuevo precio para {marca} / {hilo}:",
+            minvalue=0.0
+        )
+        if nuevo_precio is None:
+            return
+        cantidad = _contar_productos_actuales(marca, hilo)
+        if not _confirmar_cambio_masivo_almacen(
+            "Confirmar precio por hilo",
+            "Actualizar precio por hilo",
+            marca=marca,
+            hilo=hilo,
+            cantidad=cantidad,
+            valor_nuevo=money(nuevo_precio),
+        ):
+            return
+        try:
+            respuesta = _productos_api_service().actualizar_precio_hilo(
+                marca,
+                hilo,
+                nuevo_precio,
+                motivo="Actualizacion masiva de precio por hilo desde Almacen",
+            )
+        except Exception as exc:
+            _alerta_almacen("No se pudo actualizar precio", f"No se pudo actualizar precio: {exc}")
+            return
+        refrescar_tabla()
+        afectados = respuesta.get("cantidad_actualizada", cantidad)
+        set_status(f"Precio actualizado por API en {afectados} productos")
+        _alerta_almacen("Precio actualizado", f"Se actualizaron {afectados} productos.")
         return
 
     pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
@@ -979,13 +1638,48 @@ def actualizar_precio_hilo():
 
 
 def asignar_volumetrico_multiple():
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
     marca = simpledialog.askstring("Marca", "Marca (ej: KARINA):")
     if not marca:
         return
 
     hilo = simpledialog.askstring("Hilo", "Hilo (ej: KOMFY):")
     if not hilo:
+        return
+
+    if _modo_api():
+        nuevo_vol = simpledialog.askfloat(
+            "Volumetrico",
+            f"Nuevo volumetrico para {marca.upper()} / {hilo.upper()}:",
+            minvalue=0.01
+        )
+        if nuevo_vol is None:
+            return
+        marca = marca.strip().upper()
+        hilo = hilo.strip().upper()
+        cantidad = _contar_productos_actuales(marca, hilo)
+        if not _confirmar_cambio_masivo_almacen(
+            "Confirmar volumetrico multiple",
+            "Actualizar volumetrico multiple",
+            marca=marca,
+            hilo=hilo,
+            cantidad=cantidad,
+            valor_nuevo=f"{nuevo_vol:.2f}",
+        ):
+            return
+        try:
+            respuesta = _productos_api_service().actualizar_volumetrico_multiple(
+                [{"marca": marca, "hilo": hilo, "volumetrico": nuevo_vol}],
+                motivo="Actualizacion multiple de volumetrico desde Almacen",
+            )
+        except Exception as exc:
+            _alerta_almacen("No se pudo actualizar volumetrico", f"No se pudo actualizar volumetrico: {exc}")
+            return
+        refrescar_tabla()
+        afectados = respuesta.get("cantidad_actualizada", cantidad)
+        set_status(f"Volumetrico multiple actualizado por API en {afectados} productos")
+        _alerta_almacen("Volumetrico actualizado", f"Se actualizaron {afectados} productos.")
         return
 
     pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
@@ -1069,6 +1763,34 @@ def marcar_item_sin_inventario():
         return
     marca, hilo, color, codigo = datos
 
+    if _modo_api():
+        item, producto = _producto_api_seleccionado()
+        if not producto or not producto.get("id"):
+            messagebox.showerror("Modo API", "No se encontro el id del producto. Actualiza la vista e intenta de nuevo.")
+            return
+        producto.setdefault("marca", marca)
+        producto.setdefault("hilo", hilo)
+        producto.setdefault("color", color)
+        producto.setdefault("codigo", codigo)
+        if not _confirmar_tipo_producto_almacen(producto, "Item cotizacion", 0):
+            return
+        try:
+            producto_actualizado = _productos_api_service().actualizar_tipo_producto(
+                producto.get("id"),
+                "ITEM",
+                False,
+                stock_inicial=0,
+                motivo="Convertido a item de cotizacion desde Almacen",
+            )
+        except Exception as exc:
+            _alerta_almacen("No se pudo cambiar tipo", f"No se pudo cambiar tipo de producto: {exc}")
+            return
+        if producto_actualizado and item:
+            actualizar_fila_producto_api(item, producto_actualizado)
+        refrescar_tabla()
+        set_status("Producto convertido a item de cotizacion por API")
+        return
+
     pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
     if pwd != PASSWORD:
         return
@@ -1128,6 +1850,41 @@ def marcar_como_inventario():
         return
     marca, hilo, color, codigo = datos
 
+    if _modo_api():
+        item, producto = _producto_api_seleccionado()
+        if not producto or not producto.get("id"):
+            messagebox.showerror("Modo API", "No se encontro el id del producto. Actualiza la vista e intenta de nuevo.")
+            return
+        producto.setdefault("marca", marca)
+        producto.setdefault("hilo", hilo)
+        producto.setdefault("color", color)
+        producto.setdefault("codigo", codigo)
+        stock = simpledialog.askinteger(
+            "Stock inicial",
+            f"Con cuanto stock fisico quieres dejar {marca} / {hilo} / {color} / {codigo}?",
+            minvalue=0
+        )
+        if stock is None:
+            return
+        if not _confirmar_tipo_producto_almacen(producto, "Inventario fisico", stock):
+            return
+        try:
+            producto_actualizado = _productos_api_service().actualizar_tipo_producto(
+                producto.get("id"),
+                "INVENTARIO",
+                True,
+                stock_inicial=stock,
+                motivo="Convertido a producto de inventario fisico desde Almacen",
+            )
+        except Exception as exc:
+            _alerta_almacen("No se pudo cambiar tipo", f"No se pudo cambiar tipo de producto: {exc}")
+            return
+        if producto_actualizado and item:
+            actualizar_fila_producto_api(item, producto_actualizado)
+        refrescar_tabla()
+        set_status("Producto convertido a inventario por API")
+        return
+
     pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
     if pwd != PASSWORD:
         return
@@ -1178,8 +1935,141 @@ def marcar_como_inventario():
     set_status("Producto convertido a inventario")
 
 
+def mostrar_resumen_inventario_real():
+    try:
+        productos = obtener_productos()
+    except Exception as exc:
+        messagebox.showerror("Inventario real", f"No se pudo generar el resumen:\n{exc}")
+        return
+
+    resumen_real = calcular_resumen_inventario_real(productos)
+    grupos_resumen = resumen_real["grupos"]
+    total_general = resumen_real["total_general"]
+    total_piezas = total_general["piezas"]
+    total_costo = total_general["valor_costo"]
+    total_venta = total_general["valor_venta"]
+
+    win = tk.Toplevel(root)
+    win.title("Resumen de inventario real")
+    win.geometry("980x620")
+    win.minsize(760, 480)
+    win.configure(bg="#EEF3F8")
+
+    header = tk.Frame(win, bg="#1F3A5F")
+    header.pack(fill="x")
+    tk.Label(
+        header,
+        text="Resumen de inventario real",
+        bg="#1F3A5F",
+        fg="white",
+        font=("Segoe UI", 18, "bold"),
+    ).pack(anchor="w", padx=18, pady=(12, 0))
+    tk.Label(
+        header,
+        text="Solo cuenta productos de inventario fisico; no incluye items de cotizacion.",
+        bg="#1F3A5F",
+        fg="#D9E6F2",
+        font=("Segoe UI", 10),
+    ).pack(anchor="w", padx=18, pady=(0, 12))
+
+    body = tk.Frame(win, bg="#EEF3F8")
+    body.pack(fill="both", expand=True, padx=14, pady=14)
+    body.grid_columnconfigure(0, weight=1)
+    body.grid_rowconfigure(0, weight=1)
+    body.grid_rowconfigure(1, weight=0)
+
+    cols = ("marca_hilo", "piezas", "costo", "venta", "ganancia")
+    tabla_resumen = ttk.Treeview(body, columns=cols, show="headings")
+    tabla_resumen.heading("marca_hilo", text="Marca / Hilo")
+    tabla_resumen.heading("piezas", text="Piezas")
+    tabla_resumen.heading("costo", text="Valor costo")
+    tabla_resumen.heading("venta", text="Valor venta")
+    tabla_resumen.heading("ganancia", text="Ganancia")
+    tabla_resumen.column("marca_hilo", width=260, anchor="w")
+    tabla_resumen.column("piezas", width=90, anchor="center")
+    tabla_resumen.column("costo", width=130, anchor="e")
+    tabla_resumen.column("venta", width=130, anchor="e")
+    tabla_resumen.column("ganancia", width=130, anchor="e")
+
+    scroll_y = ttk.Scrollbar(body, orient="vertical", command=tabla_resumen.yview)
+    tabla_resumen.configure(yscrollcommand=scroll_y.set)
+    tabla_resumen.grid(row=0, column=0, sticky="nsew")
+    scroll_y.grid(row=0, column=1, sticky="ns")
+
+    lineas = ["Resumen de inventario real", ""]
+
+    if not grupos_resumen:
+        tabla_resumen.insert("", "end", values=("No hay inventario real para resumir", "", "", "", ""))
+        lineas.append("No hay inventario real para resumir.")
+    else:
+        for datos in grupos_resumen:
+            ganancia = datos["venta"] - datos["costo"]
+            nombre = f"{datos['marca']} / {datos['hilo']}"
+            tabla_resumen.insert(
+                "",
+                "end",
+                values=(nombre, datos["piezas"], money(datos["costo"]), money(datos["venta"]), money(ganancia)),
+            )
+            lineas.extend([
+                f"- {nombre}: {datos['piezas']} piezas",
+                f"  Valor costo: {money(datos['costo'])}",
+                f"  Valor venta: {money(datos['venta'])}",
+                f"  Ganancia estimada: {money(ganancia)}",
+                "",
+            ])
+
+    total_ganancia = total_venta - total_costo
+    total_texto = (
+        f"TOTAL GENERAL  |  Piezas reales: {total_piezas}  |  "
+        f"Valor costo: {money(total_costo)}  |  Valor venta: {money(total_venta)}  |  "
+        f"Ganancia estimada: {money(total_ganancia)}"
+    )
+    ttk.Label(body, text=total_texto, font=("Segoe UI", 10, "bold")).grid(row=1, column=0, sticky="ew", pady=(10, 0))
+
+    lineas.extend([
+        "TOTAL GENERAL",
+        f"Piezas reales: {total_piezas}",
+        f"Valor costo: {money(total_costo)}",
+        f"Valor venta: {money(total_venta)}",
+        f"Ganancia estimada: {money(total_ganancia)}",
+    ])
+    resumen_texto = "\n".join(lineas)
+
+    acciones = tk.Frame(win, bg="#EEF3F8")
+    acciones.pack(fill="x", padx=14, pady=(0, 14))
+
+    def copiar_resumen():
+        win.clipboard_clear()
+        win.clipboard_append(resumen_texto)
+        messagebox.showinfo("Copiado", "Resumen copiado al portapapeles.", parent=win)
+
+    tk.Button(
+        acciones,
+        text="Copiar resumen",
+        command=copiar_resumen,
+        bg="#2F6FED",
+        fg="white",
+        relief="flat",
+        padx=14,
+        pady=7,
+        cursor="hand2",
+    ).pack(side="left")
+    tk.Button(
+        acciones,
+        text="Cerrar",
+        command=win.destroy,
+        bg="#F4F7FB",
+        fg="#27415D",
+        relief="flat",
+        padx=14,
+        pady=7,
+        cursor="hand2",
+    ).pack(side="right")
+
+
 def ver_movimientos():
-    ensure_almacen_schema()
+    if not _modo_api():
+        ensure_almacen_schema()
 
     win = tk.Toplevel(root)
     win.title("Movimientos de almacén")
@@ -1211,7 +2101,7 @@ def ver_movimientos():
     tabla_wrap.pack(fill="both", expand=True)
 
     columnas = (
-        "Fecha", "Tipo", "Marca", "Hilo", "Color", "Código",
+        "Fecha", "Usuario", "Tipo", "Marca", "Hilo", "Color", "Código",
         "Stock anterior", "Stock nuevo", "Cantidad", "Campo",
         "Antes", "Después", "Motivo"
     )
@@ -1224,6 +2114,8 @@ def ver_movimientos():
             ancho = 180
         elif col == "Fecha":
             ancho = 160
+        elif col == "Usuario":
+            ancho = 120
         elif col in ("Tipo", "Marca", "Hilo"):
             ancho = 130
         tv.column(col, width=ancho, anchor="center")
@@ -1241,49 +2133,27 @@ def ver_movimientos():
     tv.tag_configure("alta", background="#EEF9F1")
     tv.tag_configure("cambio", background="#FFFBEA")
 
-    def cargar():
-        filtro = entry.get().strip()
-        tv.delete(*tv.get_children())
-        conn = get_conn()
-        if filtro:
-            like = f"%{filtro}%"
-            rows = conn.execute("""
-                SELECT fecha, tipo, marca, hilo, color, codigo,
-                       stock_anterior, stock_nuevo, cantidad, campo,
-                       valor_anterior, valor_nuevo, motivo
-                FROM movimientos_almacen
-                WHERE marca ILIKE %s OR hilo ILIKE %s OR color ILIKE %s
-                   OR codigo ILIKE %s OR tipo ILIKE %s OR campo ILIKE %s
-                ORDER BY fecha DESC
-                LIMIT 1000
-            """, (like, like, like, like, like, like)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT fecha, tipo, marca, hilo, color, codigo,
-                       stock_anterior, stock_nuevo, cantidad, campo,
-                       valor_anterior, valor_nuevo, motivo
-                FROM movimientos_almacen
-                ORDER BY fecha DESC
-                LIMIT 1000
-            """).fetchall()
-        conn.close()
+    estado_api = {"limit": 100, "offset": 0, "total": 0}
 
+    def insertar_rows(rows):
         for r in rows:
             fecha = r.get("fecha")
             if hasattr(fecha, "strftime"):
                 fecha = fecha.strftime("%Y-%m-%d %H:%M:%S")
             tipo = r.get("tipo") or ""
             tag = "cambio"
-            if "SALIDA" in tipo:
+            tipo_upper = str(tipo).upper()
+            if "SALIDA" in tipo_upper:
                 tag = "salida"
-            elif "AJUSTE" in tipo:
+            elif "AJUSTE" in tipo_upper:
                 tag = "ajuste"
-            elif "ALTA" in tipo:
+            elif "ALTA" in tipo_upper:
                 tag = "alta"
-            elif "CAMBIO" in tipo:
+            elif "CAMBIO" in tipo_upper:
                 tag = "cambio"
             tv.insert("", "end", tags=(tag,), values=(
                 fecha or "",
+                r.get("usuario") or "",
                 tipo,
                 r.get("marca") or "",
                 r.get("hilo") or "",
@@ -1297,12 +2167,69 @@ def ver_movimientos():
                 r.get("valor_nuevo") or "",
                 r.get("motivo") or ""
             ))
+
+    def cargar(reset=True):
+        filtro = entry.get().strip()
+        if reset:
+            tv.delete(*tv.get_children())
+            estado_api["offset"] = 0
+            estado_api["total"] = 0
+
+        if _modo_api():
+            params = {"limit": estado_api["limit"], "offset": estado_api["offset"]}
+            if filtro:
+                params["q"] = filtro
+            try:
+                data = _productos_api_service().listar_movimientos_almacen(params)
+            except Exception as exc:
+                _alerta_almacen("Movimientos", f"No se pudieron consultar movimientos por API:\n{exc}")
+                info.config(text="No se pudieron cargar movimientos")
+                return
+            rows = data.get("movimientos", [])
+            insertar_rows(rows)
+            estado_api["offset"] += len(rows)
+            estado_api["total"] = int(data.get("total") or estado_api["offset"])
+            info.config(text=f"{estado_api['offset']} de {estado_api['total']} movimientos mostrados")
+            return
+
+        tv.delete(*tv.get_children())
+        conn = get_conn()
+        if filtro:
+            like = f"%{filtro}%"
+            rows = conn.execute("""
+                SELECT fecha, usuario, tipo, marca, hilo, color, codigo,
+                       stock_anterior, stock_nuevo, cantidad, campo,
+                       valor_anterior, valor_nuevo, motivo
+                FROM movimientos_almacen
+                WHERE marca ILIKE %s OR hilo ILIKE %s OR color ILIKE %s
+                   OR codigo ILIKE %s OR tipo ILIKE %s OR campo ILIKE %s
+                   OR motivo ILIKE %s OR usuario ILIKE %s
+                ORDER BY fecha DESC
+                LIMIT 1000
+            """, (like, like, like, like, like, like, like, like)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT fecha, usuario, tipo, marca, hilo, color, codigo,
+                       stock_anterior, stock_nuevo, cantidad, campo,
+                       valor_anterior, valor_nuevo, motivo
+                FROM movimientos_almacen
+                ORDER BY fecha DESC
+                LIMIT 1000
+            """).fetchall()
+        conn.close()
+
+        insertar_rows(rows)
         info.config(text=f"{len(rows)} movimientos mostrados")
 
-    ttk.Button(filtros, text="Actualizar", command=cargar).pack(side="left", padx=6)
-    ttk.Button(filtros, text="Limpiar", command=lambda: (entry.delete(0, tk.END), cargar())).pack(side="left", padx=4)
-    entry.bind("<Return>", lambda e: cargar())
-    cargar()
+    def cargar_mas():
+        if _modo_api():
+            cargar(reset=False)
+
+    ttk.Button(filtros, text="Actualizar", command=lambda: cargar(True)).pack(side="left", padx=6)
+    ttk.Button(filtros, text="Limpiar", command=lambda: (entry.delete(0, tk.END), cargar(True))).pack(side="left", padx=4)
+    ttk.Button(filtros, text="Cargar mas", command=cargar_mas).pack(side="left", padx=4)
+    entry.bind("<Return>", lambda e: cargar(True))
+    cargar(True)
 
 
 # ================= REPORTES Y ESTADÍSTICAS =================
@@ -1342,10 +2269,18 @@ def cargar_estadisticas_ventas(marca=None, dias=DIAS_ANALISIS_COMPRA):
     Une inventario actual + historial de SALIDA_STOCK.
     Sirve para estadísticas y resurtido sugerido.
     """
-    ensure_almacen_schema()
-
     dias = max(1, _int_seguro(dias, DIAS_ANALISIS_COMPRA))
     marca = (marca or "").strip().upper()
+
+    if _modo_api():
+        from hilorama_desktop.services.reportes_api_service import estadisticas_almacen
+        params = {"dias": dias}
+        if marca:
+            params["marca"] = marca
+        return estadisticas_almacen(params)
+
+    ensure_almacen_schema()
+
     fecha_inicio = datetime.now() - timedelta(days=dias)
     fecha_30 = datetime.now() - timedelta(days=30)
     fecha_7 = datetime.now() - timedelta(days=7)
@@ -2226,13 +3161,19 @@ def generar_lista_compra():
 
 
 def crear_card(parent, titulo, valor_inicial="0", accent="#2F6FED", ancho=205):
-    frame = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=14, pady=12)
-    frame.pack(side="left", fill="both", expand=True, padx=6, pady=6)
+    compacto = ancho < 180
+    pad_x = 10 if compacto else 14
+    pad_y = 7 if compacto else 12
+    valor_font = 14 if compacto else 18
+    titulo_font = 8 if compacto else 9
+
+    frame = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=pad_x, pady=pad_y)
+    frame.pack(side="left", fill="both", expand=True, padx=4 if compacto else 6, pady=3 if compacto else 6)
     bar = tk.Frame(frame, bg=accent, width=6)
     bar.place(x=0, y=0, relheight=1)
-    tk.Label(frame, text=titulo, bg="white", fg="#61738F", font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=(8, 0))
-    value = tk.Label(frame, text=valor_inicial, bg="white", fg="#16263D", font=("Segoe UI", 18, "bold"))
-    value.pack(anchor="w", padx=(8, 0), pady=(8, 2))
+    tk.Label(frame, text=titulo, bg="white", fg="#61738F", font=("Segoe UI", titulo_font, "bold")).pack(anchor="w", padx=(8, 0))
+    value = tk.Label(frame, text=valor_inicial, bg="white", fg="#16263D", font=("Segoe UI", valor_font, "bold"))
+    value.pack(anchor="w", padx=(8, 0), pady=(5 if compacto else 8, 0 if compacto else 2))
     return value
 
 
@@ -2265,17 +3206,24 @@ def buscar_diferido(event=None):
     buscar_job = root.after(250, lambda: refrescar_tabla())
 
 
-def construir_interfaz():
+def construir_interfaz(parent=None):
     global root, tabla, combo_marca, entry_hilo, entry_color, entry_codigo, entry_barras
     global entry_stock, entry_vol, entry_buscar, lbl_ganancia, lbl_estado
     global card_total_tonos, card_stock_total, card_stock_bajo, card_marcas, card_valor_costo, card_valor_venta, card_ganancia
-    global btn_todos, btn_bajo, btn_ok, btn_items, var_es_inventariable
+    global btn_todos, btn_bajo, btn_ok, btn_items, var_es_inventariable, buscar_job
 
-    root = tk.Tk()
-    root.title("Almacén Hilorama • Moderno")
-    root.geometry("1620x900")
-    root.minsize(1420, 780)
-    root.configure(bg="#EEF3F8")
+    buscar_job = None
+    standalone = parent is None
+    if standalone:
+        root = tk.Tk()
+        root.title("Almacén Hilorama • Moderno")
+        root.geometry("1620x900")
+        root.minsize(1420, 780)
+        root.configure(bg="#EEF3F8")
+        base = root
+    else:
+        root = parent.winfo_toplevel()
+        base = tk.Frame(parent, bg="#EEF3F8")
 
     style = ttk.Style()
     try:
@@ -2290,45 +3238,48 @@ def construir_interfaz():
     style.configure("TButton", font=("Segoe UI", 10))
 
     # Encabezado
-    header = tk.Frame(root, bg="#1F3A5F", height=92)
+    header = tk.Frame(base, bg="#1F3A5F", height=68)
     header.pack(fill="x")
     tk.Label(header, text="ALMACÉN HILORAMA", font=("Segoe UI", 22, "bold"), fg="white", bg="#1F3A5F").pack(anchor="w", padx=20, pady=(16, 0))
     tk.Label(header, text="Control de inventario, costos, precios, stock, items de cotización y movimientos.", font=("Segoe UI", 10), fg="#D9E6F2", bg="#1F3A5F").pack(anchor="w", padx=20, pady=(0, 14))
 
-    cont = tk.Frame(root, bg="#EEF3F8")
-    cont.pack(fill="both", expand=True, padx=16, pady=16)
+    cont = tk.Frame(base, bg="#EEF3F8")
+    cont.pack(fill="both", expand=True, padx=10, pady=8)
+    cont.grid_columnconfigure(0, weight=1)
+    cont.grid_rowconfigure(2, weight=4)
 
     # Dashboard
     frame_cards_1 = tk.Frame(cont, bg="#EEF3F8")
-    frame_cards_1.pack(fill="x")
-    card_total_tonos = crear_card(frame_cards_1, "Tonos visibles", "0", "#2F6FED")
-    card_stock_total = crear_card(frame_cards_1, "Stock total", "0", "#00A66E")
-    card_stock_bajo = crear_card(frame_cards_1, "Stock bajo", "0", "#E55353")
-    card_marcas = crear_card(frame_cards_1, "Marcas", "0", "#8E5AF7")
-
-    frame_cards_2 = tk.Frame(cont, bg="#EEF3F8")
-    frame_cards_2.pack(fill="x")
-    card_valor_costo = crear_card(frame_cards_2, "Valor a costo", "$0.00", "#285A84")
-    card_valor_venta = crear_card(frame_cards_2, "Valor a venta", "$0.00", "#D08B00")
-    card_ganancia = crear_card(frame_cards_2, "Ganancia estimada", "$0.00", "#16A34A")
+    frame_cards_1.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+    card_total_tonos = crear_card(frame_cards_1, "Tonos visibles", "0", "#2F6FED", ancho=150)
+    card_stock_total = crear_card(frame_cards_1, "Stock total", "0", "#00A66E", ancho=150)
+    card_stock_bajo = crear_card(frame_cards_1, "Stock bajo", "0", "#E55353", ancho=150)
+    card_marcas = crear_card(frame_cards_1, "Marcas", "0", "#8E5AF7", ancho=150)
+    card_valor_costo = crear_card(frame_cards_1, "Valor a costo", "$0.00", "#285A84", ancho=150)
+    card_valor_venta = crear_card(frame_cards_1, "Valor a venta", "$0.00", "#D08B00", ancho=150)
+    card_ganancia = crear_card(frame_cards_1, "Ganancia estimada", "$0.00", "#16A34A", ancho=150)
 
     # Filtros y herramientas
     top_tools = tk.Frame(cont, bg="white", bd=1, relief="solid")
-    top_tools.pack(fill="x", pady=(10, 12))
+    top_tools.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+
+    top_tools.grid_columnconfigure(0, weight=1)
+    top_tools.grid_columnconfigure(1, weight=0)
 
     left_tools = tk.Frame(top_tools, bg="white")
-    left_tools.pack(side="left", fill="x", expand=True, padx=12, pady=10)
+    left_tools.grid(row=0, column=0, sticky="ew", padx=10, pady=6)
+    left_tools.grid_columnconfigure(0, weight=1)
 
     tk.Label(left_tools, text="Buscar en inventario", bg="white", fg="#22364D", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
-    entry_buscar = tk.Entry(left_tools, width=36, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
-    entry_buscar.grid(row=1, column=0, sticky="w", pady=(4, 0))
+    entry_buscar = tk.Entry(left_tools, width=24, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
+    entry_buscar.grid(row=1, column=0, sticky="ew", pady=(4, 0))
     entry_buscar.bind("<KeyRelease>", buscar_diferido)
 
     tk.Button(left_tools, text="Limpiar", command=lambda: (entry_buscar.delete(0, tk.END), refrescar_tabla()), bg="#F4F7FB", fg="#27415D", relief="flat", padx=12, pady=6, cursor="hand2").grid(row=1, column=1, padx=8, pady=(4, 0))
     tk.Button(left_tools, text="Actualizar", command=refrescar_tabla, bg="#2F6FED", fg="white", relief="flat", padx=14, pady=6, cursor="hand2").grid(row=1, column=2, padx=2, pady=(4, 0))
 
     right_tools = tk.Frame(top_tools, bg="white")
-    right_tools.pack(side="right", padx=12, pady=10)
+    right_tools.grid(row=0, column=1, sticky="e", padx=10, pady=6)
     tk.Label(right_tools, text="Vista rápida", bg="white", fg="#22364D", font=("Segoe UI", 10, "bold")).pack(anchor="e")
     pills = tk.Frame(right_tools, bg="white")
     pills.pack(anchor="e", pady=(4, 0))
@@ -2343,13 +3294,15 @@ def construir_interfaz():
 
     # Formulario + acciones
     form_wrap = tk.Frame(cont, bg="#EEF3F8")
-    form_wrap.pack(fill="x")
+    form_wrap.grid(row=3, column=0, sticky="ew", pady=(0, 2))
+    form_wrap.grid_columnconfigure(0, weight=1)
+    form_wrap.grid_columnconfigure(1, weight=0)
 
     form_card = tk.LabelFrame(form_wrap, text=" Alta rápida de producto ", bg="white", fg="#22364D", font=("Segoe UI", 10, "bold"), bd=1, relief="solid", labelanchor="n")
-    form_card.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=(0, 12))
+    form_card.grid(row=0, column=0, sticky="ew", padx=(0, 8), pady=(0, 2))
 
     actions_card = tk.LabelFrame(form_wrap, text=" Acciones ", bg="white", fg="#22364D", font=("Segoe UI", 10, "bold"), bd=1, relief="solid", labelanchor="n")
-    actions_card.pack(side="right", fill="y", padx=(8, 0), pady=(0, 12))
+    actions_card.grid(row=0, column=1, sticky="ns", pady=(0, 2))
 
     campos = [
         ("Marca", "combo"),
@@ -2362,28 +3315,28 @@ def construir_interfaz():
     ]
 
     for i, (txt, _) in enumerate(campos):
-        tk.Label(form_card, text=txt, bg="white", fg="#4D627C", font=("Segoe UI", 9, "bold")).grid(row=0, column=i, sticky="w", padx=10, pady=(10, 4))
+        tk.Label(form_card, text=txt, bg="white", fg="#4D627C", font=("Segoe UI", 9, "bold")).grid(row=0, column=i, sticky="w", padx=6, pady=(8, 4))
 
-    combo_marca = ttk.Combobox(form_card, width=14)
-    combo_marca.grid(row=1, column=0, padx=10, pady=(0, 12), sticky="we")
-    entry_hilo = tk.Entry(form_card, width=14, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
-    entry_hilo.grid(row=1, column=1, padx=10, pady=(0, 12), sticky="we")
-    entry_color = tk.Entry(form_card, width=14, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
-    entry_color.grid(row=1, column=2, padx=10, pady=(0, 12), sticky="we")
-    entry_codigo = tk.Entry(form_card, width=12, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
-    entry_codigo.grid(row=1, column=3, padx=10, pady=(0, 12), sticky="we")
-    entry_barras = tk.Entry(form_card, width=16, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
-    entry_barras.grid(row=1, column=4, padx=10, pady=(0, 12), sticky="we")
-    entry_stock = tk.Entry(form_card, width=10, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
-    entry_stock.grid(row=1, column=5, padx=10, pady=(0, 12), sticky="we")
-    entry_vol = tk.Entry(form_card, width=10, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
-    entry_vol.grid(row=1, column=6, padx=10, pady=(0, 12), sticky="we")
+    combo_marca = ttk.Combobox(form_card, width=10)
+    combo_marca.grid(row=1, column=0, padx=6, pady=(0, 8), sticky="we")
+    entry_hilo = tk.Entry(form_card, width=10, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
+    entry_hilo.grid(row=1, column=1, padx=6, pady=(0, 8), sticky="we")
+    entry_color = tk.Entry(form_card, width=10, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
+    entry_color.grid(row=1, column=2, padx=6, pady=(0, 8), sticky="we")
+    entry_codigo = tk.Entry(form_card, width=8, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
+    entry_codigo.grid(row=1, column=3, padx=6, pady=(0, 8), sticky="we")
+    entry_barras = tk.Entry(form_card, width=11, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
+    entry_barras.grid(row=1, column=4, padx=6, pady=(0, 8), sticky="we")
+    entry_stock = tk.Entry(form_card, width=7, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
+    entry_stock.grid(row=1, column=5, padx=6, pady=(0, 8), sticky="we")
+    entry_vol = tk.Entry(form_card, width=7, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
+    entry_vol.grid(row=1, column=6, padx=6, pady=(0, 8), sticky="we")
 
     for c in range(7):
         form_card.grid_columnconfigure(c, weight=1)
 
     btns_form = tk.Frame(form_card, bg="white")
-    btns_form.grid(row=2, column=0, columnspan=7, sticky="w", padx=10, pady=(0, 12))
+    btns_form.grid(row=2, column=0, columnspan=7, sticky="w", padx=6, pady=(0, 8))
     var_es_inventariable = tk.BooleanVar(value=True)
     tk.Checkbutton(
         btns_form,
@@ -2398,7 +3351,7 @@ def construir_interfaz():
     tk.Button(btns_form, text="Limpiar", command=limpiar_formulario, bg="#F4F7FB", fg="#27415D", relief="flat", padx=14, pady=8, cursor="hand2").pack(side="left")
 
     grid_actions = tk.Frame(actions_card, bg="white")
-    grid_actions.pack(padx=10, pady=10)
+    grid_actions.pack(padx=6, pady=6)
     acciones = [
         ("Eliminar tono", eliminar_tono, "#E55353", "white"),
         ("Precios por marca", editar_precios_marca, "#F4F7FB", "#27415D"),
@@ -2406,24 +3359,25 @@ def construir_interfaz():
         ("Volumétrico por hilo", asignar_volumetrico_hilo, "#F4F7FB", "#27415D"),
         ("Volumétrico múltiple", asignar_volumetrico_multiple, "#F4F7FB", "#27415D"),
         ("Item cotización", marcar_item_sin_inventario, "#F4F7FB", "#27415D"),
-        ("Hacer inventario", marcar_como_inventario, "#F4F7FB", "#27415D"),
+        ("Convertir a inventario", marcar_como_inventario, "#F4F7FB", "#27415D"),
+        ("Hacer inventario", mostrar_resumen_inventario_real, "#2F6FED", "white"),
         ("Movimientos", ver_movimientos, "#2F6FED", "white"),
         ("Ganancia marca/hilo", ver_ganancia_por_marca, "#16A34A", "white"),
         ("Estadísticas venta", ver_estadisticas_ventas, "#8E5AF7", "white"),
         ("Qué comprar", generar_lista_compra, "#D08B00", "white"),
     ]
     for i, (txt, cmd, bg, fg) in enumerate(acciones):
-        tk.Button(grid_actions, text=txt, command=cmd, bg=bg, fg=fg, relief="flat", width=18, pady=8, cursor="hand2").grid(row=i // 2, column=i % 2, padx=6, pady=6, sticky="we")
+        tk.Button(grid_actions, text=txt, command=cmd, bg=bg, fg=fg, relief="flat", width=15, pady=6, cursor="hand2").grid(row=i // 2, column=i % 2, padx=4, pady=4, sticky="we")
 
     # Tabla principal
     table_card = tk.Frame(cont, bg="white", bd=1, relief="solid")
-    table_card.pack(fill="both", expand=True)
+    table_card.grid(row=2, column=0, sticky="nsew", pady=(0, 3))
 
     tk.Label(table_card, text="Inventario de almacén", bg="white", fg="#22364D", font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 2))
     tk.Label(table_card, text="Doble clic sobre color, stock, código de barras, costo, precio o volumétrico para editar. Usa “Item cotización” para paquetes/combos que no deben contar como almacén.", bg="white", fg="#61738F", font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=(0, 8))
 
     tabla_wrap = tk.Frame(table_card, bg="white")
-    tabla_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+    tabla_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 6))
 
     tabla = ttk.Treeview(
         tabla_wrap,
@@ -2436,33 +3390,33 @@ def construir_interfaz():
     )
 
     tabla.heading("#0", text="Marca")
-    tabla.column("#0", width=140, anchor="w")
+    tabla.column("#0", width=110, minwidth=90, anchor="w", stretch=True)
     tabla.heading("Hilo", text="Hilo")
-    tabla.column("Hilo", width=120, anchor="w")
+    tabla.column("Hilo", width=100, minwidth=80, anchor="w", stretch=True)
     tabla.heading("Color", text="Color")
-    tabla.column("Color", width=120, anchor="w")
+    tabla.column("Color", width=100, minwidth=80, anchor="w", stretch=True)
     tabla.heading("Código", text="Código")
     tabla.column("Código", width=90, anchor="center")
     tabla.heading("Stock", text="Stock")
-    tabla.column("Stock", width=80, anchor="center")
+    tabla.column("Stock", width=65, minwidth=55, anchor="center", stretch=True)
     tabla.heading("Codigo_Barras", text="Cod. barras")
-    tabla.column("Codigo_Barras", width=145, anchor="center")
+    tabla.column("Codigo_Barras", width=110, minwidth=90, anchor="center", stretch=True)
     tabla.heading("Costo", text="Costo neto")
-    tabla.column("Costo", width=105, anchor="e")
+    tabla.column("Costo", width=85, minwidth=70, anchor="e", stretch=True)
     tabla.heading("Precio", text="Precio venta")
-    tabla.column("Precio", width=105, anchor="e")
+    tabla.column("Precio", width=85, minwidth=70, anchor="e", stretch=True)
     tabla.heading("Volumetrico", text="Volumétrico")
-    tabla.column("Volumetrico", width=100, anchor="center")
+    tabla.column("Volumetrico", width=85, minwidth=70, anchor="center", stretch=True)
     tabla.heading("Tipo", text="Tipo")
-    tabla.column("Tipo", width=130, anchor="center")
+    tabla.column("Tipo", width=95, minwidth=80, anchor="center", stretch=True)
     tabla.heading("Estado", text="Estado")
-    tabla.column("Estado", width=95, anchor="center")
+    tabla.column("Estado", width=75, minwidth=65, anchor="center", stretch=True)
     tabla.heading("Valor_Costo", text="Total costo")
-    tabla.column("Valor_Costo", width=115, anchor="e")
+    tabla.column("Valor_Costo", width=90, minwidth=75, anchor="e", stretch=True)
     tabla.heading("Valor_Venta", text="Total venta")
-    tabla.column("Valor_Venta", width=115, anchor="e")
+    tabla.column("Valor_Venta", width=90, minwidth=75, anchor="e", stretch=True)
     tabla.heading("Ganancia", text="Ganancia")
-    tabla.column("Ganancia", width=115, anchor="e")
+    tabla.column("Ganancia", width=90, minwidth=75, anchor="e", stretch=True)
 
     scroll_y = ttk.Scrollbar(tabla_wrap, orient="vertical", command=tabla.yview)
     scroll_x = ttk.Scrollbar(tabla_wrap, orient="horizontal", command=tabla.xview)
@@ -2485,7 +3439,7 @@ def construir_interfaz():
     tabla.tag_configure("item_impar", background="#E9EDF3")
 
     footer = tk.Frame(cont, bg="#EEF3F8")
-    footer.pack(fill="x", pady=(10, 0))
+    footer.grid(row=4, column=0, sticky="ew")
     lbl_ganancia = tk.Label(footer, text="Resumen actual", bg="#EEF3F8", fg="#23374D", font=("Segoe UI", 11, "bold"))
     lbl_ganancia.pack(anchor="w")
     lbl_estado = tk.Label(footer, text="Listo", bg="#EEF3F8", fg="#5F738E", font=("Segoe UI", 9))
@@ -2498,10 +3452,15 @@ def construir_interfaz():
     def cerrar():
         global autorizado
         autorizado = False
-        root.destroy()
+        if standalone:
+            root.destroy()
+        else:
+            base.destroy()
 
-    root.protocol("WM_DELETE_WINDOW", cerrar)
-    return root
+    if standalone:
+        root.protocol("WM_DELETE_WINDOW", cerrar)
+        return root
+    return base
 
 # ================= API PARA VENTAS =================
 def obtener_stock(marca, hilo, codigo):
@@ -2521,6 +3480,7 @@ def obtener_stock(marca, hilo, codigo):
 
 
 def actualizar_stock(marca, hilo, codigo, nuevo_stock):
+    _bloquear_escritura_local_api("actualizar stock local")
     ensure_almacen_schema()
     estado = "OK" if nuevo_stock >= STOCK_MINIMO else "RESURTIR"
     conn = get_conn()
@@ -2579,6 +3539,7 @@ def actualizar_stock(marca, hilo, codigo, nuevo_stock):
 
 
 def descontar_stock(marca, hilo, codigo, cantidad):
+    _bloquear_escritura_local_api("descontar stock local")
     ensure_almacen_schema()
     conn = get_conn()
 

@@ -3,3 +3,42 @@ __pycache__/
 
 # Reportes locales de testers
 wa_tester_reports/
+
+hilorama_celular/data/test_cases/regresion_conversacional_extrema_v64_1000.jsonl
+hilorama_celular/data/test_cases/regresion_conversacional_extrema_v64_1000.json
+hilorama_celular/test_whatsapp_ia_v64_extrema.py
+wa_tester_reports/
+
+# PRIVADO - NO SUBIR
+/hilorama_central/
+/hilorama_central/**
+/backups_central/
+/releases/
+
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+
+# Archivos locales / temporales
+logs/
+backups/
+backups_central/
+releases/
+*.zip
+Hilorama_revision.zip
+
+
+# Comprobantes y pendientes locales
+comprobantes/
+contabilidad_pendientes.json
+
+
+# Recursos IA / pruebas que no van al cliente final
+hilorama_celular/static/recursos_ia/
+hilorama_celular/data/test_cases/
+wa_tester_reports/
+

@@ -1,0 +1,289 @@
+import tkinter as tk
+import time
+from tkinter import messagebox, ttk
+
+try:
+    from tkinterdnd2 import TkinterDnD
+    BaseTk = TkinterDnD.Tk
+except Exception:
+    BaseTk = tk.Tk
+
+try:
+    from ..config import APP_NAME, APP_VERSION
+    from ..services.heartbeat_service import HeartbeatService
+    from ..utils.logger import log_error, log_info
+    from .admin_view import crear_vista_admin
+    from .almacen_view import crear_vista_almacen
+    from .ventas_view import crear_vista_ventas
+except ImportError:  # Permite compilar/ejecutar main.py como script.
+    from config import APP_NAME, APP_VERSION
+    from services.heartbeat_service import HeartbeatService
+    from utils.logger import log_error, log_info
+    from ui.admin_view import crear_vista_admin
+    from ui.almacen_view import crear_vista_almacen
+    from ui.ventas_view import crear_vista_ventas
+
+
+class HiloramaDesktopApp(BaseTk):
+    def __init__(self, auth_service=None, session=None):
+        super().__init__()
+        self.auth_service = auth_service
+        self.session = session
+        self.heartbeat = None
+        self.views_cache = {}
+        self.current_view = None
+        self.current_module = None
+        self._startup_at = time.perf_counter()
+        self.report_callback_exception = self._manejar_error_tkinter
+
+        self.title(f"{APP_NAME} {APP_VERSION}")
+        self.configure(bg="#F4F5F7")
+        self._configurar_tamano_inicial()
+
+        self._build_shell()
+        self.mostrar_inicio()
+        self._iniciar_heartbeat()
+        self._log_tiempo("arranque Desktop", self._startup_at)
+
+    def _configurar_tamano_inicial(self):
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        ancho = max(1024, min(1500, screen_width - 40))
+        alto = max(700, min(900, screen_height - 80))
+        x = max(0, (screen_width - ancho) // 2)
+        y = max(0, (screen_height - alto) // 2)
+
+        self.geometry(f"{ancho}x{alto}+{x}+{y}")
+        self.minsize(min(1280, ancho), min(720, alto))
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            log_info("hilorama_desktop", "state('zoomed') no disponible, intentando fallback")
+            try:
+                self.attributes("-zoomed", True)
+            except tk.TclError:
+                log_info("hilorama_desktop", "attributes('-zoomed') no disponible")
+                pass
+
+    def _build_shell(self):
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        sidebar = tk.Frame(self, bg="#202938", width=180)
+        sidebar.grid(row=0, column=0, sticky="ns")
+        sidebar.grid_propagate(False)
+
+        title = tk.Label(
+            sidebar,
+            text="Hilorama\nDesktop",
+            bg="#202938",
+            fg="white",
+            font=("Segoe UI", 16, "bold"),
+            justify="left",
+        )
+        title.pack(fill="x", padx=14, pady=(22, 16))
+
+        botones = [
+            ("Almacen", self.mostrar_almacen),
+            ("Ventas", self.mostrar_ventas),
+            ("Clientes", lambda: self.mostrar_pendiente("Clientes")),
+            ("Reportes", lambda: self.mostrar_pendiente("Reportes")),
+            ("Configuracion", lambda: self.mostrar_pendiente("Configuracion")),
+        ]
+        if self._es_super_admin():
+            botones.append(("Administracion", self.mostrar_admin))
+
+        for texto, comando in botones:
+            btn = tk.Button(
+                sidebar,
+                text=texto,
+                command=comando,
+                anchor="w",
+                bg="#2F3A4B",
+                fg="white",
+                activebackground="#3B4A60",
+                activeforeground="white",
+                relief="flat",
+                font=("Segoe UI", 12),
+                padx=14,
+                pady=10,
+            )
+            btn.pack(fill="x", padx=10, pady=5)
+
+        self.content = ttk.Frame(self, padding=2)
+        self.content.grid(row=0, column=1, sticky="nsew")
+        self.content.columnconfigure(0, weight=1)
+        self.content.rowconfigure(0, weight=1)
+
+    def _limpiar_content(self):
+        for child in self.content.winfo_children():
+            child.destroy()
+        self.views_cache.clear()
+        self.current_view = None
+        self.current_module = None
+
+    def _set_view(self, view):
+        if self.current_view is not None:
+            try:
+                if self.current_view.winfo_exists():
+                    self.current_view.grid_remove()
+            except tk.TclError as exc:
+                log_error("hilorama_desktop", "Error al ocultar la vista actual", exc)
+                pass
+        view.grid(row=0, column=0, sticky="nsew")
+        self.current_view = view
+
+    def mostrar_inicio(self):
+        self._mostrar_modulo(
+            "inicio",
+            lambda parent: _crear_placeholder(parent, "Inicio", "Seleccione un modulo del menu principal."),
+        )
+
+    def mostrar_almacen(self):
+        self._mostrar_modulo("almacen", crear_vista_almacen)
+
+    def mostrar_ventas(self):
+        self._mostrar_modulo("ventas", crear_vista_ventas)
+
+    def mostrar_admin(self):
+        self._mostrar_modulo(
+            "administracion",
+            lambda parent: crear_vista_admin(parent, self.auth_service, self.session),
+        )
+
+    def mostrar_pendiente(self, modulo):
+        nombre = modulo.lower()
+        self._mostrar_modulo(
+            nombre,
+            lambda parent: _crear_placeholder(parent, modulo, "Modulo pendiente de integrar."),
+        )
+
+    def _mostrar_modulo(self, nombre, factory):
+        log_info("hilorama_desktop", f"Cambiando a modulo: {nombre}")
+        self._set_modulo_actual(nombre)
+
+        if nombre in self.views_cache:
+            inicio = time.perf_counter()
+            self._set_view(self.views_cache[nombre])
+            self.current_module = nombre
+            self._log_tiempo(f"mostrar {nombre} desde cache", inicio)
+            return
+
+        loading = _crear_placeholder(self.content, "Cargando modulo...", "Preparando la vista.")
+        self._set_view(loading)
+        self.update_idletasks()
+
+        inicio = time.perf_counter()
+        try:
+            view = factory(self.content)
+        except Exception as exc:
+            log_error(nombre, f"Error al abrir modulo {nombre}", exc)
+            view = _crear_error_modulo(self.content, nombre, exc)
+
+        loading.destroy()
+        self.views_cache[nombre] = view
+        self._set_view(view)
+        self.current_module = nombre
+        self._log_tiempo(f"abrir {nombre}", inicio)
+
+    def limpiar_cache_modulo(self, nombre=None):
+        if nombre is None:
+            nombres = list(self.views_cache)
+        else:
+            nombres = [nombre]
+
+        for item in nombres:
+            view = self.views_cache.pop(item, None)
+            if view is not None and view.winfo_exists():
+                log_info("hilorama_desktop", f"Limpiando cache de modulo: {item}")
+                view.destroy()
+            if self.current_module == item:
+                self.current_view = None
+                self.current_module = None
+
+    def _log_tiempo(self, etiqueta, inicio):
+        duracion = time.perf_counter() - inicio
+        log_info("hilorama_desktop", f"{etiqueta}: {duracion:.2f}s")
+
+    def _set_modulo_actual(self, modulo):
+        if self.heartbeat:
+            self.heartbeat.set_module(modulo)
+
+    def _es_super_admin(self):
+        usuario = (self.session or {}).get("usuario") or {}
+        permisos = (self.session or {}).get("permisos") or []
+        return usuario.get("rol") == "super_admin" or "super_admin" in permisos
+
+    def _iniciar_heartbeat(self):
+        if not self.auth_service:
+            return
+        self.heartbeat = HeartbeatService(
+            self,
+            self.auth_service,
+            modulo_actual="inicio",
+            on_blocked=self._bloquear_por_licencia,
+        )
+        self.heartbeat.start()
+        log_info("hilorama_desktop", "Heartbeat iniciado")
+
+    def _bloquear_por_licencia(self, mensaje):
+        log_error("hilorama_desktop", f"Acceso bloqueado por licencia: {mensaje}")
+        if self.heartbeat:
+            self.heartbeat.stop()
+        messagebox.showerror("Acceso bloqueado", mensaje, parent=self)
+        self.destroy()
+
+    def _manejar_error_tkinter(self, exc_type, exc_value, exc_traceback):
+        log_error(
+            "errores",
+            "Error inesperado en Tkinter",
+            (exc_type, exc_value, exc_traceback),
+        )
+        try:
+            messagebox.showerror(
+                "Hilorama Desktop",
+                "Ocurrió un error. Se guardó el detalle en logs.",
+                parent=self,
+            )
+        except tk.TclError:
+            pass
+
+
+def _crear_placeholder(parent, titulo, mensaje):
+    frame = ttk.Frame(parent, padding=32)
+    frame.columnconfigure(0, weight=1)
+    frame.rowconfigure(0, weight=1)
+
+    box = ttk.Frame(frame, padding=28)
+    box.grid(row=0, column=0)
+
+    ttk.Label(box, text=titulo, font=("Segoe UI", 22, "bold")).pack(pady=(0, 12))
+    ttk.Label(box, text=mensaje, font=("Segoe UI", 12)).pack()
+    return frame
+
+
+def _crear_error_modulo(parent, modulo, exc):
+    frame = ttk.Frame(parent, padding=32)
+    frame.columnconfigure(0, weight=1)
+    frame.rowconfigure(0, weight=1)
+
+    box = ttk.Frame(frame, padding=28)
+    box.grid(row=0, column=0)
+
+    ttk.Label(box, text=modulo.title(), font=("Segoe UI", 22, "bold")).pack(pady=(0, 12))
+    ttk.Label(box, text="No se pudo abrir este modulo.", font=("Segoe UI", 12)).pack(pady=(0, 8))
+    ttk.Label(
+        box,
+        text=str(exc),
+        font=("Segoe UI", 10),
+        foreground="#6B7280",
+        wraplength=560,
+        justify="center",
+    ).pack()
+    return frame
+
+
+def run_app(auth_service=None, session=None):
+    app = HiloramaDesktopApp(auth_service=auth_service, session=session)
+    app.mainloop()

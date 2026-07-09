@@ -260,7 +260,15 @@ def editar_cliente_directo(cliente, parent, on_guardar=None):
             "referencia": ref_var.get()
         }
 
-        guardar_cliente(cliente)
+        try:
+            guardar_cliente(cliente)
+        except Exception as exc:
+            messagebox.showerror(
+                "Cliente",
+                f"No se pudieron guardar los cambios.\n\n{exc}",
+                parent=win
+            )
+            return
 
         messagebox.showinfo("Listo", "Cliente actualizado", parent=win)
         win.destroy()

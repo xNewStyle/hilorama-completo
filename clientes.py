@@ -1,6 +1,50 @@
 import json
+import os
 import unicodedata
-from database.connection import get_conn
+
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
+
+
+ACCION_NO_DISPONIBLE_API = "Esta acción todavía no está disponible en modo API."
+
+
+def get_conn():
+    from database.connection import get_conn as _real_get_conn
+    return _real_get_conn()
+
+
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def _clientes_api():
+    from hilorama_desktop.services import clientes_api_service
+    return clientes_api_service
+
+
+def _bloquear_escritura_api():
+    if not _modo_api():
+        return
+    try:
+        from tkinter import messagebox
+        messagebox.showwarning("Modo API", ACCION_NO_DISPONIBLE_API)
+    except Exception:
+        pass
+    raise RuntimeError(ACCION_NO_DISPONIBLE_API)
+
+
+def _parse_direccion(valor):
+    if isinstance(valor, dict):
+        return valor
+    if not valor:
+        return {}
+    try:
+        return json.loads(valor)
+    except Exception:
+        return {}
 
 
 
@@ -11,6 +55,23 @@ def _normalizar(texto):
 
 
 def obtener_o_crear_cliente(nombre):
+    if _modo_api():
+        nombre_norm = normalizar_nombre(nombre)
+        for cliente in _clientes_api().buscar_clientes({"q": nombre, "limit": 10}):
+            if normalizar_nombre(cliente.get("nombre", "")) == nombre_norm:
+                return cliente
+        direccion_vacia = {
+            "calle": "",
+            "numero_ext": "",
+            "numero_int": "",
+            "colonia": "",
+            "codigo_postal": "",
+            "estado": "",
+            "municipio": "",
+            "referencia": ""
+        }
+        return _clientes_api().crear_cliente(nombre.strip(), "", direccion_vacia)
+
     conn = get_conn()
 
     nombre_norm = normalizar_nombre(nombre)
@@ -22,7 +83,7 @@ def obtener_o_crear_cliente(nombre):
 
     if row:
         c = dict(row)
-        c["direccion"] = json.loads(c["direccion"])
+        c["direccion"] = _parse_direccion(c.get("direccion"))
         conn.close()
         return c
 
@@ -62,6 +123,9 @@ def obtener_o_crear_cliente(nombre):
 
 
 def listar_clientes():
+    if _modo_api():
+        return _clientes_api().listar_clientes()
+
     conn = get_conn()
 
     rows = conn.execute("SELECT * FROM clientes").fetchall()
@@ -69,14 +133,38 @@ def listar_clientes():
     clientes = []
     for r in rows:
         c = dict(r)
-        c["direccion"] = json.loads(c["direccion"])
+        c["direccion"] = _parse_direccion(c.get("direccion"))
         clientes.append(c)
 
     conn.close()
     return clientes
 
 
+def buscar_clientes(texto="", limit=10):
+    texto = str(texto or "").strip()
+    if not texto:
+        return []
+
+    if _modo_api():
+        return _clientes_api().buscar_clientes({"q": texto, "limit": limit})
+
+    texto_norm = normalizar_nombre(texto)
+    digitos = "".join(c for c in texto if c.isdigit())
+    encontrados = []
+    for cliente in listar_clientes():
+        nombre = normalizar_nombre(cliente.get("nombre", ""))
+        telefono = str(cliente.get("telefono", "") or "")
+        if texto_norm in nombre or (digitos and digitos in telefono):
+            encontrados.append(cliente)
+        if len(encontrados) >= limit:
+            break
+    return encontrados
+
+
 def obtener_cliente_por_id(id_cliente):
+    if _modo_api():
+        return _clientes_api().obtener_cliente(id_cliente)
+
     conn = get_conn()
 
     r = conn.execute(
@@ -90,11 +178,17 @@ def obtener_cliente_por_id(id_cliente):
         return None
 
     c = dict(r)
-    c["direccion"] = json.loads(c["direccion"])
+    c["direccion"] = _parse_direccion(c.get("direccion"))
     return c
 
 
 def guardar_cliente(cliente):
+    if _modo_api():
+        actualizado = _clientes_api().actualizar_cliente(cliente["id"], cliente)
+        if actualizado:
+            cliente.update(actualizado)
+        return actualizado
+
     conn = get_conn()
 
     conn.execute("""
@@ -153,7 +247,8 @@ def normalizar_nombre(nombre):
 
 
 def buscar_cliente_por_telefono(telefono):
-    from database.connection import get_conn
+    if _modo_api():
+        return _clientes_api().buscar_cliente_por_telefono(telefono)
 
     conn = get_conn()
 
@@ -164,4 +259,8 @@ def buscar_cliente_por_telefono(telefono):
 
     conn.close()
 
-    return dict(row) if row else None
+    if not row:
+        return None
+    cliente = dict(row)
+    cliente["direccion"] = _parse_direccion(cliente.get("direccion"))
+    return cliente

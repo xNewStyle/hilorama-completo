@@ -1,7 +1,11 @@
 12587987521
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
-from tkinterdnd2 import TkinterDnD, DND_FILES
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+except Exception:
+    TkinterDnD = None
+    DND_FILES = "DND_FILES"
 # ================= IMPORTS DEL SISTEMA =================
 from core.almacen_api import (
   
@@ -14,13 +18,16 @@ from core.almacen_api import (
 
 from parser_whatsapp import extraer_pedidos
 from notas import crear_cotizacion, listar_cotizaciones, obtener_cotizacion, eliminar_cotizacion
-from clientes import obtener_o_crear_cliente, listar_clientes, buscar_cliente_por_telefono
+from clientes import obtener_o_crear_cliente, listar_clientes, buscar_cliente_por_telefono, buscar_clientes
 from ver_cotizaciones import abrir_visor, ver_detalles
 from ver_clientes import abrir_clientes, editar_cliente_por_id
 from ver_notas_completo import abrir_visor_notas
 from ver_cotizaciones import calcular_volumetrico_total, seleccionar_envio
 from ocr import leer_pedido_desde_imagen
-from ui_imagen import crear_area_imagen
+try:
+    from ui_imagen import crear_area_imagen
+except Exception:
+    crear_area_imagen = None
 import customtkinter as ctk
 from PIL import Image
 import os
@@ -33,6 +40,48 @@ from decimal import Decimal
 # ================= CONFIG =================
 PASSWORD = "1"
 
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
+
+
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def _validar_acceso_inicial_ventas():
+    try:
+        from hilorama_desktop.services.auth_service import AuthService
+        from hilorama_desktop.ui.login_window import solicitar_login
+
+        auth_service = AuthService()
+        session = auth_service.require_access(modulo="ventas")
+        if session:
+            return auth_service
+
+        session = solicitar_login(auth_service=auth_service, modulo="ventas")
+        if session:
+            return auth_service
+    except SystemExit:
+        raise
+    except Exception as exc:
+        tmp = tk.Tk()
+        tmp.withdraw()
+        messagebox.showerror("Acceso", f"No se pudo validar el acceso:\n{exc}", parent=tmp)
+        tmp.destroy()
+        raise SystemExit(1)
+
+    tmp = tk.Tk()
+    tmp.withdraw()
+    messagebox.showerror("Acceso", "Acceso cancelado o no autorizado.", parent=tmp)
+    tmp.destroy()
+    raise SystemExit(1)
+
+
+_auth_service_ventas = None
+_heartbeat_service_ventas = None
+
 # ================= CARRITO =================
 carrito = []
 envio_actual = None
@@ -43,39 +92,89 @@ fecha_desde = None
 fecha_hasta = None
 productos_cache = []
 
-# ================= TK ROOT =================
-root = TkinterDnD.Tk()
-# ===== CONTENEDOR PRINCIPAL 2 COLUMNAS =====
-frame_main = tk.Frame(root, bg="#EFEFEF")
-frame_main.pack(fill="both", expand=True, padx=15, pady=15)
+# ================= TK ROOT / CONTENEDORES =================
+root = None
+frame_main = None
+card_contexto = None
+card_whatsapp = None
+card_carrito = None
+card_imagen = None
+card_total = None
 
-# columnas → izquierda grande | derecha panel
-frame_main.columnconfigure(0, weight=4)
-frame_main.columnconfigure(1, weight=1)
+frame_ctx = None
+marca_var = None
+hilo_var = None
+combo_marca = None
+combo_hilo = None
+buscar_producto_var = None
+entry_buscar = None
+lista_sugerencias = None
+btn_whatsapp = None
 
-# filas → contexto | carrito | imagen
-frame_main.rowconfigure(0, weight=0)
-frame_main.rowconfigure(1, weight=1)
-frame_main.rowconfigure(2, weight=4)
-frame_main.rowconfigure(3, weight=1)
-
-
-card_contexto = tk.Frame(frame_main, bg="white")
-card_contexto.grid(row=0, column=0, sticky="ew", pady=(0,10))
-
-card_whatsapp = tk.Frame(frame_main, bg="white")
-card_whatsapp.grid(row=1, column=0, sticky="ew", pady=(0,10))
-
-card_carrito = tk.Frame(frame_main, bg="white")
-card_carrito.grid(row=2, column=0, sticky="nsew", pady=(0,10))
-
-card_imagen = tk.Frame(frame_main, bg="white")
-card_imagen.grid(row=3, column=0, sticky="nsew")
+txt_whatsapp = None
+tabla_carrito = None
+lbl_total = None
+lbl_piezas = None
+lbl_cliente_valor = None
+lbl_estado_cliente = None
+lbl_pedido_valor = None
+lbl_pedido_fecha = None
+btn_editar_cliente = None
+telefono_buscar_var = None
 
 
-card_total = tk.Frame(frame_main, bg="white")
-card_total.grid(row=0, column=1, rowspan=4, sticky="nsew", padx=(10,0))
+def _crear_root_ventas(parent=None):
+    if parent is None:
+        if TkinterDnD is not None:
+            ventana = TkinterDnD.Tk()
+        else:
+            ventana = tk.Tk()
+        ventana.title("Ventas Hilorama")
+        ventana.geometry("1280x780")
+        ventana.minsize(1100, 680)
+        ventana.configure(bg="#EFEFEF")
+        return ventana
+    return tk.Frame(parent, bg="#EFEFEF")
 
+
+def _crear_contenedores_ventas(parent=None):
+    global root, frame_main, card_contexto, card_whatsapp
+    global card_carrito, card_imagen, card_total
+
+    root = _crear_root_ventas(parent)
+
+    # ===== CONTENEDOR PRINCIPAL 2 COLUMNAS =====
+    frame_main = tk.Frame(root, bg="#EFEFEF")
+    frame_main.pack(fill="both", expand=True, padx=8, pady=8)
+
+    # columnas → izquierda grande | derecha panel
+    frame_main.columnconfigure(0, weight=5)
+    frame_main.columnconfigure(1, weight=0, minsize=260)
+
+    # filas → contexto | carrito | imagen
+    frame_main.rowconfigure(0, weight=0)
+    frame_main.rowconfigure(1, weight=1)
+    frame_main.rowconfigure(2, weight=4)
+    frame_main.rowconfigure(3, weight=1)
+
+
+    card_contexto = tk.Frame(frame_main, bg="white")
+    card_contexto.grid(row=0, column=0, sticky="ew", pady=(0,10))
+
+    card_whatsapp = tk.Frame(frame_main, bg="white")
+    card_whatsapp.grid(row=1, column=0, sticky="nsew", pady=(0,8))
+
+    card_carrito = tk.Frame(frame_main, bg="white")
+    card_carrito.grid(row=2, column=0, sticky="nsew", pady=(0,8))
+
+    card_imagen = tk.Frame(frame_main, bg="white")
+    card_imagen.grid(row=3, column=0, sticky="nsew")
+
+
+    card_total = tk.Frame(frame_main, bg="white")
+    card_total.grid(row=0, column=1, rowspan=4, sticky="nsew", padx=(8,0))
+
+    return root
 
 
 # ================= ANALIZAR WHATSAPP =================
@@ -170,7 +269,7 @@ def imprimir_destinatario(nota):
         return
 
     data = etiqueta_destinatario(
-        cliente,
+            cliente,
         nota["id"],
         envio=nota.get("envio")
     )
@@ -282,10 +381,17 @@ def abrir_panel_asignacion():
     if not pedir_password():
         return
 
-    from database.connection import get_conn
-    from empacadores import listar_empacadores_activos
-
-    conn = get_conn()
+    modo_api = _modo_api()
+    if modo_api:
+        from hilorama_desktop.services.pedidos_api_service import (
+            asignar_notas_empacador,
+            desasignar_notas_empacador,
+            listar_empacadores,
+            listar_notas_asignacion_empacador,
+        )
+    else:
+        from database.connection import get_conn
+        from empacadores import listar_empacadores_activos
 
     def _fecha_para_orden(valor):
         import datetime
@@ -354,43 +460,45 @@ def abrir_panel_asignacion():
             reverse=True
         )
 
-    notas = conn.execute("""
-        SELECT 
-            n.id,
-            n.cliente_nombre,
-            n.pedido,
-            n.fecha,
-            n.fecha_asignacion,
-            n.estado,
-            e.nombre AS empacador_actual,
-            c.telefono,
+    try:
+        if modo_api:
+            notas = listar_notas_asignacion_empacador()
+        else:
+            conn = get_conn()
+            notas = conn.execute("""
+            SELECT 
+                n.id,
+                n.cliente_nombre,
+                n.pedido,
+                n.fecha,
+                n.fecha_asignacion,
+                n.estado,
+                e.nombre AS empacador_actual,
+                c.telefono,
 
-            COALESCE(SUM(i.empacadas),0) AS empacadas,
-            COALESCE(SUM(i.cantidad),0) AS requeridas
+                COALESCE(SUM(i.empacadas),0) AS empacadas,
+                COALESCE(SUM(i.cantidad),0) AS requeridas
 
-        FROM notas n
-        LEFT JOIN empacadores e ON e.id = n.empacador_id
-        LEFT JOIN clientes c ON c.id = n.cliente_id
-        LEFT JOIN items i ON i.nota_id = n.id
+            FROM notas n
+            LEFT JOIN empacadores e ON e.id = n.empacador_id
+            LEFT JOIN clientes c ON c.id = n.cliente_id
+            LEFT JOIN items i ON i.nota_id = n.id
 
-        WHERE n.estado != 'ARCHIVADA'
-        AND (
-            n.estado NOT IN ('COMPLETA')
-            OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
-        )
+            WHERE n.estado != 'ARCHIVADA'
+            AND (
+                n.estado NOT IN ('COMPLETA')
+                OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
+            )
 
-        GROUP BY n.id, e.nombre, c.telefono
-        ORDER BY n.fecha_asignacion DESC NULLS LAST
-
-
-
-
-   
-    """).fetchall()
+            GROUP BY n.id, e.nombre, c.telefono
+            ORDER BY n.fecha_asignacion DESC NULLS LAST
+        """).fetchall()
+            conn.close()
+    except Exception as exc:
+        messagebox.showerror("Asignacion", f"No se pudo cargar asignacion:\n{exc}")
+        return
 
     notas = ordenar_notas_empacador(notas)
-
-    conn.close()
 
     win = ctk.CTkToplevel(root)
     win.title("Asignar notas a empacador")
@@ -431,28 +539,28 @@ def abrir_panel_asignacion():
 
         nuevas_notas = recargar_datos()
 
-        conn = get_conn()
+        if not modo_api:
+            conn = get_conn()
 
-        for n in nuevas_notas:
-            if n["requeridas"] > 0:
+            for n in nuevas_notas:
+                if n["requeridas"] > 0:
 
-                if n["empacadas"] >= n["requeridas"]:
-                    conn.execute("""
-                        UPDATE notas
-                        SET estado='COMPLETA'
-                        WHERE id=%s AND estado!='COMPLETA'
-                    """, (n["id"],))
+                    if n["empacadas"] >= n["requeridas"]:
+                        conn.execute("""
+                            UPDATE notas
+                            SET estado='COMPLETA'
+                            WHERE id=%s AND estado!='COMPLETA'
+                        """, (n["id"],))
 
-                elif n["empacadas"] > 0:
-                    conn.execute("""
-                        UPDATE notas
-                        SET estado='EN_PROCESO'
-                        WHERE id=%s AND estado!='EN_PROCESO'
-                    """, (n["id"],))
+                    elif n["empacadas"] > 0:
+                        conn.execute("""
+                            UPDATE notas
+                            SET estado='EN_PROCESO'
+                            WHERE id=%s AND estado!='EN_PROCESO'
+                        """, (n["id"],))
 
-
-        conn.commit()
-        conn.close()
+            conn.commit()
+            conn.close()
         notas.clear()
         notas.extend(nuevas_notas)
 
@@ -619,42 +727,45 @@ def abrir_panel_asignacion():
     cargar_tabla(notas)
    
     def recargar_datos():
-        conn = get_conn()
-       
-        nuevas_notas = conn.execute("""
-            SELECT 
-                n.id,
-                n.cliente_nombre,
-                n.pedido,
-                n.fecha,
-                n.fecha_asignacion,
-                n.estado,
-                e.nombre AS empacador_actual,
-                c.telefono,
+        if modo_api:
+            nuevas_notas = listar_notas_asignacion_empacador()
+        else:
+            conn = get_conn()
+           
+            nuevas_notas = conn.execute("""
+                SELECT 
+                    n.id,
+                    n.cliente_nombre,
+                    n.pedido,
+                    n.fecha,
+                    n.fecha_asignacion,
+                    n.estado,
+                    e.nombre AS empacador_actual,
+                    c.telefono,
 
-                COALESCE(SUM(i.empacadas),0) AS empacadas,
-                COALESCE(SUM(i.cantidad),0) AS requeridas
+                    COALESCE(SUM(i.empacadas),0) AS empacadas,
+                    COALESCE(SUM(i.cantidad),0) AS requeridas
 
-            FROM notas n
-            LEFT JOIN empacadores e ON e.id = n.empacador_id
-            LEFT JOIN clientes c ON c.id = n.cliente_id
-            LEFT JOIN items i ON i.nota_id = n.id
+                FROM notas n
+                LEFT JOIN empacadores e ON e.id = n.empacador_id
+                LEFT JOIN clientes c ON c.id = n.cliente_id
+                LEFT JOIN items i ON i.nota_id = n.id
 
-            WHERE n.estado != 'ARCHIVADA'
-            AND (
-                n.estado NOT IN ('COMPLETA')
-                OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
-            )
+                WHERE n.estado != 'ARCHIVADA'
+                AND (
+                    n.estado NOT IN ('COMPLETA')
+                    OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
+                )
 
-            GROUP BY n.id, e.nombre, c.telefono
-            ORDER BY n.fecha_asignacion DESC NULLS LAST
+                GROUP BY n.id, e.nombre, c.telefono
+                ORDER BY n.fecha_asignacion DESC NULLS LAST
 
 
-        """).fetchall()
+            """).fetchall()
+
+            conn.close()
 
         nuevas_notas = ordenar_notas_empacador(nuevas_notas)
-
-        conn.close()
 
         return nuevas_notas
 
@@ -679,7 +790,12 @@ def abrir_panel_asignacion():
 
 
     # ================= EMPACADORES =================
-    empacadores = listar_empacadores_activos()
+    try:
+        empacadores = listar_empacadores(activos=True) if modo_api else listar_empacadores_activos()
+    except Exception as exc:
+        messagebox.showerror("Empacadores", f"No se pudieron cargar empacadores:\n{exc}")
+        win.destroy()
+        return
     nombres_emp = [e["nombre"] for e in empacadores]
 
     combo = ctk.CTkComboBox(
@@ -709,22 +825,33 @@ def abrir_panel_asignacion():
             messagebox.showerror("Error", "Empacador inválido")
             return
 
-        conn = get_conn()
+        nota_ids = []
 
         for item in seleccion:
             valores = tabla.item(item)["values"]
             nota_id = valores[0]
+            nota_ids.append(nota_id)
 
-            conn.execute("""
-                UPDATE notas
-                SET empacador_id=%s,
-                    fecha_asignacion=NOW(),
-                    estado='EN_PROCESO'
-                WHERE id=%s
-            """, (emp["id"], nota_id))
+        try:
+            if modo_api:
+                asignar_notas_empacador(nota_ids, emp["id"])
+            else:
+                conn = get_conn()
 
-        conn.commit()
-        conn.close()
+                for nota_id in nota_ids:
+                    conn.execute("""
+                        UPDATE notas
+                        SET empacador_id=%s,
+                            fecha_asignacion=NOW(),
+                            estado='EN_PROCESO'
+                        WHERE id=%s
+                    """, (emp["id"], nota_id))
+
+                conn.commit()
+                conn.close()
+        except Exception as exc:
+            messagebox.showerror("Asignacion", f"No se pudo asignar empacador:\n{exc}")
+            return
 
         # 🔄 RECARGAR
         nuevas_notas = recargar_datos()
@@ -784,20 +911,31 @@ def abrir_panel_asignacion():
         ):
             return
 
-        conn = get_conn()
+        nota_ids = []
 
         for item in seleccion:
             valores = tabla.item(item)["values"]
             nota_id = valores[0]
+            nota_ids.append(nota_id)
 
-            conn.execute("""
-                UPDATE notas
-                SET empacador_id = NULL
-                WHERE id = %s
-            """,(nota_id,))
+        try:
+            if modo_api:
+                desasignar_notas_empacador(nota_ids)
+            else:
+                conn = get_conn()
 
-        conn.commit()
-        conn.close()
+                for nota_id in nota_ids:
+                    conn.execute("""
+                        UPDATE notas
+                        SET empacador_id = NULL
+                        WHERE id = %s
+                    """,(nota_id,))
+
+                conn.commit()
+                conn.close()
+        except Exception as exc:
+            messagebox.showerror("Asignacion", f"No se pudo desasignar empacador:\n{exc}")
+            return
 
         # 🔄 RECARGAR
         nuevas_notas = recargar_datos()
@@ -879,14 +1017,13 @@ def abrir_panel_envios():
     if not pedir_password():
         return
 
-    from database.connection import get_conn
+    modo_api = _modo_api()
+    if modo_api:
+        from hilorama_desktop.services.envios_api_service import listar_envios, actualizar_envio_nota
+    else:
+        from database.connection import get_conn
 
-    conn = get_conn()
     estado_filtro = tk.StringVar(value="COMPLETAS")
-
-
-
-    conn.close()
 
     win = ctk.CTkToplevel(root)
     win.title("Gestión de Envíos")
@@ -895,10 +1032,11 @@ def abrir_panel_envios():
 
 
     def cargar_datos():
-        conn = get_conn()
-
         estado = estado_filtro.get()
+        if modo_api:
+            return listar_envios({"estado": estado, "limit": 500})
 
+        conn = get_conn()
         where_extra = ""
 
         if estado == "COMPLETAS":
@@ -966,7 +1104,11 @@ def abrir_panel_envios():
         command=desbloquear_avanzado
     ).pack(pady=5)
     def cambiar_estado(_=None):
-        nuevas = cargar_datos()
+        try:
+            nuevas = cargar_datos()
+        except Exception as exc:
+            messagebox.showerror("Envios", f"No se pudieron cargar los envios:\n{exc}")
+            return
         cargar_tabla(nuevas)
 
     combo_estado.configure(command=cambiar_estado)
@@ -1027,8 +1169,12 @@ def abrir_panel_envios():
                 tags=(tag,)
             )
 
-
-    notas = cargar_datos()
+    try:
+        notas = cargar_datos()
+    except Exception as exc:
+        messagebox.showerror("Envios", f"No se pudieron cargar los envios:\n{exc}")
+        win.destroy()
+        return
     cargar_tabla(notas)
 
     def imprimir_seleccion():
@@ -1052,7 +1198,11 @@ def abrir_panel_envios():
         texto = filtro_texto.get().lower()
         tipo = filtro_tipo.get()
 
-        datos_actuales = cargar_datos()
+        try:
+            datos_actuales = cargar_datos()
+        except Exception as exc:
+            messagebox.showerror("Envios", f"No se pudieron cargar los envios:\n{exc}")
+            return
         resultado = datos_actuales
 
         if texto:
@@ -1081,6 +1231,7 @@ def abrir_panel_envios():
 
         item = tabla.item(seleccion[0])["values"]
         nota_id = item[0]
+        paqueteria_actual = item[4] if len(item) > 4 and item[4] != "No definida" else ""
 
         guia = simpledialog.askstring(
             "Asignar guía",
@@ -1090,16 +1241,39 @@ def abrir_panel_envios():
         if not guia:
             return
 
-        conn = get_conn()
+        paqueteria = simpledialog.askstring(
+            "Paqueteria",
+            "Paqueteria (opcional):",
+            initialvalue=paqueteria_actual
+        )
 
-        conn.execute("""
-            UPDATE notas
-            SET guia=%s
-            WHERE id=%s
-        """, (guia, nota_id))
+        try:
+            if modo_api:
+                datos = {"guia": guia}
+                if paqueteria:
+                    datos["paqueteria"] = paqueteria
+                actualizar_envio_nota(nota_id, datos)
+            else:
+                conn = get_conn()
+                if paqueteria:
+                    conn.execute("""
+                        UPDATE notas
+                        SET guia=%s,
+                            paqueteria=%s
+                        WHERE id=%s
+                    """, (guia, paqueteria, nota_id))
+                else:
+                    conn.execute("""
+                        UPDATE notas
+                        SET guia=%s
+                        WHERE id=%s
+                    """, (guia, nota_id))
 
-        conn.commit()
-        conn.close()
+                conn.commit()
+                conn.close()
+        except Exception as exc:
+            messagebox.showerror("Envios", f"No se pudo guardar la guia:\n{exc}")
+            return
 
         messagebox.showinfo("OK", "Guía asignada")
 
@@ -1148,8 +1322,6 @@ def clientes_completos(clientes):
 
 def elegir_pedido():
 
-    from database.connection import get_conn
-
     win = ctk.CTkToplevel(root)
     win.title("Seleccionar pedido")
     win.geometry("800x500")
@@ -1189,19 +1361,14 @@ def elegir_pedido():
     tabla.pack(fill="both", expand=True, padx=20, pady=10)
 
     def cargar_datos():
-        conn = get_conn()
+        return listar_pedidos()
 
-        pedidos = conn.execute("""
-            SELECT numero, desde, hasta
-            FROM pedidos
-            ORDER BY desde DESC
-        """).fetchall()
-
-
-        conn.close()
-        return pedidos
-
-    pedidos_db = cargar_datos()
+    try:
+        pedidos_db = cargar_datos()
+    except Exception as exc:
+        messagebox.showerror("Pedidos", f"No se pudieron cargar los pedidos:\n{exc}")
+        win.destroy()
+        return
 
     def cargar_tabla(data):
         tabla.delete(*tabla.get_children())
@@ -1280,6 +1447,13 @@ def eliminar_pedido_opciones():
 
     if not pedido_actual:
         messagebox.showwarning("Sin pedido", "No hay pedido activo")
+        return
+
+    if _modo_api():
+        messagebox.showinfo(
+            "Modo API",
+            "Esta funcion de pedidos todavia no esta disponible en modo API."
+        )
         return
 
     if not pedir_password():
@@ -1654,8 +1828,12 @@ def configurar_pedido():
                  "❌ Ese número de pedido ya existe.\nUsa otro número."
             )
             return
-
-
+        except Exception as exc:
+            messagebox.showerror(
+                "Pedido",
+                f"No se pudo guardar el pedido:\n{exc}"
+            )
+            return
 
         lbl_pedido_valor.configure(
             text=f"Pedido #{pedido_actual}\n{fecha_desde} → {fecha_hasta}"
@@ -1670,176 +1848,182 @@ def configurar_pedido():
         command=guardar
     ).pack(pady=15)
 
-# ================= CONTEXTO MODERNO =================
-frame_ctx = ctk.CTkFrame(
-    card_contexto,
-    corner_radius=15,
-    fg_color="white"
-)
-frame_ctx.pack(fill="x", padx=15, pady=12)
+def _construir_contexto_moderno():
+    global frame_ctx, marca_var, hilo_var, combo_marca, combo_hilo
+    global buscar_producto_var, entry_buscar, lista_sugerencias, btn_whatsapp
 
-# layout horizontal elegante
-frame_ctx.grid_columnconfigure((0,1,2,3), weight=1)
+    # ================= CONTEXTO MODERNO =================
+    frame_ctx = ctk.CTkFrame(
+        card_contexto,
+        corner_radius=15,
+        fg_color="white"
+    )
+    frame_ctx.pack(fill="x", padx=8, pady=8)
 
-
-marca_var = tk.StringVar()
-hilo_var = tk.StringVar()
-
-# ----- Marca -----
-combo_marca = ctk.CTkComboBox(
-    frame_ctx,
-    variable=marca_var,
-    width=180,
-    height=40,
-    command=actualizar_hilos,
-    corner_radius=10,
-    font=("Segoe UI", 13)
-)
-combo_marca.grid(row=0, column=0, padx=10, pady=12, sticky="ew")
+    # layout horizontal flexible para modo embebido
+    frame_ctx.grid_columnconfigure(0, weight=1, minsize=120)
+    frame_ctx.grid_columnconfigure(1, weight=1, minsize=120)
+    frame_ctx.grid_columnconfigure(2, weight=2, minsize=150)
+    frame_ctx.grid_columnconfigure(3, weight=0, minsize=110)
 
 
-# ----- Hilo -----
-combo_hilo = ctk.CTkComboBox(
-    frame_ctx,
-    variable=hilo_var,
-    width=180,
-    height=40,
-    corner_radius=10,
-    font=("Segoe UI", 13),
-    command=actualizar_productos_cache   # 👈 AQUÍ
-)
+    marca_var = tk.StringVar()
+    hilo_var = tk.StringVar()
 
-combo_hilo.grid(row=0, column=1, padx=10, pady=12, sticky="ew")
-
-
-# ----- Buscador visual (solo diseño) -----
-buscar_producto_var = tk.StringVar(value="Código / Buscar producto")
-
-entry_buscar = ctk.CTkEntry(
-    frame_ctx,
-    textvariable=buscar_producto_var,
-    height=40,
-    corner_radius=10,
-    font=("Segoe UI", 13),
-    text_color="#888"  # gris tipo placeholder
-)
-entry_buscar.grid(row=0, column=2, padx=10, pady=12, sticky="ew")
-
-def limpiar_placeholder(event):
-    if buscar_producto_var.get() == "Código / Buscar producto":
-        buscar_producto_var.set("")
-        entry_buscar.configure(text_color="black")
+    # ----- Marca -----
+    combo_marca = ctk.CTkComboBox(
+        frame_ctx,
+        variable=marca_var,
+        width=135,
+        height=36,
+        command=actualizar_hilos,
+        corner_radius=10,
+        font=("Segoe UI", 12)
+    )
+    combo_marca.grid(row=0, column=0, padx=6, pady=8, sticky="ew")
 
 
-entry_buscar.bind("<FocusIn>", limpiar_placeholder)
-def restaurar_placeholder(event):
-    if not buscar_producto_var.get():
-        buscar_producto_var.set("Código / Buscar producto")
-        entry_buscar.configure(text_color="#888")
-
-
-entry_buscar.bind("<FocusOut>", restaurar_placeholder)
-
-
-# ================= DROPDOWN BUSCADOR =================
-lista_sugerencias = tk.Listbox(
-    frame_ctx,
-    height=6,
-    font=("Segoe UI", 12)
-)
-
-lista_sugerencias = tk.Listbox(
-    root,   # 🔥 NO frame_ctx
-    height=6,
-    font=("Segoe UI", 12),
-    bd=1,
-    relief="solid"
-)
-
-lista_sugerencias.place_forget()  # oculto
-
-
-def actualizar_sugerencias(*args):
-
-    texto = buscar_producto_var.get().lower().strip()
-
-    if not texto:
-        lista_sugerencias.place_forget()
-        return
-
-    productos = productos_cache
-
-
-    encontrados = []
-
-    for p in productos:
-        if (texto in str(p["codigo"]).lower()
-            or texto in p["marca"].lower()
-            or texto in p["hilo"].lower()):
-            encontrados.append(p)
-
-    if not encontrados:
-        lista_sugerencias.place_forget()
-        return
-
-    lista_sugerencias.delete(0, "end")
-
-    for p in encontrados[:10]:
-        lista_sugerencias.insert(
-            "end",
-            f"{p['marca']} | {p['hilo']} | {p['codigo']}"
-        )
-
-    # 🔥 POSICIÓN EXACTA debajo del entry
-    x = entry_buscar.winfo_rootx() - root.winfo_rootx()
-    y = entry_buscar.winfo_rooty() - root.winfo_rooty() + entry_buscar.winfo_height()
-
-    lista_sugerencias.place(
-        x=x,
-        y=y,
-        width=entry_buscar.winfo_width()
+    # ----- Hilo -----
+    combo_hilo = ctk.CTkComboBox(
+        frame_ctx,
+        variable=hilo_var,
+        width=135,
+        height=36,
+        corner_radius=10,
+        font=("Segoe UI", 12),
+        command=actualizar_productos_cache   # 👈 AQUÍ
     )
 
-
-def seleccionar_producto(event=None):
-
-    if not lista_sugerencias.curselection():
-        return
-
-    texto = lista_sugerencias.get(lista_sugerencias.curselection())
-    codigo = texto.split("|")[-1].strip()
-
-    agregar_al_carrito({
-        "codigo": codigo,
-        "cantidad": 1
-    })
-
-    refrescar_carrito()
-
-    buscar_producto_var.set("")
-    lista_sugerencias.place_forget()
+    combo_hilo.grid(row=0, column=1, padx=6, pady=8, sticky="ew")
 
 
-buscar_producto_var.trace_add("write", actualizar_sugerencias)
+    # ----- Buscador visual (solo diseño) -----
+    buscar_producto_var = tk.StringVar(value="Código / Buscar producto")
 
-lista_sugerencias.bind("<Double-1>", seleccionar_producto)
-lista_sugerencias.bind("<Return>", seleccionar_producto)
+    entry_buscar = ctk.CTkEntry(
+        frame_ctx,
+        textvariable=buscar_producto_var,
+        height=36,
+        corner_radius=10,
+        font=("Segoe UI", 12),
+        text_color="#888"  # gris tipo placeholder
+    )
+    entry_buscar.grid(row=0, column=2, padx=6, pady=8, sticky="ew")
+
+    def limpiar_placeholder(event):
+        if buscar_producto_var.get() == "Código / Buscar producto":
+            buscar_producto_var.set("")
+            entry_buscar.configure(text_color="black")
+
+
+    entry_buscar.bind("<FocusIn>", limpiar_placeholder)
+    def restaurar_placeholder(event):
+        if not buscar_producto_var.get():
+            buscar_producto_var.set("Código / Buscar producto")
+            entry_buscar.configure(text_color="#888")
+
+
+    entry_buscar.bind("<FocusOut>", restaurar_placeholder)
+
+
+    # ================= DROPDOWN BUSCADOR =================
+    lista_sugerencias = tk.Listbox(
+        frame_ctx,
+        height=6,
+        font=("Segoe UI", 12)
+    )
+
+    lista_sugerencias = tk.Listbox(
+        root,   # 🔥 NO frame_ctx
+        height=6,
+        font=("Segoe UI", 12),
+        bd=1,
+        relief="solid"
+    )
+
+    lista_sugerencias.place_forget()  # oculto
+
+
+    def actualizar_sugerencias(*args):
+
+        texto = buscar_producto_var.get().lower().strip()
+
+        if not texto:
+            lista_sugerencias.place_forget()
+            return
+
+        productos = productos_cache
+
+
+        encontrados = []
+
+        for p in productos:
+            if (texto in str(p["codigo"]).lower()
+                or texto in p["marca"].lower()
+                or texto in p["hilo"].lower()):
+                encontrados.append(p)
+
+        if not encontrados:
+            lista_sugerencias.place_forget()
+            return
+
+        lista_sugerencias.delete(0, "end")
+
+        for p in encontrados[:10]:
+            lista_sugerencias.insert(
+                "end",
+                f"{p['marca']} | {p['hilo']} | {p['codigo']}"
+            )
+
+        # 🔥 POSICIÓN EXACTA debajo del entry
+        x = entry_buscar.winfo_rootx() - root.winfo_rootx()
+        y = entry_buscar.winfo_rooty() - root.winfo_rooty() + entry_buscar.winfo_height()
+
+        lista_sugerencias.place(
+            x=x,
+            y=y,
+            width=entry_buscar.winfo_width()
+        )
+
+
+    def seleccionar_producto(event=None):
+
+        if not lista_sugerencias.curselection():
+            return
+
+        texto = lista_sugerencias.get(lista_sugerencias.curselection())
+        codigo = texto.split("|")[-1].strip()
+
+        agregar_al_carrito({
+            "codigo": codigo,
+            "cantidad": 1
+        })
+
+        refrescar_carrito()
+
+        buscar_producto_var.set("")
+        lista_sugerencias.place_forget()
+
+
+    buscar_producto_var.trace_add("write", actualizar_sugerencias)
+
+    lista_sugerencias.bind("<Double-1>", seleccionar_producto)
+    lista_sugerencias.bind("<Return>", seleccionar_producto)
 
 
 
-# ----- Botón verde moderno -----
-btn_whatsapp = ctk.CTkButton(
-    frame_ctx,
-    text="📥 Analizar WhatsApp",
-    height=40,
-    corner_radius=12,
-    fg_color="#2E7D32",
-    hover_color="#1B5E20",
-    font=("Segoe UI", 13, "bold"),
-    command=analizar_whatsapp
-)
-btn_whatsapp.grid(row=0, column=3, padx=10, pady=12, sticky="ew")
-
+    # ----- Botón verde moderno -----
+    btn_whatsapp = ctk.CTkButton(
+        frame_ctx,
+        text="📥 Analizar WhatsApp",
+        height=40,
+        corner_radius=12,
+        fg_color="#2E7D32",
+        hover_color="#1B5E20",
+        font=("Segoe UI", 13, "bold"),
+        command=analizar_whatsapp
+    )
+    btn_whatsapp.grid(row=0, column=3, padx=6, pady=8, sticky="ew")
 
 def procesar_imagen(ruta_imagen):
     try:
@@ -1893,8 +2077,27 @@ def mostrar_resultado(texto, resultado):
     for p in resultado["pedidos"]:
         print(f"{p['codigo']} → {p['cantidad']}")
 
-root.drop_target_register(DND_FILES)
-root.dnd_bind("<<Drop>>", drop_imagen)
+def soporta_tkdnd(widget):
+    try:
+        widget.tk.call("package", "require", "tkdnd")
+        return True
+    except Exception:
+        return False
+
+
+def _registrar_drop_target(widget, callback):
+    if widget is None or not soporta_tkdnd(widget):
+        return False
+    try:
+        widget.drop_target_register(DND_FILES)
+        widget.dnd_bind("<<Drop>>", callback)
+        return True
+    except Exception:
+        return False
+
+
+def _configurar_drag_and_drop():
+    _registrar_drop_target(root, drop_imagen)
 
 
 def cargar_contexto():
@@ -1971,7 +2174,14 @@ def guardar_cotizacion():
     if cliente_actual:
         from clientes import obtener_cliente_por_id
 
-        cliente = obtener_cliente_por_id(cliente_actual["id"])
+        try:
+            cliente = obtener_cliente_por_id(cliente_actual["id"])
+        except Exception as exc:
+            messagebox.showerror(
+                "Guardar nota",
+                f"No se pudo cargar el cliente.\n\n{exc}"
+            )
+            return
         cliente_actual = cliente  # 🔥 actualizar referencia
 
 
@@ -1981,14 +2191,28 @@ def guardar_cotizacion():
         if not nombre:
             return
 
-        cliente = obtener_o_crear_cliente(nombre)
+        try:
+            cliente = obtener_o_crear_cliente(nombre)
+        except Exception as exc:
+            messagebox.showerror(
+                "Guardar nota",
+                f"No se pudo crear o cargar el cliente.\n\n{exc}"
+            )
+            return
     # ================= GUARDAR NOTA =================
-    crear_cotizacion(
-        cliente,
-        carrito,
-        envio=envio_actual,
-        pedido=pedido_actual   # 🔥 importante para tu sistema nuevo
-    )
+    try:
+        crear_cotizacion(
+            cliente,
+            carrito,
+            envio=envio_actual,
+            pedido=pedido_actual   # 🔥 importante para tu sistema nuevo
+        )
+    except Exception as exc:
+        messagebox.showerror(
+            "Guardar nota",
+            f"No se pudo guardar la nota.\n\n{exc}"
+        )
+        return
 
     messagebox.showinfo(
         "Guardado",
@@ -2263,9 +2487,16 @@ def nuevo_pedido():
 
 def abrir_dashboard():
 
-    from admin_metricas import obtener_metricas_empacadores
-
-    datos = obtener_metricas_empacadores()
+    try:
+        if _modo_api():
+            from hilorama_desktop.services.reportes_api_service import dashboard_empacadores
+            datos = dashboard_empacadores()
+        else:
+            from admin_metricas import obtener_metricas_empacadores
+            datos = obtener_metricas_empacadores()
+    except Exception as exc:
+        messagebox.showerror("Dashboard", f"No se pudo cargar el dashboard:\n{exc}")
+        return
 
     win = ctk.CTkToplevel(root)
     win.title("Dashboard de Empacadores")
@@ -2308,9 +2539,16 @@ def abrir_dashboard():
 
 def abrir_panel_errores():
 
-    from admin_errores import obtener_errores
-
-    datos = obtener_errores()
+    try:
+        if _modo_api():
+            from hilorama_desktop.services.reportes_api_service import errores_scan
+            datos = errores_scan({"limit": 500})
+        else:
+            from admin_errores import obtener_errores
+            datos = obtener_errores()
+    except Exception as exc:
+        messagebox.showerror("Errores", f"No se pudieron cargar los errores:\n{exc}")
+        return
 
     win = ctk.CTkToplevel(root)
     win.title("Errores de Escaneo")
@@ -2345,8 +2583,11 @@ def abrir_panel_errores():
         
 def obtener_ranking():
 
-    from database.connection import get_conn
+    if _modo_api():
+        from hilorama_desktop.services.reportes_api_service import ranking_empacadores
+        return ranking_empacadores({"limit": 3})
 
+    from database.connection import get_conn
     conn = get_conn()
 
     rows = conn.execute("""
@@ -2366,6 +2607,13 @@ def obtener_ranking():
 
     return rows
 def abrir_registro_cambios(parent):
+
+    if _modo_api():
+        messagebox.showinfo(
+            "Modo API",
+            "Este reporte todavía no está disponible en modo API. Se migrará en una fase posterior."
+        )
+        return
 
     import datetime
     from auditoria import obtener_registros  # asegúrate que exista
@@ -2468,728 +2716,892 @@ def abrir_registro_cambios(parent):
     cargar()
 
 
-# ================= WHATSAPP =================
-frame_wa = tk.LabelFrame(card_whatsapp, text="WhatsApp")
-frame_wa.pack(fill="both", expand=True)
+def _construir_paneles_ventas():
+    global txt_whatsapp, tabla_carrito, lbl_total, lbl_piezas, lbl_envio
+    global lbl_cliente_valor, lbl_estado_cliente, lbl_pedido_valor, lbl_pedido_fecha
+    global btn_editar_cliente, telefono_buscar_var
+    global BASE_DIR, icon_trash, icon_ship, icon_edit, icon_asignar
+    global frame_total, frame_top_btns
 
-txt_whatsapp = tk.Text(frame_wa, height=10)
-txt_whatsapp.pack(fill="both", expand=True)
+    # ================= WHATSAPP =================
+    frame_wa = tk.LabelFrame(card_whatsapp, text="WhatsApp")
+    frame_wa.pack(fill="both", expand=True)
 
-# ================= CARRITO =================
-# ================= CARRITO MODERNO =================
+    txt_whatsapp = tk.Text(frame_wa, height=10)
+    txt_whatsapp.pack(fill="both", expand=True)
 
-# ---- tarjeta principal ----
-frame_carrito = ctk.CTkFrame(
-    card_carrito,
-    corner_radius=18,
-    fg_color="white"
-)
-frame_carrito.pack(fill="both", expand=True, padx=15, pady=12)
+    # ================= CARRITO =================
+    # ================= CARRITO MODERNO =================
 
-
-# ================= HEADER =================
-header = ctk.CTkLabel(
-    frame_carrito,
-    text="Carrito",
-    font=("Segoe UI", 18, "bold"),
-    anchor="w"
-)
-header.pack(fill="x", padx=20, pady=(15, 5))
-
-
-# ================= TABLA =================
-frame_tabla = tk.Frame(frame_carrito, bg="white")
-frame_tabla.pack(fill="both", expand=True, padx=15, pady=10)
-
-
-style = ttk.Style()
-style.theme_use("default")
-
-style.configure(
-    "Treeview",
-    background="white",
-    foreground="black",
-    rowheight=38,
-    fieldbackground="white",
-    borderwidth=0,
-    font=("Segoe UI", 12)
-)
-
-style.configure(
-    "Treeview.Heading",
-    font=("Segoe UI", 12, "bold"),
-    background="#F3F4F6",
-    foreground="#333"
-)
-
-style.map("Treeview", background=[("selected", "#DCEBFF")])
-
-
-cols = ("Hilo", "Color", "Código", "Cantidad", "Precio", "Subtotal")
-
-
-tabla_carrito = ttk.Treeview(
-    frame_tabla,
-    columns=cols,
-    show="headings",
-    selectmode="extended"
-)
-
-for c in cols:
-    tabla_carrito.heading(c, text=c)
-    tabla_carrito.column(c, anchor="center")
-
-tabla_carrito.pack(fill="both", expand=True)
-def editar_celda(event):
-    region = tabla_carrito.identify("region", event.x, event.y)
-    if region != "cell":
-        return
-
-    row_id = tabla_carrito.identify_row(event.y)
-    column = tabla_carrito.identify_column(event.x)
-    col_index = int(column.replace("#", "")) - 1
-
-    # Solo permitir editar Cantidad (3) y Precio (4)
-    if col_index not in [3, 4]:
-        return
-
-    x, y, width, height = tabla_carrito.bbox(row_id, column)
-    valores = tabla_carrito.item(row_id)["values"]
-    codigo = valores[2]
-    hilo = valores[0]
-    # Limpiar formato $
-    valor_actual = valores[col_index]
-    if col_index == 4:
-        if not pedir_password():
-            return
-        valor_actual = str(valor_actual).replace("$", "")
-
-    # 🔵 Contenedor elegante
-    frame_editor = tk.Frame(
-        tabla_carrito,
-        bg="white",
-        bd=1,
-        relief="solid"
+    # ---- tarjeta principal ----
+    frame_carrito = ctk.CTkFrame(
+        card_carrito,
+        corner_radius=18,
+        fg_color="white"
     )
-    frame_editor.place(x=x, y=y, width=width, height=height)
+    frame_carrito.pack(fill="both", expand=True, padx=8, pady=8)
 
-    # ==========================================
-    # 🔵 CANTIDAD → SPINBOX CON FLECHAS
-    # ==========================================
-    if col_index == 3:
 
-        editor = tk.Spinbox(
-            frame_editor,
-            from_=1,
-            to=9999,
-            font=("Segoe UI", 12),
-            justify="center",
-            bd=0
+    # ================= HEADER =================
+    header = ctk.CTkLabel(
+        frame_carrito,
+        text="Carrito",
+        font=("Segoe UI", 18, "bold"),
+        anchor="w"
+    )
+    header.pack(fill="x", padx=12, pady=(10, 4))
+
+
+    # ================= TABLA =================
+    frame_tabla = tk.Frame(frame_carrito, bg="white")
+    frame_tabla.pack(fill="both", expand=True, padx=8, pady=6)
+
+
+    style = ttk.Style()
+    style.theme_use("default")
+
+    style.configure(
+        "Treeview",
+        background="white",
+        foreground="black",
+        rowheight=32,
+        fieldbackground="white",
+        borderwidth=0,
+        font=("Segoe UI", 10)
+    )
+
+    style.configure(
+        "Treeview.Heading",
+        font=("Segoe UI", 10, "bold"),
+        background="#F3F4F6",
+        foreground="#333"
+    )
+
+    style.map("Treeview", background=[("selected", "#DCEBFF")])
+
+
+    cols = ("Hilo", "Color", "Código", "Cantidad", "Precio", "Subtotal")
+
+
+    tabla_carrito = ttk.Treeview(
+        frame_tabla,
+        columns=cols,
+        show="headings",
+        selectmode="extended"
+    )
+
+    columnas_carrito = {
+        "Hilo": 120,
+        "Color": 130,
+        "Código": 90,
+        "Cantidad": 76,
+        "Precio": 82,
+        "Subtotal": 90,
+    }
+    for c in cols:
+        tabla_carrito.heading(c, text=c)
+        tabla_carrito.column(
+            c,
+            anchor="center",
+            width=columnas_carrito[c],
+            minwidth=58,
+            stretch=True,
         )
 
-    # ==========================================
-    # 🔵 PRECIO → ENTRY NORMAL
-    # ==========================================
-    else:
+    tabla_carrito.pack(fill="both", expand=True)
+    def editar_celda(event):
+        region = tabla_carrito.identify("region", event.x, event.y)
+        if region != "cell":
+            return
 
-        editor = tk.Entry(
-            frame_editor,
-            font=("Segoe UI", 12),
-            justify="center",
-            bd=0
+        row_id = tabla_carrito.identify_row(event.y)
+        column = tabla_carrito.identify_column(event.x)
+        col_index = int(column.replace("#", "")) - 1
+
+        # Solo permitir editar Cantidad (3) y Precio (4)
+        if col_index not in [3, 4]:
+            return
+
+        x, y, width, height = tabla_carrito.bbox(row_id, column)
+        valores = tabla_carrito.item(row_id)["values"]
+        codigo = valores[2]
+        hilo = valores[0]
+        # Limpiar formato $
+        valor_actual = valores[col_index]
+        if col_index == 4:
+            if not pedir_password():
+                return
+            valor_actual = str(valor_actual).replace("$", "")
+
+        # 🔵 Contenedor elegante
+        frame_editor = tk.Frame(
+            tabla_carrito,
+            bg="white",
+            bd=1,
+            relief="solid"
         )
+        frame_editor.place(x=x, y=y, width=width, height=height)
 
-    editor.pack(fill="both", expand=True)
-    editor.insert(0, valor_actual)
-    editor.focus()
+        # ==========================================
+        # 🔵 CANTIDAD → SPINBOX CON FLECHAS
+        # ==========================================
+        if col_index == 3:
 
-    def guardar(event=None):
-        nuevo_valor = editor.get()
+            editor = tk.Spinbox(
+                frame_editor,
+                from_=1,
+                to=9999,
+                font=("Segoe UI", 12),
+                justify="center",
+                bd=0
+            )
+
+        # ==========================================
+        # 🔵 PRECIO → ENTRY NORMAL
+        # ==========================================
+        else:
+
+            editor = tk.Entry(
+                frame_editor,
+                font=("Segoe UI", 12),
+                justify="center",
+                bd=0
+            )
+
+        editor.pack(fill="both", expand=True)
+        editor.insert(0, valor_actual)
+        editor.focus()
+
+        def guardar(event=None):
+            nuevo_valor = editor.get()
+
+            try:
+                if col_index == 3:
+                    nuevo_valor = int(nuevo_valor)
+                else:
+                    nuevo_valor = float(nuevo_valor)
+            except:
+                frame_editor.destroy()
+                return
+
+            for p in carrito:
+                if (
+                    str(p["codigo"]) == str(codigo)
+                    and str(p["hilo"]) == str(hilo)
+                ):
+                    if col_index == 3:
+                        p["cantidad"] = nuevo_valor
+                    else:
+                        p["precio"] = nuevo_valor
+                    break
+
+            frame_editor.destroy()
+            refrescar_carrito()
+
+        def cancelar(event=None):
+            frame_editor.destroy()
+
+        editor.bind("<Return>", guardar)
+        editor.bind("<FocusOut>", cancelar)
+
+    tabla_carrito.bind("<Double-1>", editar_celda)
+
+    # zebra rows
+    tabla_carrito.tag_configure("odd", background="#FAFAFA")
+    tabla_carrito.tag_configure("even", background="white")
+    tabla_carrito.tag_configure("bajo", background="#FFE5E5")
+
+    # ================= FOOTER =================
+    footer = tk.Frame(frame_carrito, bg="white")
+    footer.pack(fill="x", padx=8, pady=(4, 8))
+
+
+    menu = tk.Menu(root, tearoff=0)
+
+    menu.add_command(label="Cantidad múltiple", command=editar_cantidad_multiple)
+    menu.add_command(label="Precio múltiple", command=editar_precio_multiple)
+    menu.add_separator()
+    menu.add_command(label="Adjuntar imagen", command=cargar_imagen)
+    menu.add_command(label="Eliminar producto", command=eliminar_producto_carrito)
+
+
+    def mostrar_menu(event):
+        menu.tk_popup(event.x_root, event.y_root)
+
+
+    btn_menu = ctk.CTkButton(
+        footer,
+        text="⋯  Otros",
+        width=120,
+        height=36,
+        corner_radius=12,
+        fg_color="#F2F2F2",
+        text_color="black"
+    )
+
+    btn_menu.pack(side="left")
+    btn_menu.bind("<Button-1>", mostrar_menu)
+
+
+    BASE_DIR = os.path.dirname(__file__)
+    icon_path = os.path.join(BASE_DIR, "trash.png.png")
+    icon_trash = ctk.CTkImage(
+        Image.open(icon_path),
+        size=(60, 60)
+    )
+    btn_limpiar = ctk.CTkButton(
+        footer,
+        text="",
+        image=icon_trash,
+        width=38,
+        height=38,
+        corner_radius=18,
+        fg_color="transparent",
+        hover_color="#FFE5E5",
+        command=lambda: [carrito.clear(), refrescar_carrito()]
+    )
+
+    btn_limpiar.pack(side="right")
+
+    # ================= HEADER SUPERIOR DERECHO =================
+    frame_top = tk.Frame(card_total, bg="white")
+    frame_top.pack(fill="x", padx=6, pady=(4, 0))
+
+    frame_top.columnconfigure(0, weight=1)  # empuja botones a la derecha
+
+    frame_top_btns = tk.Frame(frame_top)
+    frame_top_btns.grid(row=0, column=1, sticky="e")
+    btn_clientes = ctk.CTkButton(
+        frame_top_btns,
+        text="👤 Clientes",
+        corner_radius=18,
+        fg_color="#FB8C00",      # naranja moderno
+        hover_color="#EF6C00",
+        height=32,
+        width=88,
+        font=("Segoe UI", 11, "bold"),
+        command=lambda: abrir_clientes(root)
+    )
+    btn_clientes.pack(side="left", padx=2)
+
+    # ================= PANEL TOTAL MODERNO (VERTICAL) =================
+
+    frame_total = ctk.CTkFrame(
+        card_total,
+        corner_radius=18,
+        fg_color="white"
+    )
+    frame_total.pack(fill="both", expand=True, padx=8, pady=8)
+
+
+    # ===== TOTAL =====
+    lbl_total_title = ctk.CTkLabel(
+        frame_total,
+        text="TOTAL",
+        font=("Segoe UI", 14)
+    )
+    lbl_total_title.pack(anchor="w", padx=12, pady=(12, 0))
+
+
+    lbl_total = ctk.CTkLabel(
+        frame_total,
+        text="$0.00",
+        font=("Segoe UI", 30, "bold")
+    )
+    lbl_total.pack(anchor="w", padx=12, pady=(0, 10))
+    lbl_piezas = ctk.CTkLabel(
+        frame_total,
+        text="",
+        font=("Segoe UI", 13)
+    )
+    lbl_piezas.pack(anchor="w", padx=12, pady=(0,8))
+
+
+    ctk.CTkFrame(frame_total, height=2, fg_color="#EEEEEE").pack(fill="x", padx=15, pady=5)
+
+
+    # ===== ENVÍO + BOTÓN (MISMA FILA) =====
+    frame_envio = ctk.CTkFrame(frame_total, fg_color="transparent")
+    frame_envio.pack(fill="x", padx=12, pady=8)
+
+    frame_envio.columnconfigure(0, weight=1)  # texto ocupa todo
+    frame_envio.columnconfigure(1, weight=0)  # botón tamaño fijo
+
+    BASE_DIR = os.path.dirname(__file__)
+
+    icon_ship_path  = os.path.join(BASE_DIR, "shipping.png")
+    icon_ship  = ctk.CTkImage(Image.open(icon_ship_path),  size=(22, 22))
+
+    lbl_envio = ctk.CTkLabel(
+        frame_envio,
+        text="Envío: No configurado",
+        font=("Segoe UI", 13)
+    )
+    lbl_envio.grid(row=0, column=0, sticky="w")
+
+
+    btn_envio = ctk.CTkButton(
+        frame_envio,
+        text="",
+        image=icon_ship,
+        width=36,
+        height=36,
+        fg_color="transparent",
+        hover_color="#E3F2FD",
+        corner_radius=18,
+        command=configurar_envio_carrito
+    )
+    btn_envio.grid(row=0, column=1, padx=(5, 0))
+
+
+
+
+    # ===== BLOQUE CLIENTE + PEDIDO (compacto) =====
+    frame_cliente_pedido = ctk.CTkFrame(
+        frame_total,
+        fg_color="transparent"
+    )
+    frame_cliente_pedido.pack(fill="x", padx=12, pady=(8, 4))
+
+
+    # ---- cliente ----
+    # ==================================================
+    # 🔵 CLIENTE CON ICONO EDITAR
+    # ==================================================
+
+    frame_cliente_btns = ctk.CTkFrame(
+        frame_cliente_pedido,
+        fg_color="transparent"
+    )
+    frame_cliente_btns.pack(fill="x", padx=8, pady=(0, 5))
+    # =========================================
+    # 🔎 BUSCADOR RÁPIDO CLIENTE
+    # =========================================
+
+    frame_busqueda_cliente = ctk.CTkFrame(
+        frame_cliente_pedido,
+        fg_color="transparent"
+    )
+    frame_busqueda_cliente.pack(fill="x", padx=8, pady=(8, 4))
+
+    telefono_buscar_var = tk.StringVar()
+
+    entry_buscar_tel = ctk.CTkEntry(
+        frame_busqueda_cliente,
+        textvariable=telefono_buscar_var,
+        placeholder_text="Buscar por nombre o teléfono...",
+        height=36,
+        corner_radius=10
+    )
+    entry_buscar_tel.pack(side="left", fill="x", expand=True, padx=(0,8))
+
+    lbl_estado_cliente = ctk.CTkLabel(
+        frame_cliente_pedido,
+        text="",
+        font=("Segoe UI", 12)
+    )
+    lbl_estado_cliente.pack(anchor="w", padx=8)
+
+    lista_sugerencias_cliente = tk.Listbox(
+        frame_cliente_pedido,
+        height=4,
+        font=("Segoe UI", 10),
+        exportselection=False
+    )
+    clientes_sugeridos_cliente = []
+    busqueda_cliente_after = {"id": None}
+
+    def limpiar_telefono(texto):
+        return "".join(c for c in texto if c.isdigit())
+
+    def formatear_telefono(numero):
+        # Quitar lada si tiene 52
+        if numero.startswith("52") and len(numero) == 12:
+            numero = numero[2:]
+
+        if len(numero) <= 2:
+            return numero
+        elif len(numero) <= 6:
+            return f"{numero[:2]} {numero[2:]}"
+        else:
+            return f"{numero[:2]} {numero[2:6]} {numero[6:10]}"
+    
+    def buscar_cliente_automatico(*args):
+        global cliente_actual
+
+        numero_limpio = limpiar_telefono(telefono_buscar_var.get())
+
+        # Permitir máximo 12 dígitos
+        if len(numero_limpio) > 12:
+            numero_limpio = numero_limpio[:12]
+
+        # Actualizar máscara visual
+        telefono_formateado = formatear_telefono(numero_limpio)
+        telefono_buscar_var.set(telefono_formateado)
+
+        # Quitar lada si viene con 52
+        numero_busqueda = numero_limpio
+        if numero_limpio.startswith("52") and len(numero_limpio) == 12:
+            numero_busqueda = numero_limpio[2:]
+
+        # Solo buscar cuando tenga exactamente 10 dígitos reales
+        if len(numero_busqueda) == 10:
+
+            cliente = buscar_cliente_por_telefono(numero_busqueda)
+
+            if cliente:
+                cliente_actual = cliente
+
+                lbl_cliente_valor.configure(
+                    text=f"👤 {cliente['nombre']}"
+                )
+
+                lbl_estado_cliente.configure(
+                    text="✅ Cliente existente",
+                    text_color="#16A34A"
+                )
+
+                entry_buscar_tel.configure(
+                    border_color="#16A34A"
+                )
+
+                btn_editar_cliente.pack(side="right", padx=(6,0))
+
+            else:
+                cliente_actual = None
+
+                lbl_estado_cliente.configure(
+                    text="❌ No hay registro",
+                    text_color="#DC2626"
+                )
+
+                entry_buscar_tel.configure(
+                    border_color="#DC2626"
+                )
+
+        else:
+            # Estado neutro mientras escribe
+            lbl_estado_cliente.configure(text="")
+            entry_buscar_tel.configure(
+                border_color="#D1D5DB"
+            )
+
+    def on_key_release(event):
+        global cliente_actual
+
+        cursor_pos = entry_buscar_tel.index("insert")
+
+        numero_limpio = limpiar_telefono(entry_buscar_tel.get())
+
+        # máximo 12 dígitos
+        if len(numero_limpio) > 12:
+            numero_limpio = numero_limpio[:12]
+
+        # quitar lada si viene con 52
+        numero_busqueda = numero_limpio
+        if numero_limpio.startswith("52") and len(numero_limpio) == 12:
+            numero_busqueda = numero_limpio[2:]
+
+        # aplicar máscara
+        numero_formateado = formatear_telefono(numero_limpio)
+
+        entry_buscar_tel.delete(0, "end")
+        entry_buscar_tel.insert(0, numero_formateado)
+
+        entry_buscar_tel.icursor(len(numero_formateado))
+
+        # ==========================
+        # BÚSQUEDA AUTOMÁTICA
+        # ==========================
+        if len(numero_busqueda) == 10:
+
+            cliente = buscar_cliente_por_telefono(numero_busqueda)
+
+            if cliente:
+                cliente_actual = cliente
+
+                lbl_cliente_valor.configure(
+                    text=f"👤 {cliente['nombre']}"
+                )
+
+                lbl_estado_cliente.configure(
+                    text="✅ Cliente existente",
+                    text_color="#16A34A"
+                )
+
+                entry_buscar_tel.configure(
+                    border_color="#16A34A"
+                )
+
+                btn_editar_cliente.pack(side="right", padx=(6,0))
+
+            else:
+                cliente_actual = None
+
+                lbl_estado_cliente.configure(
+                    text="❌ No hay registro",
+                    text_color="#DC2626"
+                )
+
+                entry_buscar_tel.configure(
+                    border_color="#DC2626"
+                )
+
+        else:
+            lbl_estado_cliente.configure(text="")
+            entry_buscar_tel.configure(
+                border_color="#D1D5DB"
+            )
+    entry_buscar_tel.bind("<KeyRelease>", on_key_release)
+
+    def aplicar_cliente_rapido_v2(cliente):
+        global cliente_actual
+
+        cliente_actual = cliente
+        nombre = cliente.get("nombre", "")
+        telefono = cliente.get("telefono", "")
+        lbl_cliente_valor.configure(text=f"Cliente: {nombre}")
+        lbl_estado_cliente.configure(
+            text=f"Cliente existente {telefono}".strip(),
+            text_color="#16A34A"
+        )
+        entry_buscar_tel.configure(border_color="#16A34A")
+        btn_editar_cliente.pack(side="right", padx=(6,0))
+        lista_sugerencias_cliente.pack_forget()
+
+    def limpiar_sugerencias_cliente_v2():
+        lista_sugerencias_cliente.delete(0, "end")
+        lista_sugerencias_cliente.pack_forget()
+
+    def mostrar_sugerencias_cliente_v2(clientes):
+        clientes_sugeridos_cliente.clear()
+        lista_sugerencias_cliente.delete(0, "end")
+
+        for cliente in clientes[:6]:
+            clientes_sugeridos_cliente.append(cliente)
+            nombre = cliente.get("nombre", "")
+            telefono = cliente.get("telefono", "")
+            lista_sugerencias_cliente.insert("end", f"{nombre} | {telefono}")
+
+        if clientes_sugeridos_cliente:
+            lista_sugerencias_cliente.pack(fill="x", padx=8, pady=(0,4))
+        else:
+            limpiar_sugerencias_cliente_v2()
+
+    def seleccionar_sugerencia_cliente_v2(event=None):
+        if not lista_sugerencias_cliente.curselection():
+            return
+        indice = lista_sugerencias_cliente.curselection()[0]
+        if 0 <= indice < len(clientes_sugeridos_cliente):
+            aplicar_cliente_rapido_v2(clientes_sugeridos_cliente[indice])
+
+    lista_sugerencias_cliente.bind("<ButtonRelease-1>", seleccionar_sugerencia_cliente_v2)
+    lista_sugerencias_cliente.bind("<Return>", seleccionar_sugerencia_cliente_v2)
+    lista_sugerencias_cliente.bind("<Double-1>", seleccionar_sugerencia_cliente_v2)
+
+    def ejecutar_busqueda_cliente_v2(texto_original):
+        global cliente_actual
+
+        texto = str(texto_original or "").strip()
+        if not texto:
+            cliente_actual = None
+            limpiar_sugerencias_cliente_v2()
+            lbl_estado_cliente.configure(text="")
+            entry_buscar_tel.configure(border_color="#D1D5DB")
+            btn_editar_cliente.pack_forget()
+            return
+
+        digitos = limpiar_telefono(texto)
+        solo_telefono = bool(digitos) and all(c.isdigit() or c in " +-()." for c in texto)
+        termino = texto
+
+        if solo_telefono:
+            if len(digitos) > 12:
+                digitos = digitos[:12]
+            termino = digitos[2:] if digitos.startswith("52") and len(digitos) == 12 else digitos
+            if len(termino) < 3:
+                limpiar_sugerencias_cliente_v2()
+                lbl_estado_cliente.configure(text="")
+                entry_buscar_tel.configure(border_color="#D1D5DB")
+                return
+        elif len(texto) < 2:
+            limpiar_sugerencias_cliente_v2()
+            lbl_estado_cliente.configure(text="")
+            entry_buscar_tel.configure(border_color="#D1D5DB")
+            return
 
         try:
-            if col_index == 3:
-                nuevo_valor = int(nuevo_valor)
-            else:
-                nuevo_valor = float(nuevo_valor)
-        except:
-            frame_editor.destroy()
+            resultados = buscar_clientes(termino, limit=6)
+        except Exception as exc:
+            cliente_actual = None
+            limpiar_sugerencias_cliente_v2()
+            lbl_estado_cliente.configure(
+                text=f"No se pudo buscar cliente: {exc}",
+                text_color="#DC2626"
+            )
+            entry_buscar_tel.configure(border_color="#DC2626")
             return
 
-        for p in carrito:
-            if (
-                str(p["codigo"]) == str(codigo)
-                and str(p["hilo"]) == str(hilo)
-            ):
-                if col_index == 3:
-                    p["cantidad"] = nuevo_valor
-                else:
-                    p["precio"] = nuevo_valor
-                break
+        if solo_telefono and len(termino) == 10:
+            for cliente in resultados:
+                if limpiar_telefono(cliente.get("telefono", "")) == termino:
+                    aplicar_cliente_rapido_v2(cliente)
+                    return
 
-        frame_editor.destroy()
-        refrescar_carrito()
-
-    def cancelar(event=None):
-        frame_editor.destroy()
-
-    editor.bind("<Return>", guardar)
-    editor.bind("<FocusOut>", cancelar)
-
-tabla_carrito.bind("<Double-1>", editar_celda)
-
-# zebra rows
-tabla_carrito.tag_configure("odd", background="#FAFAFA")
-tabla_carrito.tag_configure("even", background="white")
-tabla_carrito.tag_configure("bajo", background="#FFE5E5")
-
-# ================= FOOTER =================
-footer = tk.Frame(frame_carrito, bg="white")
-footer.pack(fill="x", padx=15, pady=(5, 15))
-
-
-menu = tk.Menu(root, tearoff=0)
-
-menu.add_command(label="Cantidad múltiple", command=editar_cantidad_multiple)
-menu.add_command(label="Precio múltiple", command=editar_precio_multiple)
-menu.add_separator()
-menu.add_command(label="Adjuntar imagen", command=cargar_imagen)
-menu.add_command(label="Eliminar producto", command=eliminar_producto_carrito)
-
-
-def mostrar_menu(event):
-    menu.tk_popup(event.x_root, event.y_root)
-
-
-btn_menu = ctk.CTkButton(
-    footer,
-    text="⋯  Otros",
-    width=120,
-    height=36,
-    corner_radius=12,
-    fg_color="#F2F2F2",
-    text_color="black"
-)
-
-btn_menu.pack(side="left")
-btn_menu.bind("<Button-1>", mostrar_menu)
-
-
-BASE_DIR = os.path.dirname(__file__)
-icon_path = os.path.join(BASE_DIR, "trash.png.png")
-icon_trash = ctk.CTkImage(
-    Image.open(icon_path),
-    size=(60, 60)
-)
-btn_limpiar = ctk.CTkButton(
-    footer,
-    text="",
-    image=icon_trash,
-    width=38,
-    height=38,
-    corner_radius=18,
-    fg_color="transparent",
-    hover_color="#FFE5E5",
-    command=lambda: [carrito.clear(), refrescar_carrito()]
-)
-
-btn_limpiar.pack(side="right")
-
-# ================= HEADER SUPERIOR DERECHO =================
-frame_top = tk.Frame(root)
-frame_top.pack(fill="x", padx=10, pady=(5, 0))
-
-frame_top.columnconfigure(0, weight=1)  # empuja botones a la derecha
-
-frame_top_btns = tk.Frame(frame_top)
-frame_top_btns.grid(row=0, column=1, sticky="e")
-btn_clientes = ctk.CTkButton(
-    frame_top_btns,
-    text="👤 Clientes",
-    corner_radius=18,
-    fg_color="#FB8C00",      # naranja moderno
-    hover_color="#EF6C00",
-    height=36,
-    width=130,
-    font=("Segoe UI", 13, "bold"),
-    command=lambda: abrir_clientes(root)
-)
-btn_clientes.pack(side="left", padx=5)
-
-# ================= PANEL TOTAL MODERNO (VERTICAL) =================
-
-frame_total = ctk.CTkFrame(
-    card_total,
-    corner_radius=18,
-    fg_color="white"
-)
-frame_total.pack(fill="both", expand=True, padx=20, pady=20)
-
-
-# ===== TOTAL =====
-lbl_total_title = ctk.CTkLabel(
-    frame_total,
-    text="TOTAL",
-    font=("Segoe UI", 14)
-)
-lbl_total_title.pack(anchor="w", padx=20, pady=(20, 0))
-
-
-lbl_total = ctk.CTkLabel(
-    frame_total,
-    text="$0.00",
-    font=("Segoe UI", 36, "bold")
-)
-lbl_total.pack(anchor="w", padx=20, pady=(0, 15))
-lbl_piezas = ctk.CTkLabel(
-    frame_total,
-    text="",
-    font=("Segoe UI", 13)
-)
-lbl_piezas.pack(anchor="w", padx=20, pady=(0,10))
-
-
-ctk.CTkFrame(frame_total, height=2, fg_color="#EEEEEE").pack(fill="x", padx=15, pady=5)
-
-
-# ===== ENVÍO + BOTÓN (MISMA FILA) =====
-frame_envio = ctk.CTkFrame(frame_total, fg_color="transparent")
-frame_envio.pack(fill="x", padx=20, pady=10)
-
-frame_envio.columnconfigure(0, weight=1)  # texto ocupa todo
-frame_envio.columnconfigure(1, weight=0)  # botón tamaño fijo
-
-BASE_DIR = os.path.dirname(__file__)
-
-icon_ship_path  = os.path.join(BASE_DIR, "shipping.png")
-icon_ship  = ctk.CTkImage(Image.open(icon_ship_path),  size=(120, 120))
-
-lbl_envio = ctk.CTkLabel(
-    frame_envio,
-    text="Envío: No configurado",
-    font=("Segoe UI", 13)
-)
-lbl_envio.grid(row=0, column=0, sticky="w")
-
-
-btn_envio = ctk.CTkButton(
-    frame_envio,
-    text="",
-    image=icon_ship,
-    width=36,
-    height=36,
-    fg_color="transparent",
-    hover_color="#E3F2FD",
-    corner_radius=18,
-    command=configurar_envio_carrito
-)
-btn_envio.grid(row=0, column=1, padx=(5, 0))
-
-
-
-
-# ===== BLOQUE CLIENTE + PEDIDO (compacto) =====
-frame_cliente_pedido = ctk.CTkFrame(
-    frame_total,
-    fg_color="transparent"
-)
-frame_cliente_pedido.pack(fill="x", padx=20, pady=(10, 5))
-
-
-# ---- cliente ----
-# ==================================================
-# 🔵 CLIENTE CON ICONO EDITAR
-# ==================================================
-
-frame_cliente_btns = ctk.CTkFrame(
-    frame_cliente_pedido,
-    fg_color="transparent"
-)
-frame_cliente_btns.pack(fill="x", padx=40, pady=(0, 6))
-# =========================================
-# 🔎 BUSCADOR RÁPIDO CLIENTE
-# =========================================
-
-frame_busqueda_cliente = ctk.CTkFrame(
-    frame_cliente_pedido,
-    fg_color="transparent"
-)
-frame_busqueda_cliente.pack(fill="x", padx=40, pady=(10, 5))
-
-telefono_buscar_var = tk.StringVar()
-
-entry_buscar_tel = ctk.CTkEntry(
-    frame_busqueda_cliente,
-    textvariable=telefono_buscar_var,
-    placeholder_text="Buscar por teléfono...",
-    height=36,
-    corner_radius=10
-)
-entry_buscar_tel.pack(side="left", fill="x", expand=True, padx=(0,8))
-
-lbl_estado_cliente = ctk.CTkLabel(
-    frame_cliente_pedido,
-    text="",
-    font=("Segoe UI", 12)
-)
-lbl_estado_cliente.pack(anchor="w", padx=40)
-def limpiar_telefono(texto):
-    return "".join(c for c in texto if c.isdigit())
-
-def formatear_telefono(numero):
-    # Quitar lada si tiene 52
-    if numero.startswith("52") and len(numero) == 12:
-        numero = numero[2:]
-
-    if len(numero) <= 2:
-        return numero
-    elif len(numero) <= 6:
-        return f"{numero[:2]} {numero[2:]}"
-    else:
-        return f"{numero[:2]} {numero[2:6]} {numero[6:10]}"
-    
-def buscar_cliente_automatico(*args):
-    global cliente_actual
-
-    numero_limpio = limpiar_telefono(telefono_buscar_var.get())
-
-    # Permitir máximo 12 dígitos
-    if len(numero_limpio) > 12:
-        numero_limpio = numero_limpio[:12]
-
-    # Actualizar máscara visual
-    telefono_formateado = formatear_telefono(numero_limpio)
-    telefono_buscar_var.set(telefono_formateado)
-
-    # Quitar lada si viene con 52
-    numero_busqueda = numero_limpio
-    if numero_limpio.startswith("52") and len(numero_limpio) == 12:
-        numero_busqueda = numero_limpio[2:]
-
-    # Solo buscar cuando tenga exactamente 10 dígitos reales
-    if len(numero_busqueda) == 10:
-
-        cliente = buscar_cliente_por_telefono(numero_busqueda)
-
-        if cliente:
-            cliente_actual = cliente
-
-            lbl_cliente_valor.configure(
-                text=f"👤 {cliente['nombre']}"
-            )
-
+        cliente_actual = None
+        mostrar_sugerencias_cliente_v2(resultados)
+        if resultados:
             lbl_estado_cliente.configure(
-                text="✅ Cliente existente",
-                text_color="#16A34A"
+                text="Seleccione el cliente de la lista.",
+                text_color="#2563EB"
             )
-
-            entry_buscar_tel.configure(
-                border_color="#16A34A"
-            )
-
-            btn_editar_cliente.pack(side="right", padx=(6,0))
-
+            entry_buscar_tel.configure(border_color="#2563EB")
         else:
-            cliente_actual = None
-
             lbl_estado_cliente.configure(
-                text="❌ No hay registro",
+                text="No hay registro",
                 text_color="#DC2626"
             )
+            entry_buscar_tel.configure(border_color="#DC2626")
+            btn_editar_cliente.pack_forget()
 
-            entry_buscar_tel.configure(
-                border_color="#DC2626"
-            )
+    def on_key_release_busqueda_parcial(event):
+        texto = entry_buscar_tel.get()
+        digitos = limpiar_telefono(texto)
+        solo_telefono = bool(digitos) and all(c.isdigit() or c in " +-()." for c in texto)
 
-    else:
-        # Estado neutro mientras escribe
-        lbl_estado_cliente.configure(text="")
-        entry_buscar_tel.configure(
-            border_color="#D1D5DB"
+        if solo_telefono and digitos:
+            if len(digitos) > 12:
+                digitos = digitos[:12]
+            numero_formateado = formatear_telefono(digitos)
+            entry_buscar_tel.delete(0, "end")
+            entry_buscar_tel.insert(0, numero_formateado)
+            entry_buscar_tel.icursor(len(numero_formateado))
+            texto = numero_formateado
+
+        if busqueda_cliente_after["id"]:
+            entry_buscar_tel.after_cancel(busqueda_cliente_after["id"])
+        busqueda_cliente_after["id"] = entry_buscar_tel.after(
+            300,
+            lambda: ejecutar_busqueda_cliente_v2(texto)
         )
 
-def on_key_release(event):
-    global cliente_actual
+    entry_buscar_tel.bind("<KeyRelease>", on_key_release_busqueda_parcial)
 
-    cursor_pos = entry_buscar_tel.index("insert")
+    # ---- botón principal seleccionar ----
+    lbl_cliente_valor = ctk.CTkButton(
+        frame_cliente_btns,
+        text="👤 Seleccionar cliente...",
+        fg_color="#F3F4F6",
+        text_color="black",
+        corner_radius=12,
+        height=40,
+        command=seleccionar_cliente
+    )
+    lbl_cliente_valor.pack(side="left", fill="x", expand=True)
 
-    numero_limpio = limpiar_telefono(entry_buscar_tel.get())
 
-    # máximo 12 dígitos
-    if len(numero_limpio) > 12:
-        numero_limpio = numero_limpio[:12]
+    # ---- icono editar ----
+    icon_edit_path = os.path.join(BASE_DIR, "edit.png")
 
-    # quitar lada si viene con 52
-    numero_busqueda = numero_limpio
-    if numero_limpio.startswith("52") and len(numero_limpio) == 12:
-        numero_busqueda = numero_limpio[2:]
+    icon_edit = ctk.CTkImage(
+        Image.open(icon_edit_path),
+        size=(20, 20)
+    )
 
-    # aplicar máscara
-    numero_formateado = formatear_telefono(numero_limpio)
+    def editar_y_refrescar():
+        global cliente_actual
 
-    entry_buscar_tel.delete(0, "end")
-    entry_buscar_tel.insert(0, numero_formateado)
-
-    entry_buscar_tel.icursor(len(numero_formateado))
-
-    # ==========================
-    # BÚSQUEDA AUTOMÁTICA
-    # ==========================
-    if len(numero_busqueda) == 10:
-
-        cliente = buscar_cliente_por_telefono(numero_busqueda)
-
-        if cliente:
-            cliente_actual = cliente
-
-            lbl_cliente_valor.configure(
-                text=f"👤 {cliente['nombre']}"
+        if not cliente_actual:
+            messagebox.showwarning(
+                "Sin cliente",
+                "Primero selecciona un cliente."
             )
+            return
 
-            lbl_estado_cliente.configure(
-                text="✅ Cliente existente",
-                text_color="#16A34A"
-            )
+        # Recargar cliente desde BD antes de editar
+        from clientes import obtener_cliente_por_id
+        cliente_actual = obtener_cliente_por_id(cliente_actual["id"])
 
-            entry_buscar_tel.configure(
-                border_color="#16A34A"
-            )
+        editar_cliente_por_id(cliente_actual["id"], root)
 
-            btn_editar_cliente.pack(side="right", padx=(6,0))
-
-        else:
-            cliente_actual = None
-
-            lbl_estado_cliente.configure(
-                text="❌ No hay registro",
-                text_color="#DC2626"
-            )
-
-            entry_buscar_tel.configure(
-                border_color="#DC2626"
-            )
-
-    else:
-        lbl_estado_cliente.configure(text="")
-        entry_buscar_tel.configure(
-            border_color="#D1D5DB"
-        )
-entry_buscar_tel.bind("<KeyRelease>", on_key_release)
-
-# ---- botón principal seleccionar ----
-lbl_cliente_valor = ctk.CTkButton(
-    frame_cliente_btns,
-    text="👤 Seleccionar cliente...",
-    fg_color="#F3F4F6",
-    text_color="black",
-    corner_radius=12,
-    height=40,
-    command=seleccionar_cliente
-)
-lbl_cliente_valor.pack(side="left", fill="x", expand=True)
-
-
-# ---- icono editar ----
-icon_edit_path = os.path.join(BASE_DIR, "edit.png")
-
-icon_edit = ctk.CTkImage(
-    Image.open(icon_edit_path),
-    size=(20, 20)
-)
-
-def editar_y_refrescar():
-    global cliente_actual
-
-    if not cliente_actual:
-        messagebox.showwarning(
-            "Sin cliente",
-            "Primero selecciona un cliente."
-        )
-        return
-
-    # Recargar cliente desde BD antes de editar
-    from clientes import obtener_cliente_por_id
-    cliente_actual = obtener_cliente_por_id(cliente_actual["id"])
-
-    editar_cliente_por_id(cliente_actual["id"], root)
-
-btn_editar_cliente = ctk.CTkButton(
-    frame_cliente_btns,
-    text="",
-    image=icon_edit,
-    width=40,
-    height=40,
-    fg_color="#E3F2FD",
-    hover_color="#BBDEFB",
-    corner_radius=12,
-    command=editar_y_refrescar
-)
+    btn_editar_cliente = ctk.CTkButton(
+        frame_cliente_btns,
+        text="",
+        image=icon_edit,
+        width=40,
+        height=40,
+        fg_color="#E3F2FD",
+        hover_color="#BBDEFB",
+        corner_radius=12,
+        command=editar_y_refrescar
+    )
 
 
 
-# 🔥 oculto al inicio
-btn_editar_cliente.pack_forget()
+    # 🔥 oculto al inicio
+    btn_editar_cliente.pack_forget()
 
 
 
-# ---- pedido ----
-# =========================================
-# 🎯 CARD PEDIDO MODERNO
-# =========================================
+    # ---- pedido ----
+    # =========================================
+    # 🎯 CARD PEDIDO MODERNO
+    # =========================================
 
-card_pedido = ctk.CTkFrame(
-    frame_cliente_pedido,
-    corner_radius=18,
-    fg_color="#FFFFFF"
-)
-card_pedido.pack(fill="x", pady=(0, 5))
-
-
-# ---- título pedido grande ----
-lbl_pedido_valor = ctk.CTkLabel(
-    card_pedido,
-    text="📦 Configurar pedido",
-    font=("Segoe UI", 18, "bold"),
-    anchor="w"
-)
-lbl_pedido_valor.pack(fill="x", padx=18, pady=(14, 0))
+    card_pedido = ctk.CTkFrame(
+        frame_cliente_pedido,
+        corner_radius=18,
+        fg_color="#FFFFFF"
+    )
+    card_pedido.pack(fill="x", pady=(0, 5))
 
 
-# ---- fecha ----
-lbl_pedido_fecha = ctk.CTkLabel(
-    card_pedido,
-    text="",
-    font=("Segoe UI", 13),
-    text_color="#555",
-    anchor="w"
-)
-lbl_pedido_fecha.pack(fill="x", padx=18, pady=(0, 10))
+    # ---- título pedido grande ----
+    lbl_pedido_valor = ctk.CTkLabel(
+        card_pedido,
+        text="📦 Configurar pedido",
+        font=("Segoe UI", 18, "bold"),
+        anchor="w"
+    )
+    lbl_pedido_valor.pack(fill="x", padx=18, pady=(14, 0))
 
 
-# ---- botón pequeño dentro (encimado) ----
-ctk.CTkButton(
-    card_pedido,
-    text="🔁 Cambiar pedido",
-    height=30,
-    fg_color="#F2F6FF",
-    text_color="#1976D2",
-    hover_color="#E3F2FD",
-    corner_radius=10,
-    command=elegir_pedido
-).pack(anchor="w", padx=18, pady=(0,14))
-
-ctk.CTkButton(
-    card_pedido,
-    text="🗑 Eliminar pedido",
-    height=30,
-    fg_color="#FEE2E2",
-    text_color="#B91C1C",
-    hover_color="#FECACA",
-    corner_radius=10,
-    command=eliminar_pedido_opciones
-).pack(anchor="w", padx=18, pady=(0,14))
-
-# ---- click en la tarjeta = configurar ----
-card_pedido.bind("<Button-1>", lambda e: configurar_pedido())
-lbl_pedido_valor.bind("<Button-1>", lambda e: configurar_pedido())
+    # ---- fecha ----
+    lbl_pedido_fecha = ctk.CTkLabel(
+        card_pedido,
+        text="",
+        font=("Segoe UI", 13),
+        text_color="#555",
+        anchor="w"
+    )
+    lbl_pedido_fecha.pack(fill="x", padx=18, pady=(0, 10))
 
 
-frame_admin = ctk.CTkFrame(
-    frame_top_btns,
-    fg_color="transparent"
-)
-frame_admin.pack(side="left", padx=10)
+    # ---- botón pequeño dentro (encimado) ----
+    ctk.CTkButton(
+        card_pedido,
+        text="🔁 Cambiar pedido",
+        height=30,
+        fg_color="#F2F6FF",
+        text_color="#1976D2",
+        hover_color="#E3F2FD",
+        corner_radius=10,
+        command=elegir_pedido
+    ).pack(anchor="w", padx=18, pady=(0,14))
+
+    ctk.CTkButton(
+        card_pedido,
+        text="🗑 Eliminar pedido",
+        height=30,
+        fg_color="#FEE2E2",
+        text_color="#B91C1C",
+        hover_color="#FECACA",
+        corner_radius=10,
+        command=eliminar_pedido_opciones
+    ).pack(anchor="w", padx=18, pady=(0,14))
+
+    # ---- click en la tarjeta = configurar ----
+    card_pedido.bind("<Button-1>", lambda e: configurar_pedido())
+    lbl_pedido_valor.bind("<Button-1>", lambda e: configurar_pedido())
+
+
+    frame_admin = ctk.CTkFrame(
+        frame_top_btns,
+        fg_color="transparent"
+    )
+    frame_admin.pack(side="left", padx=2)
 
 
 
 
 
-# ===== BOTONES GRANDES =====
-btn_guardar = ctk.CTkButton(
-    frame_total,
-    text="💾  Guardar nota",
-    fg_color="#1976D2",
-    hover_color="#1565C0",
-    height=55,
-    corner_radius=14,
-    font=("Segoe UI", 16, "bold"),
-    command=guardar_cotizacion
-)
-btn_guardar.pack(fill="x", padx=20, pady=(20, 10))
+    # ===== BOTONES GRANDES =====
+    btn_guardar = ctk.CTkButton(
+        frame_total,
+        text="💾  Guardar nota",
+        fg_color="#1976D2",
+        hover_color="#1565C0",
+        height=46,
+        corner_radius=14,
+        font=("Segoe UI", 14, "bold"),
+        command=guardar_cotizacion
+    )
+    btn_guardar.pack(fill="x", padx=12, pady=(12, 8))
 
 
-btn_ver = ctk.CTkButton(
-    frame_total,
-    text="👀  Ver notas",
-    fg_color="#D8C140",
-    hover_color="#EBE828",
-    text_color="black",
-    height=55,
-    corner_radius=14,
-    font=("Segoe UI", 16, "bold"),
-    command=lambda: abrir_visor(root)
-)
-btn_ver.pack(fill="x", padx=20, pady=(0, 20))
+    btn_ver = ctk.CTkButton(
+        frame_total,
+        text="👀  Ver notas",
+        fg_color="#D8C140",
+        hover_color="#EBE828",
+        text_color="black",
+        height=46,
+        corner_radius=14,
+        font=("Segoe UI", 14, "bold"),
+        command=lambda: abrir_visor(root)
+    )
+    btn_ver.pack(fill="x", padx=12, pady=(0, 12))
 
 
-icon_asignar_path = os.path.join(BASE_DIR, "asignar.png")
+    icon_asignar_path = os.path.join(BASE_DIR, "asignar.png")
 
-icon_asignar = ctk.CTkImage(
-    Image.open(icon_asignar_path),
-    size=(36, 36)
-)
+    icon_asignar = ctk.CTkImage(
+        Image.open(icon_asignar_path),
+        size=(36, 36)
+    )
 
-ctk.CTkButton(
-    frame_total,
-    text="",
-    image=icon_asignar,
-    width=55,
-    height=55,
-    fg_color="#F3F4F6",
-    hover_color="#E5E7EB",
-    corner_radius=15,
-    command=abrir_panel_asignacion
-).pack(pady=(0, 20))
-ctk.CTkButton(
-    frame_total,
-    text="🚚 Gestión de Envíos",
-    fg_color="#0EA5E9",
-    hover_color="#0284C7",
-    height=50,
-    corner_radius=14,
-    font=("Segoe UI", 15, "bold"),
-    command=abrir_panel_envios
-).pack(fill="x", padx=20, pady=(0, 20))
+    ctk.CTkButton(
+        frame_total,
+        text="",
+        image=icon_asignar,
+        width=55,
+        height=44,
+        fg_color="#F3F4F6",
+        hover_color="#E5E7EB",
+        corner_radius=15,
+        command=abrir_panel_asignacion
+    ).pack(pady=(0, 12))
+    ctk.CTkButton(
+        frame_total,
+        text="🚚 Gestión de Envíos",
+        fg_color="#0EA5E9",
+        hover_color="#0284C7",
+        height=44,
+        corner_radius=14,
+        font=("Segoe UI", 13, "bold"),
+        command=abrir_panel_envios
+    ).pack(fill="x", padx=12, pady=(0, 12))
 
-ctk.CTkButton(
-    frame_admin,
-    text="📊 Dashboard",
-    height=36,
-    corner_radius=12,
-    fg_color="#7C3AED",
-    hover_color="#6D28D9",
-    command=abrir_dashboard
-).pack(side="left", padx=5)
+    ctk.CTkButton(
+        frame_admin,
+        text="📊 Dashboard",
+        height=36,
+        corner_radius=12,
+        fg_color="#7C3AED",
+        hover_color="#6D28D9",
+        command=abrir_dashboard
+    ).pack(side="left", padx=2)
 
-ctk.CTkButton(
-    frame_admin,
-    text="⚠ Errores",
-    height=36,
-    corner_radius=12,
-    fg_color="#EF4444",
-    hover_color="#DC2626",
-    command=abrir_panel_errores
-).pack(side="left", padx=5)
-ctk.CTkButton(
-    frame_total,
-    text="📜 Registro de Cambios",
-    fg_color="#455A64",
-    hover_color="#37474F",
-    height=50,
-    corner_radius=14,
-    font=("Segoe UI", 15, "bold"),
-    command=lambda: abrir_registro_cambios(root)
-).pack(fill="x", padx=20, pady=(0, 20))
-
+    ctk.CTkButton(
+        frame_admin,
+        text="⚠ Errores",
+        width=68,
+        height=32,
+        corner_radius=12,
+        fg_color="#EF4444",
+        hover_color="#DC2626",
+        command=abrir_panel_errores
+    ).pack(side="left", padx=2)
+    ctk.CTkButton(
+        frame_total,
+        text="📜 Registro de Cambios",
+        fg_color="#455A64",
+        hover_color="#37474F",
+        height=44,
+        corner_radius=14,
+        font=("Segoe UI", 13, "bold"),
+        command=lambda: abrir_registro_cambios(root)
+    ).pack(fill="x", padx=12, pady=(0, 12))
 
 def agregar_al_carrito(pedido):
     codigo = pedido["codigo"]
@@ -3253,15 +3665,107 @@ def refrescar_carrito():
 # ================= INICIO =================
 
 
-def main():
+def _reset_estado_ventas():
+    global carrito, envio_actual, cliente_actual, pedido_actual
+    global fecha_desde, fecha_hasta, productos_cache, _auth_service_ventas
+    global _heartbeat_service_ventas
+
+    carrito = []
+    envio_actual = None
+    cliente_actual = None
+    pedido_actual = None
+    fecha_desde = None
+    fecha_hasta = None
+    productos_cache = []
+    if _heartbeat_service_ventas:
+        _heartbeat_service_ventas.stop()
+        _heartbeat_service_ventas = None
+
+
+def _bloquear_por_licencia_ventas(mensaje):
+    global _heartbeat_service_ventas
+
+    if _heartbeat_service_ventas:
+        _heartbeat_service_ventas.stop()
+        _heartbeat_service_ventas = None
+
+    parent = root if root is not None else None
+    messagebox.showerror("Acceso bloqueado", mensaje, parent=parent)
+    if root is not None:
+        root.destroy()
+
+
+def _iniciar_heartbeat_ventas():
+    global _heartbeat_service_ventas
+
+    if _auth_service_ventas is None or root is None:
+        return
+
+    try:
+        from hilorama_desktop.services.heartbeat_service import HeartbeatService
+    except Exception as exc:
+        messagebox.showwarning(
+            "Heartbeat",
+            f"No se pudo iniciar la verificacion periodica de acceso:\n{exc}",
+            parent=root,
+        )
+        return
+
+    _heartbeat_service_ventas = HeartbeatService(
+        root,
+        _auth_service_ventas,
+        modulo_actual="ventas",
+        on_blocked=_bloquear_por_licencia_ventas,
+        )
+    _heartbeat_service_ventas.start()
+
+
+def _crear_area_imagen_sin_tkdnd(parent):
+    card = ctk.CTkFrame(parent, corner_radius=18, fg_color="#F8FAFC")
+    card.pack(fill="both", expand=True, padx=15, pady=12)
+    ctk.CTkLabel(
+        card,
+        text="Imagen de pedido",
+        font=("Segoe UI", 16, "bold"),
+    ).pack(anchor="w", padx=18, pady=(14, 6))
+    ctk.CTkLabel(
+        card,
+        text="Drag and drop no disponible en esta ventana. Use el boton para seleccionar imagen.",
+        justify="center",
+        font=("Segoe UI", 13),
+        text_color="#555",
+        wraplength=360,
+    ).pack(fill="x", padx=18, pady=(0, 10))
+    ctk.CTkButton(
+        card,
+        text="Seleccionar imagen",
+        command=cargar_imagen,
+    ).pack(padx=18, pady=(0, 15))
+
+
+def _construir_area_imagen_ventas():
+    if crear_area_imagen is not None and soporta_tkdnd(card_imagen):
+        try:
+            crear_area_imagen(
+                card_imagen,
+                marca_var,
+                hilo_var,
+                agregar_al_carrito,
+                refrescar_carrito,
+            )
+            return
+        except Exception:
+            pass
+    for child in card_imagen.winfo_children():
+        child.destroy()
+    _crear_area_imagen_sin_tkdnd(card_imagen)
+
+
+def _cargar_estado_inicial_ventas():
     global pedido_actual, fecha_desde, fecha_hasta
 
-    
     cargar_contexto()
 
-    # =========================================
-    # 🔵 PASO 2 → CARGAR PEDIDO GUARDADO
-    # =========================================
     pedido_guardado = cargar_pedido()
 
     if pedido_guardado:
@@ -3270,35 +3774,48 @@ def main():
         fecha_hasta = pedido_guardado["hasta"]
 
         lbl_pedido_valor.configure(
-            text=f"Pedido #{pedido_actual}\n{fecha_desde} → {fecha_hasta}"
+            text=f"Pedido #{pedido_actual}\n{fecha_desde} -> {fecha_hasta}"
         )
 
-        # =====================================
-        # 🔵 PASO 4 → AVISOS AUTOMÁTICOS
-        # =====================================
         if pedido_por_vencer(pedido_guardado):
             messagebox.showwarning(
                 "Pedido por vencer",
-                "⚠️ Este pedido termina mañana.\nConsidera crear uno nuevo."
+                "Este pedido termina ma?ana.\nConsidera crear uno nuevo."
             )
 
         if pedido_vencido(pedido_guardado):
             messagebox.showinfo(
                 "Pedido vencido",
-                "Este pedido ya terminó.\nDebes crear uno nuevo."
+                "Este pedido ya termin?.\nDebes crear uno nuevo."
             )
 
-    crear_area_imagen(
-        card_imagen,
-        marca_var,
-        hilo_var,
-        agregar_al_carrito,
-        refrescar_carrito
-    )
+    _construir_area_imagen_ventas()
 
 
+def crear_vista_ventas(parent=None):
+    global _auth_service_ventas
 
-    root.mainloop()
+    _reset_estado_ventas()
+    if parent is None:
+        _auth_service_ventas = _validar_acceso_inicial_ventas()
+    else:
+        _auth_service_ventas = None
+
+    vista = _crear_contenedores_ventas(parent)
+    _construir_contexto_moderno()
+    _construir_paneles_ventas()
+    _configurar_drag_and_drop()
+    _cargar_estado_inicial_ventas()
+
+    if parent is None:
+        _iniciar_heartbeat_ventas()
+        root.mainloop()
+
+    return vista
+
+
+def main():
+    crear_vista_ventas()
 
 if __name__ == "__main__":
     main()

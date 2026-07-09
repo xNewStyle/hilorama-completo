@@ -3,12 +3,24 @@ from tkinter import ttk, messagebox
 import json
 import os
 
-from notas import listar_cotizaciones, obtener_cotizacion
+from pagos import listar_pagos
+from notas import (
+    abrir_comprobante_seguro,
+    agregar_seccion_comprobante_detalle,
+    agregar_seccion_pagos_detalle,
+    listar_cotizaciones,
+    obtener_cotizacion,
+)
 from clientes import listar_clientes
 
 # ================= RUTAS =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ARCHIVO_PAGOS = os.path.join(BASE_DIR, "data", "pagos.json")
+
+try:
+    from hilorama_desktop.config import HILORAMA_DATA_MODE
+except Exception:
+    HILORAMA_DATA_MODE = "local"
 
 
 # ================= UTIL =================
@@ -20,6 +32,10 @@ def cargar_pagos():
         return json.load(f)
 
 
+def _modo_api():
+    return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
 def indice_clientes():
     """
     Devuelve dict {cliente_id: cliente}
@@ -28,8 +44,51 @@ def indice_clientes():
 
 
 def tiene_pago(id_nota, pagos):
-    pagos_idx = {p["nota"] for p in pagos}
+    pagos_idx = {_pago_nota_id(p) for p in pagos}
     return id_nota in pagos_idx
+
+
+def _pago_nota_id(pago):
+    return pago.get("nota_id") or pago.get("nota") or pago.get("id_nota")
+
+
+def _pagos_de_nota(id_nota):
+    if not _modo_api():
+        return [p for p in cargar_pagos() if _pago_nota_id(p) == id_nota]
+    try:
+        return listar_pagos(id_nota)
+    except Exception:
+        return []
+
+
+def _pagos_para_notas(notas):
+    if not _modo_api():
+        return cargar_pagos()
+    pagos = []
+    for nota in notas:
+        id_nota = nota.get("id")
+        for pago in _pagos_de_nota(id_nota):
+            pago = dict(pago)
+            pago.setdefault("nota", id_nota)
+            pago.setdefault("nota_id", id_nota)
+            pagos.append(pago)
+    return pagos
+
+
+def _agregar_seccion_pagos(parent, nota):
+    pagos = nota.get("pagos") or _pagos_de_nota(nota.get("id"))
+    frame = ttk.LabelFrame(parent, text="Pagos registrados")
+    frame.pack(fill="x", padx=10, pady=(0, 10))
+
+    if not pagos:
+        ttk.Label(frame, text="Sin pagos registrados").pack(anchor="w", padx=8, pady=6)
+        return
+
+    for pago in pagos:
+        fecha = pago.get("fecha") or pago.get("created_at") or ""
+        comprobante = pago.get("comprobante") or ""
+        texto = f"{fecha} - {comprobante}" if fecha else comprobante or "Pago registrado"
+        ttk.Label(frame, text=texto).pack(anchor="w", padx=8, pady=2)
 
 
 
@@ -89,7 +148,7 @@ def abrir_visor_notas(root):
     # ================= DATOS =================
     clientes_idx = indice_clientes()
     notas = listar_cotizaciones()
-    pagos = cargar_pagos()
+    pagos = _pagos_para_notas(notas)
     # ===== AUTOCOMPLETE CLIENTES =====
     nombres_clientes = sorted({
         c.get("nombre", "")
@@ -101,10 +160,10 @@ def abrir_visor_notas(root):
 
 
     def refrescar(filtro=""):
-        pagos = cargar_pagos()
         tree.delete(*tree.get_children())
         f = normalizar(filtro)
         notas_actuales = listar_cotizaciones()
+        pagos = _pagos_para_notas(notas_actuales)
 
         for n in notas_actuales:
 
@@ -212,20 +271,24 @@ def abrir_visor_notas(root):
             font=("Segoe UI", 14, "bold")
         ).pack(pady=10)
 
+        agregar_seccion_comprobante_detalle(det, nota)
+        agregar_seccion_pagos_detalle(det, nota)
+
     def ver_comprobante():
         sel = tree.focus()
         if not sel:
             return
 
         id_nota = tree.item(sel, "values")[0]
+        nota = obtener_cotizacion(id_nota)
 
-        for p in pagos:
-            if p.get("nota") == id_nota:
-                messagebox.showinfo(
-                    "Comprobante",
-                    f"Archivo:\n{p.get('comprobante')}",
-                    parent=win
-                )
+        if nota and nota.get("comprobante"):
+            abrir_comprobante_seguro(win, nota.get("comprobante"))
+            return
+
+        for p in _pagos_de_nota(id_nota):
+            if _pago_nota_id(p) == id_nota or not _pago_nota_id(p):
+                abrir_comprobante_seguro(win, p.get("comprobante"))
                 return
 
         messagebox.showinfo(
