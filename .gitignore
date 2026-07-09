@@ -42,3 +42,7 @@ hilorama_celular/static/recursos_ia/
 hilorama_celular/data/test_cases/
 wa_tester_reports/
 
+
+# Paquetes cliente generados
+dist_cliente/
+
