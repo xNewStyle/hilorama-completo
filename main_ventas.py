@@ -1,4 +1,3 @@
-12587987521
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
 try:
@@ -37,8 +36,9 @@ from datetime import datetime
 from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido, activar_pedido
 from impresion_etiquetas import etiqueta_remitente, etiqueta_destinatario
 from decimal import Decimal
+from hilorama_desktop.security.authorization import get_admin_override_key
 # ================= CONFIG =================
-PASSWORD = "1"
+PASSWORD = get_admin_override_key()
 
 try:
     from hilorama_desktop.config import HILORAMA_DATA_MODE

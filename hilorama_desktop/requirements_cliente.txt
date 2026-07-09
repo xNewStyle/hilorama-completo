@@ -1,0 +1,7 @@
+customtkinter
+tkinterdnd2
+Pillow
+reportlab
+pytesseract
+python-barcode
+qrcode

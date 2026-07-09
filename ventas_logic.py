@@ -7,8 +7,7 @@ from core.almacen_api import (
     es_stock_bajo,
     obtener_producto_por_codigo
 )
-
-PASSWORD_OVERRIDE = "12587987521"
+from hilorama_desktop.security.authorization import is_legacy_sales_override_key
 
 def validar_stock(marca, hilo, color, cantidad):
     stock = obtener_stock(marca, hilo, color)
@@ -28,7 +27,7 @@ def validar_stock(marca, hilo, color, cantidad):
         return False
 
     pwd = simpledialog.askstring("Autorización", "Contraseña:", show="*")
-    return pwd == PASSWORD_OVERRIDE
+    return is_legacy_sales_override_key(pwd)
 
 
 def aplicar_venta(marca, hilo, color, cantidad):

@@ -25,6 +25,11 @@ import customtkinter as ctk
 from parser_whatsapp import extraer_pedidos
 from core.almacen_api import obtener_todos_los_productos, obtener_producto_por_codigo, obtener_precio_venta
 from auditoria import registrar_cambio
+from hilorama_desktop.security.authorization import (
+    get_admin_override_key,
+    get_legacy_sales_override_key,
+    is_admin_override_key,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 COMPROBANTES_DIR = BASE_DIR / "comprobantes"
@@ -189,7 +194,7 @@ def _pedir_autorizacion_stock_si_necesaria(parent, items):
 
     if pedir_autorizacion_stock:
         if pedir_autorizacion_stock(parent, afectados):
-            return True, "1", afectados
+            return True, get_admin_override_key(), afectados
         return False, None, afectados
 
     clave = simpledialog.askstring(
@@ -198,14 +203,14 @@ def _pedir_autorizacion_stock_si_necesaria(parent, items):
         parent=parent,
         show="*"
     )
-    if clave != "1":
+    if not is_admin_override_key(clave):
         messagebox.showwarning(
             "Operación cancelada",
             "Clave incorrecta. No se convirtió, no se marcó pagada y no se descontó stock.",
             parent=parent
         )
         return False, None, afectados
-    return True, "1", afectados
+    return True, get_admin_override_key(), afectados
 
 
 def _pagos_detalle_nota(nota):
@@ -472,7 +477,7 @@ def seleccionar_o_crear_cliente(parent):
 
     return resultado["cliente"]
 
-PASSWORD = "12587987521"
+PASSWORD = get_legacy_sales_override_key()
 def pedir_password(parent=None):
     if parent is None:
         parent = root
@@ -1882,16 +1887,16 @@ def abrir_visor(root):
                 win,
                 "Editor admin de nota pagada",
                 mensaje_autorizacion,
-                "1",
+                get_admin_override_key(),
             ) if pedir_clave_autorizacion else simpledialog.askstring(
                 "Autorizacion",
                 f"{mensaje_autorizacion}\n\nClave temporal:",
                 show="*",
                 parent=win,
-            ) == "1"
+            ) == get_admin_override_key()
             if not autorizado:
                 return
-            clave_admin_pagada = "1"
+            clave_admin_pagada = get_admin_override_key()
         elif not pedir_password(win):
             messagebox.showerror("Error", "Contraseña incorrecta", parent=win)
             return

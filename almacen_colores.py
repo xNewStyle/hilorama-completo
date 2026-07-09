@@ -3,10 +3,11 @@ from tkinter import ttk, messagebox, simpledialog
 from datetime import datetime, timedelta
 import math
 import os
+from hilorama_desktop.security.authorization import get_admin_override_key
 
 # ================= CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PASSWORD = "1"
+PASSWORD = get_admin_override_key()
 STOCK_MINIMO = 50
 TIPOS_NO_INVENTARIO_FISICO = {
     "ITEM",

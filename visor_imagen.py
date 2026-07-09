@@ -5,8 +5,7 @@ from tkinter import filedialog, messagebox, simpledialog
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image, ImageTk
 from tkinter import ttk
-
-PASSWORD = "12587987521"
+from hilorama_desktop.security.authorization import is_legacy_sales_override_key
 
 
 def pedir_password(win):
@@ -16,7 +15,7 @@ def pedir_password(win):
         parent=win,
         show="*"
     )
-    return pwd == PASSWORD
+    return is_legacy_sales_override_key(pwd)
 
 
 def visor_imagen(parent, ruta_inicial=None, on_save=None):
