@@ -10,14 +10,14 @@ except Exception:
     BaseTk = tk.Tk
 
 try:
-    from ..config import APP_NAME, APP_VERSION
+    from ..config import APP_NAME, APP_VERSION, is_api_mode
     from ..services.heartbeat_service import HeartbeatService
     from ..utils.logger import log_error, log_info
     from .admin_view import crear_vista_admin
     from .almacen_view import crear_vista_almacen
     from .ventas_view import crear_vista_ventas
 except ImportError:  # Permite compilar/ejecutar main.py como script.
-    from config import APP_NAME, APP_VERSION
+    from config import APP_NAME, APP_VERSION, is_api_mode
     from services.heartbeat_service import HeartbeatService
     from utils.logger import log_error, log_info
     from ui.admin_view import crear_vista_admin
@@ -89,7 +89,7 @@ class HiloramaDesktopApp(BaseTk):
         botones = [
             ("Almacen", self.mostrar_almacen),
             ("Ventas", self.mostrar_ventas),
-            ("Clientes", lambda: self.mostrar_pendiente("Clientes")),
+            ("Clientes", self.mostrar_clientes),
             ("Reportes", lambda: self.mostrar_pendiente("Reportes")),
             ("Configuracion", lambda: self.mostrar_pendiente("Configuracion")),
         ]
@@ -164,6 +164,34 @@ class HiloramaDesktopApp(BaseTk):
 
     def mostrar_ventas(self):
         self._mostrar_modulo("ventas", crear_vista_ventas)
+
+    def mostrar_clientes(self):
+        """Abre CRM embebido por API o conserva el visor anterior en local."""
+        if is_api_mode():
+            self._mostrar_modulo("clientes", self._crear_vista_clientes_api)
+            return
+        self._set_modulo_actual("clientes")
+        try:
+            from ver_clientes import abrir_clientes
+            return abrir_clientes(self)
+        except Exception as exc:
+            log_error("clientes", "Error al abrir visor legacy de clientes", exc)
+            messagebox.showerror("Clientes", f"No se pudo abrir Clientes.\n\n{exc}", parent=self)
+            return None
+
+    def _crear_vista_clientes_api(self, parent):
+        """Import diferido: Clientes API no arrastra base local al iniciar Desktop."""
+        try:
+            from .clientes_crm_view import ClientesCRMView
+        except ImportError:
+            from ui.clientes_crm_view import ClientesCRMView
+        return ClientesCRMView(parent, editar_cliente_callback=self._editar_cliente_desde_crm)
+
+    @staticmethod
+    def _editar_cliente_desde_crm(cliente_id, parent, on_guardar=None):
+        # El editor existente ya usa clientes.py, que consulta API en este modo.
+        from ver_clientes import editar_cliente_por_id
+        return editar_cliente_por_id(cliente_id, parent, on_guardar=on_guardar)
 
     def mostrar_admin(self):
         self._mostrar_modulo(

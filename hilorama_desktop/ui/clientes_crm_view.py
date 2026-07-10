@@ -45,20 +45,46 @@ def abrir_clientes_crm(parent, cliente=None, editar_cliente_callback=None):
     return ventana.win
 
 
-class ClientesCrmWindow:
+def crear_vista_clientes_crm(parent, editar_cliente_callback=None):
+    """Crea el CRM dentro del panel principal de Hilorama Desktop."""
+    return ClientesCRMView(parent, editar_cliente_callback=editar_cliente_callback)
+
+
+class ClientesCRMView(ctk.CTkFrame):
+    """Contenedor embebible del CRM para el menu principal de Desktop."""
     def __init__(self, parent, editar_cliente_callback=None):
+        super().__init__(parent, fg_color="#F4F5F7", corner_radius=0)
+        self._controller = ClientesCrmWindow(
+            self,
+            editar_cliente_callback=editar_cliente_callback,
+            embedded=True,
+            host=self,
+        )
+
+    def mostrar_cliente_inicial(self, cliente):
+        self._controller.mostrar_cliente_inicial(cliente)
+
+
+class ClientesCrmWindow:
+    def __init__(self, parent, editar_cliente_callback=None, embedded=False, host=None):
         self.editar_cliente_callback = editar_cliente_callback
         self.ranking_por_id = {}
         self.analitica_actual = None
         self.graficas = {}
         self.cliente_inicial_id = None
+        self.embedded = bool(embedded or host is not None)
 
-        self.win = ctk.CTkToplevel(parent)
-        self.win.title("Clientas")
-        self.win.geometry("1440x880")
-        self.win.minsize(1180, 720)
+        if host is not None:
+            self.win = host
+        elif self.embedded:
+            self.win = ctk.CTkFrame(parent, fg_color="#F4F5F7", corner_radius=0)
+        else:
+            self.win = ctk.CTkToplevel(parent)
+            self.win.title("Clientas")
+            self.win.geometry("1440x880")
+            self.win.minsize(1180, 720)
+            self.win.transient(parent.winfo_toplevel())
         self.win.configure(fg_color="#F4F5F7")
-        self.win.transient(parent.winfo_toplevel())
 
         self.busqueda_var = tk.StringVar()
         self.segmento_var = tk.StringVar(value="TODAS")
