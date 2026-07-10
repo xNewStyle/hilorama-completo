@@ -35,6 +35,7 @@ FORBIDDEN_DIRS = {
     "hilorama_central",
     "logs",
     "releases",
+    "updates_public",
 }
 
 FORBIDDEN_FILE_NAMES = {
@@ -218,7 +219,7 @@ def _validar_paquete_limpio(report: list[str]) -> None:
 
     report.append("")
     report.append("VALIDACION PAQUETE")
-    report.append("- No contiene backend, Central, database, celular, comprobantes, logs ni .env.")
+    report.append("- No contiene backend, Central, database, celular, comprobantes, logs, updates_public ni .env.")
     report.append("- No contiene pyc, zip, exe ni llaves.")
     if textos_prohibidos:
         report.append("- No contiene los textos sensibles configurados para auditoria local.")

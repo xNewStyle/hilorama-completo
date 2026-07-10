@@ -17,7 +17,12 @@ BUILD_CHANNEL = os.environ.get("BUILD_CHANNEL", "development").strip().lower()
 IS_FROZEN_BUILD = bool(getattr(sys, "frozen", False))
 HILORAMA_CLIENT_MODE = os.environ.get("HILORAMA_CLIENT_MODE", "production").strip().lower()
 DEFAULT_API_BASE_URL = "https://hilorama-completo.onrender.com"
-DEFAULT_UPDATE_MANIFEST_URL = "https://hilorama-completo.onrender.com/updates/HiloramaCliente/update.json"
+# Esta URL pertenece a un sitio Render Static independiente del backend API.
+# Sustituir el placeholder cuando se cree el servicio Static real.
+DEFAULT_UPDATE_STATIC_BASE_URL = "https://TU-STATIC-RENDER.onrender.com"
+DEFAULT_UPDATE_MANIFEST_URL = (
+    f"{DEFAULT_UPDATE_STATIC_BASE_URL}/updates/HiloramaCliente/update.json"
+)
 
 
 def _default_data_mode():

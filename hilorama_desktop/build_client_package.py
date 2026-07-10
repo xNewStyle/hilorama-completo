@@ -95,6 +95,7 @@ EXCLUDED_DIRS = {
     "node_modules",
     "releases",
     "scripts",
+    "updates_public",
     "venv",
     "wa_tester_reports",
 }
@@ -338,6 +339,7 @@ def _write_report(
         "- logs/",
         "- backups/ y backups_central/",
         "- releases/ y dist/build previos",
+        "- updates_public/ (artefactos para Render Static)",
         "- .env, llaves, credenciales, zips, exe, pyc, __pycache__",
         "- PDFs existentes de cotizaciones/ventas; solo se crean carpetas vacias para runtime.",
         "",
