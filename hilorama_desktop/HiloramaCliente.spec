@@ -71,6 +71,7 @@ for package in (
     "pytesseract",
     "barcode",
     "qrcode",
+    "hilorama_desktop.updater",
 ):
     hiddenimports += _safe_collect_submodules(package)
 

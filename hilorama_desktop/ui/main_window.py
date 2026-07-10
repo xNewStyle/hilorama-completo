@@ -1,5 +1,6 @@
 import tkinter as tk
 import time
+import threading
 from tkinter import messagebox, ttk
 
 try:
@@ -44,6 +45,7 @@ class HiloramaDesktopApp(BaseTk):
         self.mostrar_inicio()
         self._iniciar_heartbeat()
         self._log_tiempo("arranque Desktop", self._startup_at)
+        self.after(1500, self._iniciar_revision_actualizaciones)
 
     def _configurar_tamano_inicial(self):
         screen_width = self.winfo_screenwidth()
@@ -301,6 +303,120 @@ class HiloramaDesktopApp(BaseTk):
             self.heartbeat.stop()
         messagebox.showerror("Acceso bloqueado", mensaje, parent=self)
         self.destroy()
+
+    def _iniciar_revision_actualizaciones(self):
+        thread = threading.Thread(target=self._revisar_actualizaciones_worker, daemon=True)
+        thread.start()
+
+    def _revisar_actualizaciones_worker(self):
+        try:
+            from ..updater.update_checker import check_for_update
+        except ImportError:
+            from updater.update_checker import check_for_update
+
+        result = check_for_update()
+        if result.update_available and result.manifest:
+            self.after(0, lambda: self._mostrar_actualizacion_disponible(result))
+
+    def _mostrar_actualizacion_disponible(self, result):
+        manifest = result.manifest
+        if not manifest:
+            return
+
+        win = tk.Toplevel(self)
+        win.title("Actualizacion disponible")
+        win.transient(self)
+        win.grab_set()
+        win.resizable(False, False)
+
+        frame = ttk.Frame(win, padding=18)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame,
+            text="Actualizacion disponible",
+            font=("Segoe UI", 15, "bold"),
+        ).pack(anchor="w", pady=(0, 8))
+        ttk.Label(
+            frame,
+            text=(
+                "Hay una nueva version de Hilorama Desktop disponible.\n"
+                f"Version actual: {result.current_version}\n"
+                f"Version nueva: {manifest.latest_version}"
+            ),
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
+        if manifest.mandatory:
+            ttk.Label(
+                frame,
+                text="Esta actualizacion esta marcada como obligatoria.",
+                foreground="#8A3A00",
+            ).pack(anchor="w", pady=(0, 8))
+
+        if manifest.notes:
+            ttk.Label(frame, text="Notas:", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+            notas = "\n".join(f"- {item}" for item in manifest.notes[:8])
+            ttk.Label(frame, text=notas, justify="left", wraplength=460).pack(anchor="w", pady=(2, 10))
+
+        status = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=status, wraplength=460).pack(anchor="w", pady=(0, 8))
+
+        acciones = ttk.Frame(frame)
+        acciones.pack(fill="x", pady=(4, 0))
+
+        btn_despues = ttk.Button(acciones, text="Despues", command=win.destroy)
+        btn_despues.pack(side="right", padx=(6, 0))
+        btn_actualizar = ttk.Button(
+            acciones,
+            text="Actualizar ahora",
+            command=lambda: self._descargar_actualizacion_async(manifest, win, status, btn_actualizar),
+        )
+        btn_actualizar.pack(side="right")
+
+    def _descargar_actualizacion_async(self, manifest, win, status, button):
+        button.configure(state="disabled")
+        status.set("Descargando actualizacion...")
+
+        def worker():
+            try:
+                from ..updater.update_downloader import download_update
+                from ..updater.apply_update import prepare_windows_update
+            except ImportError:
+                from updater.update_downloader import download_update
+                from updater.apply_update import prepare_windows_update
+
+            result = download_update(manifest.download_url, manifest.sha256)
+            if not result.ok:
+                self.after(0, lambda: self._mostrar_error_descarga(status, button, result.error))
+                return
+
+            try:
+                prepared = prepare_windows_update(result.file_path, dry_run=True)
+            except Exception as exc:
+                log_error("hilorama_desktop", "No se pudo preparar aplicacion de actualizacion", exc)
+                self.after(0, lambda: self._mostrar_error_descarga(status, button, str(exc)))
+                return
+
+            self.after(0, lambda: self._mostrar_actualizacion_preparada(win, prepared))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _mostrar_error_descarga(self, status, button, error):
+        status.set(f"No se pudo actualizar: {error}")
+        button.configure(state="normal")
+
+    def _mostrar_actualizacion_preparada(self, win, prepared):
+        messagebox.showinfo(
+            "Actualizacion descargada",
+            (
+                "La actualizacion se descargo y el checksum fue validado.\n\n"
+                "En esta fase se preparo el reemplazo en modo seguro/dry-run.\n"
+                f"Archivo: {prepared.get('downloaded_file')}"
+            ),
+            parent=win,
+        )
+        win.destroy()
 
     def _manejar_error_tkinter(self, exc_type, exc_value, exc_traceback):
         log_error(

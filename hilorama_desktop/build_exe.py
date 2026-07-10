@@ -110,15 +110,19 @@ def _parse_args():
 
 def _add_report_header(report: list[str]) -> None:
     api_base_url = _api_base_url_para_reporte()
+    app_version, manifest_url = _updater_config_para_reporte()
     report.extend([
         "REPORTE BUILD EXE HILORAMA CLIENTE",
         f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"Proyecto: {PROJECT_ROOT}",
         f"Paquete fuente: {PACKAGE_ROOT}",
         f"Spec: {SPEC_PATH}",
+        f"Version cliente: {app_version}",
         f"API base URL configurada: {api_base_url}",
+        f"Update manifest URL: {manifest_url or 'No configurada'}",
         "La API base URL no es DATABASE_URL ni conexion directa a base local.",
         "HILORAMA_RENDER_API_BASE_URL tiene prioridad para pruebas locales.",
+        "El modulo updater se incluye en el cliente.",
         "",
     ])
 
@@ -131,6 +135,16 @@ def _api_base_url_para_reporte() -> str:
         return get_api_base_url()
     except Exception:
         return "No disponible"
+
+
+def _updater_config_para_reporte() -> tuple[str, str]:
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from hilorama_desktop.config import APP_VERSION, get_update_manifest_url
+
+        return APP_VERSION, get_update_manifest_url()
+    except Exception:
+        return "No disponible", ""
 
 
 def _audit_requirements(report: list[str]) -> list[str]:

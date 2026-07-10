@@ -116,6 +116,7 @@ EXCLUDED_RELATIVE = {
     Path("hilorama_desktop") / "HiloramaCliente.spec",
     Path("hilorama_desktop") / "build_exe.py",
     Path("hilorama_desktop") / "build_client_package.py",
+    Path("hilorama_desktop") / "create_update_release.py",
     Path("hilorama_desktop") / "test_fase2_security.py",
 }
 
@@ -314,6 +315,7 @@ def _write_report(
         f"- API base URL configurada: {_api_base_url_para_reporte()}",
         "- La variable HILORAMA_RENDER_API_BASE_URL puede sobreescribirla para pruebas locales.",
         "- No usa conexion directa a base local.",
+        "- Incluye modulo updater para revisar update.json.",
         "",
         "ARCHIVOS/DIRECTORIOS BASE INCLUIDOS",
     ]
