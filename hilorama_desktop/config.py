@@ -20,9 +20,7 @@ DEFAULT_API_BASE_URL = "https://hilorama-completo.onrender.com"
 # Esta URL pertenece a un sitio Render Static independiente del backend API.
 # Sustituir el placeholder cuando se cree el servicio Static real.
 DEFAULT_UPDATE_STATIC_BASE_URL = "https://TU-STATIC-RENDER.onrender.com"
-DEFAULT_UPDATE_MANIFEST_URL = (
-    f"{DEFAULT_UPDATE_STATIC_BASE_URL}/updates/HiloramaCliente/update.json"
-)
+DEFAULT_UPDATE_MANIFEST_URL = "https://github.com/xNewStyle/hilorama-completo/releases/latest/download/update.json"
 
 
 def _default_data_mode():
