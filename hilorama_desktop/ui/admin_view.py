@@ -36,6 +36,15 @@ AUDITORIA_COLUMNS = (
     ("detalle", "Detalle", 320),
 )
 
+USUARIO_COLUMNS = (
+    ("id", "ID", 70),
+    ("nombre", "Nombre", 180),
+    ("usuario", "Usuario", 160),
+    ("rol", "Rol", 130),
+    ("activo", "Activo", 90),
+    ("ultimo_login", "Ultimo login", 170),
+)
+
 FORM_FIELDS = (
     ("nombre_negocio", "Negocio"),
     ("contacto", "Nombre/contacto"),
@@ -45,6 +54,13 @@ FORM_FIELDS = (
     ("max_dispositivos", "Max dispositivos"),
     ("plan", "Plan"),
     ("notas_admin", "Notas admin"),
+)
+
+ROLES_USUARIO_CLIENTE = (
+    "admin_cliente",
+    "vendedor",
+    "almacen",
+    "solo_lectura",
 )
 
 
@@ -71,7 +87,7 @@ def _lista(data):
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        for key in ("data", "items", "clientes", "sesiones", "auditoria"):
+        for key in ("data", "items", "clientes", "usuarios", "sesiones", "auditoria"):
             value = data.get(key)
             if isinstance(value, list):
                 return value
@@ -89,6 +105,7 @@ class AdminView(ttk.Frame):
         self.api = api
         self.session = session or {}
         self.clientes = []
+        self.usuarios_cliente = []
         self.sesiones = []
         self.auditoria = []
 
@@ -119,10 +136,12 @@ class AdminView(ttk.Frame):
         tab = ttk.Frame(self.tabs, padding=8)
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(0, weight=1)
+        tab.rowconfigure(2, weight=1)
         self.tabs.add(tab, text="Clientes")
 
         self.tree_clientes = _crear_tree(tab, CLIENTE_COLUMNS)
         self.tree_clientes.grid(row=0, column=0, sticky="nsew")
+        _tree_from_container(self.tree_clientes).bind("<<TreeviewSelect>>", self._al_seleccionar_cliente)
 
         acciones = ttk.Frame(tab)
         acciones.grid(row=1, column=0, sticky="ew", pady=(8, 0))
@@ -137,6 +156,25 @@ class AdminView(ttk.Frame):
         ]
         for texto, comando in botones:
             ttk.Button(acciones, text=texto, command=comando).pack(side="left", padx=(0, 6))
+
+        usuarios_box = ttk.LabelFrame(tab, text="Usuarios de acceso", padding=8)
+        usuarios_box.columnconfigure(0, weight=1)
+        usuarios_box.rowconfigure(0, weight=1)
+        usuarios_box.grid(row=2, column=0, sticky="nsew", pady=(12, 0))
+
+        self.tree_usuarios = _crear_tree(usuarios_box, USUARIO_COLUMNS)
+        self.tree_usuarios.grid(row=0, column=0, sticky="nsew")
+
+        acciones_usuarios = ttk.Frame(usuarios_box)
+        acciones_usuarios.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        botones_usuarios = [
+            ("Actualizar usuarios", self.cargar_usuarios_cliente),
+            ("Crear usuario", self.crear_usuario_cliente),
+            ("Restablecer contrasena", self.reset_password_usuario),
+            ("Activar/desactivar", self.toggle_usuario_activo),
+        ]
+        for texto, comando in botones_usuarios:
+            ttk.Button(acciones_usuarios, text=texto, command=comando).pack(side="left", padx=(0, 6))
 
     def _crear_tab_sesiones(self):
         tab = ttk.Frame(self.tabs, padding=8)
@@ -169,9 +207,31 @@ class AdminView(ttk.Frame):
             log_info("hilorama_desktop", "Cargando clientes admin")
             self.clientes = _lista(self.api.admin_listar_clientes(token=_token(self.session)))
             _llenar_tree(self.tree_clientes, CLIENTE_COLUMNS, self.clientes)
+            self.usuarios_cliente = []
+            _llenar_tree(self.tree_usuarios, USUARIO_COLUMNS, self.usuarios_cliente)
         except Exception as exc:
             log_error("hilorama_desktop", "Error al cargar clientes admin", exc)
             _mostrar_error(self, "No se pudieron cargar los clientes.", exc)
+
+    def _al_seleccionar_cliente(self, _event=None):
+        self.cargar_usuarios_cliente()
+
+    def cargar_usuarios_cliente(self):
+        cliente = self._cliente_seleccionado()
+        if not cliente:
+            self.usuarios_cliente = []
+            _llenar_tree(self.tree_usuarios, USUARIO_COLUMNS, self.usuarios_cliente)
+            return
+        cliente_id = cliente.get("id")
+        try:
+            log_info("hilorama_desktop", f"Cargando usuarios admin cliente id={cliente_id}")
+            self.usuarios_cliente = _lista(
+                self.api.admin_listar_usuarios_cliente(cliente_id, token=_token(self.session))
+            )
+            _llenar_tree(self.tree_usuarios, USUARIO_COLUMNS, self.usuarios_cliente)
+        except Exception as exc:
+            log_error("hilorama_desktop", "Error al cargar usuarios de cliente", exc)
+            _mostrar_error(self, "No se pudieron cargar los usuarios de acceso.", exc)
 
     def cargar_sesiones(self):
         try:
@@ -200,6 +260,183 @@ class AdminView(ttk.Frame):
             messagebox.showwarning("Administracion", "Seleccione un cliente.", parent=self)
             return
         self._abrir_form_cliente("Editar cliente", cliente)
+
+    def crear_usuario_cliente(self):
+        cliente = self._cliente_seleccionado()
+        if not cliente:
+            messagebox.showwarning("Administracion", "Seleccione un cliente.", parent=self)
+            return
+        self._abrir_form_usuario(cliente)
+
+    def reset_password_usuario(self):
+        usuario = self._usuario_seleccionado()
+        if not usuario:
+            messagebox.showwarning("Administracion", "Seleccione un usuario.", parent=self)
+            return
+
+        win = tk.Toplevel(self)
+        win.title("Restablecer contrasena")
+        win.transient(self.winfo_toplevel())
+        win.grab_set()
+        win.resizable(False, False)
+
+        frame = ttk.Frame(win, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text=f"Usuario: {_valor(usuario, 'usuario')}").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        password = tk.StringVar()
+        confirmar = tk.StringVar()
+        ttk.Label(frame, text="Nueva contrasena temporal").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Entry(frame, textvariable=password, show="*", width=36).grid(row=1, column=1, sticky="ew", pady=4)
+        ttk.Label(frame, text="Confirmar contrasena").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(frame, textvariable=confirmar, show="*", width=36).grid(row=2, column=1, sticky="ew", pady=4)
+
+        acciones = ttk.Frame(frame)
+        acciones.grid(row=3, column=0, columnspan=2, sticky="e", pady=(10, 0))
+
+        def guardar():
+            nueva = password.get()
+            if nueva != confirmar.get():
+                messagebox.showwarning("Administracion", "Las contrasenas no coinciden.", parent=win)
+                return
+            if len(nueva) < 6:
+                messagebox.showwarning("Administracion", "La contrasena debe tener al menos 6 caracteres.", parent=win)
+                return
+            if not messagebox.askyesno(
+                "Administracion",
+                "Desea restablecer la contrasena de este usuario?",
+                parent=win,
+            ):
+                return
+            try:
+                self.api.admin_reset_password_usuario(
+                    usuario["id"],
+                    {"nueva_password_temporal": nueva},
+                    token=_token(self.session),
+                )
+                messagebox.showinfo(
+                    "Administracion",
+                    "Contrasena restablecida. Entregue la nueva contrasena temporal al cliente.",
+                    parent=win,
+                )
+                win.destroy()
+                self.cargar_usuarios_cliente()
+            except Exception as exc:
+                log_error("hilorama_desktop", "Error al restablecer contrasena de usuario", exc)
+                _mostrar_error(win, "No se pudo restablecer la contrasena.", exc)
+
+        ttk.Button(acciones, text="Cancelar", command=win.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(acciones, text="Restablecer", command=guardar).pack(side="right")
+
+    def toggle_usuario_activo(self):
+        usuario = self._usuario_seleccionado()
+        if not usuario:
+            messagebox.showwarning("Administracion", "Seleccione un usuario.", parent=self)
+            return
+        activo = _bool_row(usuario.get("activo"))
+        accion = "desactivar" if activo else "activar"
+        if not messagebox.askyesno(
+            "Administracion",
+            f"Desea {accion} el usuario {_valor(usuario, 'usuario')}?",
+            parent=self,
+        ):
+            return
+        try:
+            if activo:
+                self.api.admin_desactivar_usuario(usuario["id"], token=_token(self.session))
+            else:
+                self.api.admin_activar_usuario(usuario["id"], token=_token(self.session))
+            messagebox.showinfo("Administracion", "Accion aplicada.", parent=self)
+            self.cargar_usuarios_cliente()
+            self.cargar_sesiones()
+        except Exception as exc:
+            log_error("hilorama_desktop", f"Error al {accion} usuario", exc)
+            _mostrar_error(self, f"No se pudo {accion} el usuario.", exc)
+
+    def _abrir_form_usuario(self, cliente):
+        win = tk.Toplevel(self)
+        win.title("Crear usuario")
+        win.transient(self.winfo_toplevel())
+        win.grab_set()
+        win.resizable(False, False)
+
+        frame = ttk.Frame(win, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame,
+            text=f"Cliente: {_valor(cliente, 'nombre_negocio') or _valor(cliente, 'contacto')}",
+            font=("Segoe UI", 10, "bold"),
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+
+        nombre = tk.StringVar()
+        username = tk.StringVar()
+        password = tk.StringVar()
+        confirmar = tk.StringVar()
+        rol = tk.StringVar(value="vendedor")
+        activo = tk.BooleanVar(value=True)
+
+        campos = [
+            ("Nombre", nombre, False),
+            ("Usuario", username, False),
+            ("Contrasena temporal", password, True),
+            ("Confirmar contrasena", confirmar, True),
+        ]
+        for idx, (etiqueta, variable, oculto) in enumerate(campos, start=1):
+            ttk.Label(frame, text=etiqueta).grid(row=idx, column=0, sticky="w", pady=4)
+            ttk.Entry(
+                frame,
+                textvariable=variable,
+                show="*" if oculto else "",
+                width=38,
+            ).grid(row=idx, column=1, sticky="ew", pady=4)
+
+        ttk.Label(frame, text="Rol").grid(row=5, column=0, sticky="w", pady=4)
+        ttk.Combobox(
+            frame,
+            textvariable=rol,
+            values=ROLES_USUARIO_CLIENTE,
+            state="readonly",
+            width=35,
+        ).grid(row=5, column=1, sticky="ew", pady=4)
+        ttk.Checkbutton(frame, text="Activo", variable=activo).grid(row=6, column=1, sticky="w", pady=(4, 10))
+
+        acciones = ttk.Frame(frame)
+        acciones.grid(row=7, column=0, columnspan=2, sticky="e")
+
+        def guardar():
+            if not nombre.get().strip() or not username.get().strip():
+                messagebox.showwarning("Administracion", "Nombre y usuario son obligatorios.", parent=win)
+                return
+            if password.get() != confirmar.get():
+                messagebox.showwarning("Administracion", "Las contrasenas no coinciden.", parent=win)
+                return
+            if len(password.get()) < 6:
+                messagebox.showwarning("Administracion", "La contrasena debe tener al menos 6 caracteres.", parent=win)
+                return
+
+            data = {
+                "nombre": nombre.get().strip(),
+                "username": username.get().strip(),
+                "password_temporal": password.get(),
+                "rol": rol.get(),
+                "activo": bool(activo.get()),
+            }
+            try:
+                self.api.admin_crear_usuario_cliente(cliente["id"], data, token=_token(self.session))
+                messagebox.showinfo(
+                    "Administracion",
+                    "Usuario creado correctamente.\nEntregue estas credenciales al cliente.",
+                    parent=win,
+                )
+                win.destroy()
+                self.cargar_usuarios_cliente()
+            except Exception as exc:
+                log_error("hilorama_desktop", "Error al crear usuario de cliente", exc)
+                _mostrar_error(win, "No se pudo crear el usuario.", exc)
+
+        ttk.Button(acciones, text="Cancelar", command=win.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(acciones, text="Crear usuario", command=guardar).pack(side="right")
 
     def _abrir_form_cliente(self, titulo, cliente):
         win = tk.Toplevel(self)
@@ -293,6 +530,16 @@ class AdminView(ttk.Frame):
             return None
         return self.clientes[idx]
 
+    def _usuario_seleccionado(self):
+        tree = _tree_from_container(self.tree_usuarios)
+        sel = tree.focus()
+        if not sel:
+            return None
+        idx = int(sel)
+        if idx < 0 or idx >= len(self.usuarios_cliente):
+            return None
+        return self.usuarios_cliente[idx]
+
 
 def _payload_cliente(variables, puede_actualizar):
     data = {}
@@ -311,6 +558,14 @@ def _payload_cliente(variables, puede_actualizar):
             data[campo] = None
     data["puede_actualizar"] = bool(puede_actualizar.get())
     return data
+
+
+def _bool_row(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().lower() in {"1", "true", "t", "si", "sí", "yes", "activo"}
 
 
 def _crear_tree(parent, columns):

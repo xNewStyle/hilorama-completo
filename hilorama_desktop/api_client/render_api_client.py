@@ -49,6 +49,21 @@ class RenderApiClient:
     def admin_actualizar_cliente(self, cliente_id, data, token=None):
         return self.patch(f"/api/admin/clientes/{cliente_id}", data, token=token)
 
+    def admin_listar_usuarios_cliente(self, cliente_id, token=None):
+        return self.get(f"/api/admin/clientes/{cliente_id}/usuarios", token=token)
+
+    def admin_crear_usuario_cliente(self, cliente_id, data, token=None):
+        return self.post(f"/api/admin/clientes/{cliente_id}/usuarios", data, token=token)
+
+    def admin_reset_password_usuario(self, usuario_id, data, token=None):
+        return self.post(f"/api/admin/usuarios/{usuario_id}/reset-password", data, token=token)
+
+    def admin_activar_usuario(self, usuario_id, token=None):
+        return self.post(f"/api/admin/usuarios/{usuario_id}/activar", {}, token=token)
+
+    def admin_desactivar_usuario(self, usuario_id, token=None):
+        return self.post(f"/api/admin/usuarios/{usuario_id}/desactivar", {}, token=token)
+
     def admin_suspender_cliente(self, cliente_id, token=None):
         return self.post(f"/api/admin/clientes/{cliente_id}/suspender", {}, token=token)
 

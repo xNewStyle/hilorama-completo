@@ -206,6 +206,17 @@ def _check_password_sistema(password_hash, password):
         return False
 
 
+def _hash_password_sistema(password):
+    if not password:
+        raise ValueError("La contrasena es obligatoria.")
+    try:
+        import bcrypt
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
+    except Exception:
+        from werkzeug.security import generate_password_hash
+        return generate_password_hash(password)
+
+
 def _registrar_evento_licencia(conn, cliente_id, usuario_id, device_id_hash, evento, detalle=""):
     conn.execute("""
         INSERT INTO licencias_eventos (
@@ -4621,6 +4632,172 @@ def api_admin_cliente_patch(cliente_id):
     with get_conn() as conn:
         conn.execute(f"UPDATE clientes_sistema SET {', '.join(sets)}, updated_at=NOW() WHERE id=%s", tuple(params))
     return jsonify({"ok": True})
+
+
+ROLES_USUARIO_CLIENTE = {"admin_cliente", "vendedor", "almacen", "solo_lectura"}
+
+
+def _usuario_admin_payload(data):
+    nombre = (data.get("nombre") or "").strip()
+    usuario = (data.get("username") or data.get("usuario") or "").strip()
+    password = data.get("password_temporal") or data.get("password") or ""
+    rol = (data.get("rol") or "vendedor").strip()
+    activo = bool(data.get("activo", True))
+
+    if not nombre:
+        raise ValueError("El nombre es obligatorio.")
+    if not usuario:
+        raise ValueError("El usuario es obligatorio.")
+    if not password or len(password) < 6:
+        raise ValueError("La contrasena temporal debe tener al menos 6 caracteres.")
+    if rol not in ROLES_USUARIO_CLIENTE:
+        raise ValueError("Rol no permitido para cliente.")
+
+    return nombre, usuario, password, rol, activo
+
+
+@app.route("/api/admin/clientes/<int:cliente_id>/usuarios", methods=["GET", "POST"])
+def api_admin_usuarios_cliente(cliente_id):
+    auth = _require_super_admin()
+    if not auth:
+        return jsonify({"error": "No autorizado"}), 401
+
+    if request.method == "GET":
+        with get_conn() as conn:
+            cliente = conn.execute("SELECT id FROM clientes_sistema WHERE id=%s", (cliente_id,)).fetchone()
+            if not cliente:
+                return jsonify({"ok": False, "error": "Cliente no encontrado."}), 404
+            rows = conn.execute("""
+                SELECT id, cliente_id, nombre, usuario, rol, activo,
+                       ultimo_login, created_at, updated_at
+                FROM usuarios_sistema
+                WHERE cliente_id=%s
+                ORDER BY id DESC
+            """, (cliente_id,)).fetchall()
+        return jsonify({"ok": True, "usuarios": rows})
+
+    data = _body_json()
+    try:
+        nombre, usuario, password, rol, activo = _usuario_admin_payload(data)
+        password_hash = _hash_password_sistema(password)
+        with get_conn() as conn:
+            cliente = conn.execute("SELECT id FROM clientes_sistema WHERE id=%s", (cliente_id,)).fetchone()
+            if not cliente:
+                return jsonify({"ok": False, "error": "Cliente no encontrado."}), 404
+            existe = conn.execute("SELECT id FROM usuarios_sistema WHERE usuario=%s", (usuario,)).fetchone()
+            if existe:
+                return jsonify({"ok": False, "error": "Ese usuario ya existe."}), 409
+            row = conn.execute("""
+                INSERT INTO usuarios_sistema (
+                    cliente_id, nombre, usuario, password_hash, rol, activo
+                )
+                VALUES (%s,%s,%s,%s,%s,%s)
+                RETURNING id, cliente_id, nombre, usuario, rol, activo,
+                          ultimo_login, created_at, updated_at
+            """, (cliente_id, nombre, usuario, password_hash, rol, activo)).fetchone()
+            _registrar_evento_licencia(
+                conn,
+                cliente_id,
+                auth["usuario_id"],
+                auth.get("device_id_hash"),
+                "CREAR_USUARIO_CLIENTE",
+                f"usuario_id={row['id']} usuario={usuario} rol={rol}",
+            )
+        return jsonify({"ok": True, "usuario": row, "mensaje": "Usuario creado correctamente."})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        app.logger.exception("Error al crear usuario de cliente")
+        return jsonify({"ok": False, "error": "No se pudo crear el usuario."}), 500
+
+
+@app.route("/api/admin/usuarios/<int:usuario_id>/reset-password", methods=["POST"])
+def api_admin_usuario_reset_password(usuario_id):
+    auth = _require_super_admin()
+    if not auth:
+        return jsonify({"error": "No autorizado"}), 401
+
+    data = _body_json()
+    password = data.get("nueva_password_temporal") or data.get("password_temporal") or data.get("password") or ""
+    if not password or len(password) < 6:
+        return jsonify({"ok": False, "error": "La nueva contrasena temporal debe tener al menos 6 caracteres."}), 400
+
+    try:
+        password_hash = _hash_password_sistema(password)
+        with get_conn() as conn:
+            row = conn.execute("""
+                SELECT id, cliente_id, usuario, rol
+                FROM usuarios_sistema
+                WHERE id=%s
+            """, (usuario_id,)).fetchone()
+            if not row:
+                return jsonify({"ok": False, "error": "Usuario no encontrado."}), 404
+            if row["rol"] == "super_admin":
+                return jsonify({"ok": False, "error": "No se puede resetear un super_admin desde este panel."}), 403
+            conn.execute("""
+                UPDATE usuarios_sistema
+                SET password_hash=%s, updated_at=NOW()
+                WHERE id=%s
+            """, (password_hash, usuario_id))
+            conn.execute("""
+                UPDATE sesiones_activas
+                SET estado='cerrada', updated_at=NOW()
+                WHERE usuario_id=%s AND estado='activa'
+            """, (usuario_id,))
+            _registrar_evento_licencia(
+                conn,
+                row["cliente_id"],
+                auth["usuario_id"],
+                auth.get("device_id_hash"),
+                "RESET_PASSWORD_USUARIO",
+                f"usuario_id={usuario_id} usuario={row['usuario']}",
+            )
+        return jsonify({"ok": True, "mensaje": "Contrasena restablecida."})
+    except Exception:
+        app.logger.exception("Error al restablecer password de usuario")
+        return jsonify({"ok": False, "error": "No se pudo restablecer la contrasena."}), 500
+
+
+def _admin_set_activo_usuario(usuario_id, activo):
+    auth = _require_super_admin()
+    if not auth:
+        return jsonify({"error": "No autorizado"}), 401
+    with get_conn() as conn:
+        row = conn.execute("""
+            SELECT id, cliente_id, usuario, rol
+            FROM usuarios_sistema
+            WHERE id=%s
+        """, (usuario_id,)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Usuario no encontrado."}), 404
+        if row["rol"] == "super_admin":
+            return jsonify({"ok": False, "error": "No se puede cambiar un super_admin desde este panel."}), 403
+        conn.execute("UPDATE usuarios_sistema SET activo=%s, updated_at=NOW() WHERE id=%s", (activo, usuario_id))
+        if not activo:
+            conn.execute("""
+                UPDATE sesiones_activas
+                SET estado='cerrada', updated_at=NOW()
+                WHERE usuario_id=%s AND estado='activa'
+            """, (usuario_id,))
+        _registrar_evento_licencia(
+            conn,
+            row["cliente_id"],
+            auth["usuario_id"],
+            auth.get("device_id_hash"),
+            "ACTIVAR_USUARIO_CLIENTE" if activo else "DESACTIVAR_USUARIO_CLIENTE",
+            f"usuario_id={usuario_id} usuario={row['usuario']}",
+        )
+    return jsonify({"ok": True, "activo": bool(activo)})
+
+
+@app.route("/api/admin/usuarios/<int:usuario_id>/activar", methods=["POST"])
+def api_admin_usuario_activar(usuario_id):
+    return _admin_set_activo_usuario(usuario_id, True)
+
+
+@app.route("/api/admin/usuarios/<int:usuario_id>/desactivar", methods=["POST"])
+def api_admin_usuario_desactivar(usuario_id):
+    return _admin_set_activo_usuario(usuario_id, False)
 
 
 def _admin_set_estado_cliente(cliente_id, estado):

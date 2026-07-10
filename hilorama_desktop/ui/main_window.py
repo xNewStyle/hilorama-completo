@@ -111,6 +111,23 @@ class HiloramaDesktopApp(BaseTk):
             )
             btn.pack(fill="x", padx=10, pady=5)
 
+        tk.Frame(sidebar, bg="#202938").pack(fill="both", expand=True)
+        btn_logout = tk.Button(
+            sidebar,
+            text="Cerrar sesion",
+            command=self.cerrar_sesion,
+            anchor="w",
+            bg="#5B2630",
+            fg="white",
+            activebackground="#71313D",
+            activeforeground="white",
+            relief="flat",
+            font=("Segoe UI", 12),
+            padx=14,
+            pady=10,
+        )
+        btn_logout.pack(fill="x", padx=10, pady=(8, 16))
+
         self.content = ttk.Frame(self, padding=2)
         self.content.grid(row=0, column=1, sticky="nsew")
         self.content.columnconfigure(0, weight=1)
@@ -214,6 +231,57 @@ class HiloramaDesktopApp(BaseTk):
         usuario = (self.session or {}).get("usuario") or {}
         permisos = (self.session or {}).get("permisos") or []
         return usuario.get("rol") == "super_admin" or "super_admin" in permisos
+
+    def cerrar_sesion(self):
+        confirmar = messagebox.askyesno(
+            "Cerrar sesion",
+            "Desea cerrar la sesion de Hilorama en esta computadora?",
+            parent=self,
+        )
+        if not confirmar:
+            return
+
+        if self.heartbeat:
+            self.heartbeat.stop()
+            self.heartbeat = None
+
+        try:
+            if self.auth_service:
+                self.auth_service.logout()
+            else:
+                self._borrar_sesion_local()
+            log_info("hilorama_desktop", "Sesion cerrada por el usuario")
+        except Exception as exc:
+            log_error("hilorama_desktop", "Fallo logout remoto; borrando sesion local", exc)
+            try:
+                self._borrar_sesion_local()
+            except Exception as clear_exc:
+                log_error("hilorama_desktop", "No se pudo borrar la sesion local", clear_exc)
+                messagebox.showerror(
+                    "Cerrar sesion",
+                    "No se pudo borrar la sesion local. Revise logs.",
+                    parent=self,
+                )
+                return
+
+        messagebox.showinfo(
+            "Cerrar sesion",
+            "Sesion cerrada. Abra Hilorama nuevamente para iniciar sesion.",
+            parent=self,
+        )
+        self.destroy()
+
+    def _borrar_sesion_local(self):
+        store = getattr(self.auth_service, "store", None) if self.auth_service else None
+        if store:
+            store.clear()
+            return
+
+        try:
+            from ..security.local_secure_store import LocalSecureStore
+        except ImportError:
+            from security.local_secure_store import LocalSecureStore
+        LocalSecureStore().clear()
 
     def _iniciar_heartbeat(self):
         if not self.auth_service:
