@@ -10,6 +10,11 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from .package_cleanup import clean_python_artifacts, format_cleanup_summary
+except ImportError:
+    from package_cleanup import clean_python_artifacts, format_cleanup_summary
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_ROOT = PROJECT_ROOT / "dist_cliente"
@@ -118,6 +123,7 @@ EXCLUDED_RELATIVE = {
     Path("hilorama_desktop") / "build_exe.py",
     Path("hilorama_desktop") / "build_client_package.py",
     Path("hilorama_desktop") / "create_update_release.py",
+    Path("hilorama_desktop") / "package_cleanup.py",
     Path("hilorama_desktop") / "test_fase2_security.py",
 }
 
@@ -186,8 +192,12 @@ def build_client_package() -> dict:
     for dirname in EMPTY_RUNTIME_DIRS:
         (PACKAGE_ROOT / dirname).mkdir(parents=True, exist_ok=True)
 
+    cleanup = clean_python_artifacts(PACKAGE_ROOT)
+    if not cleanup["ok"]:
+        raise RuntimeError(format_cleanup_summary(cleanup))
+
     risks = _scan_risks(copied_files)
-    report_path = _write_report(copied_files, skipped_sensitive, missing_optional, risks)
+    report_path = _write_report(copied_files, skipped_sensitive, missing_optional, risks, cleanup)
 
     return {
         "package_root": PACKAGE_ROOT,
@@ -196,6 +206,7 @@ def build_client_package() -> dict:
         "skipped_sensitive": skipped_sensitive,
         "missing_optional": missing_optional,
         "risks": risks,
+        "cleanup": cleanup,
     }
 
 
@@ -300,6 +311,7 @@ def _write_report(
     skipped_sensitive: list[str],
     missing_optional: list[str],
     risks: list[str],
+    cleanup: dict,
 ) -> Path:
     report_path = PACKAGE_ROOT / REPORT_NAME
     lines = [
@@ -344,6 +356,7 @@ def _write_report(
         "- PDFs existentes de cotizaciones/ventas; solo se crean carpetas vacias para runtime.",
         "",
         f"TOTAL ARCHIVOS COPIADOS: {len(copied_files)}",
+        format_cleanup_summary(cleanup),
     ])
 
     if missing_optional:

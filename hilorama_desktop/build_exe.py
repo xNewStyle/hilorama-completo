@@ -13,6 +13,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from .package_cleanup import clean_python_artifacts, format_cleanup_summary
+except ImportError:
+    from package_cleanup import clean_python_artifacts, format_cleanup_summary
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = PROJECT_ROOT / "dist_cliente" / "HiloramaCliente"
@@ -72,6 +77,8 @@ def main() -> int:
         summary = _regenerar_paquete(report)
         _validar_paquete_limpio(report)
         _validar_import_basico(report)
+        _limpiar_paquete_despues_de_pruebas(report, "despues de importar el paquete")
+        _validar_paquete_limpio(report)
 
         if args.check_only:
             report.append("")
@@ -82,6 +89,8 @@ def main() -> int:
 
         _verificar_pyinstaller(report)
         _ejecutar_pyinstaller(report)
+        _limpiar_paquete_despues_de_pruebas(report, "despues de PyInstaller")
+        _validar_paquete_limpio(report)
         _validar_exe_generado(report)
 
         report.append("")
@@ -255,6 +264,15 @@ def _validar_import_basico(report: list[str]) -> None:
     report.append("PRUEBA SIN DATABASE_URL")
     report.append("- Import basico de hilorama_desktop.main correcto en modo API.")
     report.append(f"- Resultado: {result.stdout.strip()}")
+
+
+def _limpiar_paquete_despues_de_pruebas(report: list[str], etapa: str) -> None:
+    cleanup = clean_python_artifacts(PACKAGE_ROOT)
+    if not cleanup["ok"]:
+        raise RuntimeError(format_cleanup_summary(cleanup))
+    report.append("")
+    report.append(f"LIMPIEZA {etapa.upper()}")
+    report.append(f"- {format_cleanup_summary(cleanup)}")
 
 
 def _verificar_pyinstaller(report: list[str]) -> None:
