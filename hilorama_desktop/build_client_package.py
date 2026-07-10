@@ -284,6 +284,15 @@ def _scan_risks(copied_files: list[str]) -> list[str]:
     return risks
 
 
+def _api_base_url_para_reporte() -> str:
+    try:
+        from hilorama_desktop.config import get_api_base_url
+
+        return get_api_base_url()
+    except Exception:
+        return "No disponible"
+
+
 def _write_report(
     copied_files: list[str],
     skipped_sensitive: list[str],
@@ -300,6 +309,11 @@ def _write_report(
         "Este paquete es para Hilorama Cliente en modo API.",
         "No incluye backend, Hilorama Central, base local, scripts privados ni datos reales.",
         "No es un exe compilado.",
+        "",
+        "CONFIGURACION API CLIENTE",
+        f"- API base URL configurada: {_api_base_url_para_reporte()}",
+        "- La variable HILORAMA_RENDER_API_BASE_URL puede sobreescribirla para pruebas locales.",
+        "- No usa conexion directa a base local.",
         "",
         "ARCHIVOS/DIRECTORIOS BASE INCLUIDOS",
     ]

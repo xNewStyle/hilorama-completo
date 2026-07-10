@@ -15,6 +15,7 @@ HILORAMA_ENV = os.environ.get("HILORAMA_ENV", "production").strip().lower()
 BUILD_CHANNEL = os.environ.get("BUILD_CHANNEL", "development").strip().lower()
 IS_FROZEN_BUILD = bool(getattr(sys, "frozen", False))
 HILORAMA_CLIENT_MODE = os.environ.get("HILORAMA_CLIENT_MODE", "production").strip().lower()
+DEFAULT_API_BASE_URL = "https://hilorama-completo.onrender.com"
 
 
 def _default_data_mode():
@@ -27,10 +28,15 @@ def _default_data_mode():
 HILORAMA_DATA_MODE = os.environ.get("HILORAMA_DATA_MODE", _default_data_mode()).strip().lower()
 DATA_MODE = HILORAMA_DATA_MODE
 
-RENDER_API_BASE_URL = os.environ.get(
-    "HILORAMA_RENDER_API_BASE_URL",
-    "http://127.0.0.1:10000",
-).rstrip("/")
+
+def get_api_base_url():
+    base_url = os.environ.get("HILORAMA_RENDER_API_BASE_URL", "").strip() or DEFAULT_API_BASE_URL
+    if not base_url:
+        raise RuntimeError("Falta HILORAMA_RENDER_API_BASE_URL o DEFAULT_API_BASE_URL.")
+    return base_url.rstrip("/")
+
+
+RENDER_API_BASE_URL = get_api_base_url()
 
 
 def current_data_mode():

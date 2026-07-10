@@ -109,14 +109,28 @@ def _parse_args():
 
 
 def _add_report_header(report: list[str]) -> None:
+    api_base_url = _api_base_url_para_reporte()
     report.extend([
         "REPORTE BUILD EXE HILORAMA CLIENTE",
         f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"Proyecto: {PROJECT_ROOT}",
         f"Paquete fuente: {PACKAGE_ROOT}",
         f"Spec: {SPEC_PATH}",
+        f"API base URL configurada: {api_base_url}",
+        "La API base URL no es DATABASE_URL ni conexion directa a base local.",
+        "HILORAMA_RENDER_API_BASE_URL tiene prioridad para pruebas locales.",
         "",
     ])
+
+
+def _api_base_url_para_reporte() -> str:
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from hilorama_desktop.config import get_api_base_url
+
+        return get_api_base_url()
+    except Exception:
+        return "No disponible"
 
 
 def _audit_requirements(report: list[str]) -> list[str]:
@@ -199,15 +213,17 @@ def _validar_paquete_limpio(report: list[str]) -> None:
 def _validar_import_basico(report: list[str]) -> None:
     env = os.environ.copy()
     env.pop("DATABASE_URL", None)
+    env.pop("HILORAMA_RENDER_API_BASE_URL", None)
     env["HILORAMA_DATA_MODE"] = "api"
-    env.setdefault("HILORAMA_RENDER_API_BASE_URL", "http://127.0.0.1:10000")
     env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 
     code = (
         "import os; "
         "assert 'DATABASE_URL' not in os.environ; "
+        "assert 'HILORAMA_RENDER_API_BASE_URL' not in os.environ; "
+        "from hilorama_desktop.config import RENDER_API_BASE_URL; "
         "import hilorama_desktop.main; "
-        "print('IMPORT_OK')"
+        "print('IMPORT_OK', RENDER_API_BASE_URL)"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -223,6 +239,7 @@ def _validar_import_basico(report: list[str]) -> None:
     report.append("")
     report.append("PRUEBA SIN DATABASE_URL")
     report.append("- Import basico de hilorama_desktop.main correcto en modo API.")
+    report.append(f"- Resultado: {result.stdout.strip()}")
 
 
 def _verificar_pyinstaller(report: list[str]) -> None:
