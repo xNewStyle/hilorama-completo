@@ -118,6 +118,19 @@ except ImportError:
         resumen_almacen,
     )
 
+try:
+    from hilorama_backend.services.clientes_analytics_service import (
+        construir_analitica_clientas,
+        normalizar_estado as _normalizar_estado_crm,
+        parsear_fecha as _parsear_fecha_crm,
+    )
+except ImportError:
+    from services.clientes_analytics_service import (
+        construir_analitica_clientas,
+        normalizar_estado as _normalizar_estado_crm,
+        parsear_fecha as _parsear_fecha_crm,
+    )
+
 def registrar_error(nota_id, codigo, empacador_id, motivo):
     with get_conn() as conn:
         conn.execute("""
@@ -3145,6 +3158,291 @@ def _respuesta_error_nota_api(exc, accion="guardar"):
         "ok": False,
         "error": f"No se pudo {accion} la nota. Revisa logs del backend para ver el detalle.",
     }), 500
+
+
+# ================= CRM COMERCIAL DE CLIENTAS =================
+# Solo se cuentan estados que el backend ya trata como ventas finales. No se
+# incluyen COTIZACION, VENTA ni VENTA_PENDIENTE, porque aun no son ventas reales.
+ESTADOS_VENTA_COMERCIAL_ANALYTICS = frozenset(
+    set(ESTADOS_NOTA_PAGADA_API) | {"ENVIADO"}
+)
+ORDENES_RANKING_CLIENTAS = {
+    "total_comprado",
+    "numero_compras",
+    "ticket_promedio",
+    "ultima_compra",
+}
+
+
+def _filtros_analytics_clientas_api(args):
+    return {
+        "desde": (args.get("desde") or "").strip(),
+        "hasta": (args.get("hasta") or "").strip(),
+        "q": (args.get("q") or "").strip(),
+        "segmento": (args.get("segmento") or "").strip(),
+    }
+
+
+def _where_estados_ventas_finales_api(alias="n"):
+    estados = tuple(sorted(ESTADOS_VENTA_COMERCIAL_ANALYTICS))
+    placeholders = ", ".join(["%s"] * len(estados))
+    return (
+        f"UPPER(COALESCE(CAST({alias}.estado AS TEXT), '')) IN ({placeholders})",
+        estados,
+    )
+
+
+def _consultar_clientes_crm_api(conn):
+    if not _tabla_existe_api(conn, "clientes"):
+        return []
+    columnas = _columnas_tabla_api(conn, "clientes")
+    if "id" not in columnas:
+        return []
+    orden = "LOWER(nombre), id" if "nombre" in columnas else "id"
+    rows = conn.execute(f"SELECT * FROM clientes ORDER BY {orden}").fetchall()
+    return [_normalizar_cliente_api(row) for row in rows if row]
+
+
+def _consultar_ventas_crm_api(conn):
+    if not _tabla_existe_api(conn, "notas"):
+        return []
+    columnas = _columnas_tabla_api(conn, "notas")
+    if not {"id", "cliente_id", "estado"}.issubset(columnas):
+        return []
+    where_estados, valores = _where_estados_ventas_finales_api("n")
+    rows = conn.execute(f"""
+        SELECT n.*, it.subtotal_productos
+        FROM notas n
+        {_join_subtotal_items_nota_api()}
+        WHERE n.cliente_id IS NOT NULL
+          AND {where_estados}
+        ORDER BY n.fecha ASC NULLS LAST, n.id ASC
+    """, valores).fetchall()
+    ventas = []
+    for row in rows:
+        nota = _normalizar_nota_api(row)
+        if not nota:
+            continue
+        if _normalizar_estado_crm(nota.get("estado")) not in ESTADOS_VENTA_COMERCIAL_ANALYTICS:
+            continue
+        nota["fecha_comercial"] = nota.get("fecha_pago") or nota.get("fecha")
+        if _parsear_fecha_crm(nota.get("fecha_comercial")):
+            ventas.append(nota)
+    return ventas
+
+
+def _consultar_items_ventas_crm_api(conn):
+    if not _tabla_existe_api(conn, "items") or not _tabla_existe_api(conn, "notas"):
+        return []
+    items_cols = _columnas_tabla_api(conn, "items")
+    notas_cols = _columnas_tabla_api(conn, "notas")
+    productos_cols = _columnas_tabla_api(conn, "productos")
+    if "nota_id" not in items_cols or not {"id", "estado"}.issubset(notas_cols):
+        return []
+
+    join_productos, tiene_join_producto = _join_producto_para_item(items_cols, productos_cols)
+    codigo_expr = "COALESCE({})".format(
+        ", ".join([
+            _sql_text_col("i", "codigo", items_cols),
+            _sql_text_col("i", "codigo_barras", items_cols),
+            _sql_text_col("p", "codigo", productos_cols) if tiene_join_producto else "NULL",
+            "''",
+        ])
+    )
+    marca_expr = "COALESCE({})".format(
+        ", ".join([
+            _sql_text_col("i", "marca", items_cols),
+            _sql_text_col("p", "marca", productos_cols) if tiene_join_producto else "NULL",
+            "''",
+        ])
+    )
+    hilo_expr = "COALESCE({})".format(
+        ", ".join([
+            _sql_text_col("i", "hilo", items_cols),
+            _sql_text_col("p", "hilo", productos_cols) if tiene_join_producto else "NULL",
+            "''",
+        ])
+    )
+    color_expr = "COALESCE({})".format(
+        ", ".join([
+            _sql_text_col("i", "color", items_cols),
+            _sql_text_col("p", "color", productos_cols) if tiene_join_producto else "NULL",
+            "''",
+        ])
+    )
+    cantidad_expr = _sql_num_col("i", "cantidad", items_cols)
+    precio_expr = _sql_num_col("i", "precio", items_cols)
+    where_estados, valores = _where_estados_ventas_finales_api("n")
+
+    rows = conn.execute(f"""
+        SELECT
+            i.nota_id AS nota_id,
+            {codigo_expr} AS codigo,
+            {marca_expr} AS marca,
+            {hilo_expr} AS hilo,
+            {color_expr} AS color,
+            {cantidad_expr} AS cantidad,
+            {precio_expr} AS precio,
+            ({cantidad_expr} * {precio_expr}) AS subtotal
+        FROM items i
+        JOIN notas n ON n.id = i.nota_id
+        {join_productos}
+        WHERE {where_estados}
+    """, valores).fetchall()
+    return [_normalizar_item_nota_api(row) for row in rows]
+
+
+def _analitica_clientas_api(filtros=None, incluir_historial=False):
+    with get_conn() as conn:
+        clientes = _consultar_clientes_crm_api(conn)
+        ventas = _consultar_ventas_crm_api(conn)
+        items = _consultar_items_ventas_crm_api(conn)
+    return construir_analitica_clientas(
+        clientes,
+        ventas,
+        items,
+        filtros=filtros,
+        incluir_historial=incluir_historial,
+    )
+
+
+def _ranking_clientas_api(metricas, orden):
+    orden = orden if orden in ORDENES_RANKING_CLIENTAS else "total_comprado"
+    if orden == "ultima_compra":
+        return sorted(
+            metricas,
+            key=lambda fila: (fila.get("ultima_compra") is not None, fila.get("ultima_compra") or ""),
+            reverse=True,
+        )
+    return sorted(
+        metricas,
+        key=lambda fila: (fila.get(orden) or 0, fila.get("total_comprado") or 0, fila.get("nombre") or ""),
+        reverse=True,
+    )
+
+
+def _fila_ranking_clienta_api(fila):
+    return {
+        clave: fila.get(clave)
+        for clave in (
+            "cliente_id",
+            "nombre",
+            "telefono",
+            "total_comprado",
+            "numero_compras",
+            "ticket_promedio",
+            "ultima_compra",
+            "dias_desde_ultima_compra",
+            "frecuencia_promedio_dias",
+            "indice_compra",
+            "segmento",
+        )
+    }
+
+
+def _buscar_metricas_clienta_api(cliente_id, incluir_historial=False):
+    data = _analitica_clientas_api(incluir_historial=incluir_historial)
+    cliente_id = str(cliente_id)
+    for fila in data.get("clientes", []):
+        if str(fila.get("cliente_id")) == cliente_id:
+            return fila
+    raise LookupError("Cliente no encontrado.")
+
+
+def _respuesta_error_analytics_clientas_api(exc, accion="consultar la analitica de clientas"):
+    if isinstance(exc, ValueError):
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if isinstance(exc, LookupError):
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    app.logger.exception("Error al %s", accion)
+    return jsonify({"ok": False, "error": "No se pudo consultar el CRM de clientas."}), 500
+
+
+@app.route("/api/clientes/analytics/resumen", methods=["GET"])
+def api_clientes_analytics_resumen():
+    _, error = _require_license_api()
+    if error:
+        return error
+    try:
+        filtros = _filtros_analytics_clientas_api(request.args)
+        data = _analitica_clientas_api(filtros=filtros)
+        return jsonify({"ok": True, "resumen": data["resumen"], "filtros": data["filtros"]})
+    except Exception as exc:
+        return _respuesta_error_analytics_clientas_api(exc, "consultar el resumen de clientas")
+
+
+@app.route("/api/clientes/analytics/ranking", methods=["GET"])
+def api_clientes_analytics_ranking():
+    _, error = _require_license_api()
+    if error:
+        return error
+    try:
+        filtros = _filtros_analytics_clientas_api(request.args)
+        orden = (request.args.get("orden") or "total_comprado").strip()
+        if orden not in ORDENES_RANKING_CLIENTAS:
+            raise ValueError("Orden de ranking no valido.")
+        limit = _api_limite(request.args.get("limit"), default=100, maximo=500)
+        data = _analitica_clientas_api(filtros=filtros)
+        ranking = _ranking_clientas_api(data["clientes"], orden)
+        return jsonify({
+            "ok": True,
+            "ranking": [_fila_ranking_clienta_api(fila) for fila in ranking[:limit]],
+            "total": len(ranking),
+            "limit": limit,
+            "orden": orden,
+            "filtros": data["filtros"],
+        })
+    except Exception as exc:
+        return _respuesta_error_analytics_clientas_api(exc, "consultar el ranking de clientas")
+
+
+@app.route("/api/clientes/analytics/graficas", methods=["GET"])
+def api_clientes_analytics_graficas():
+    _, error = _require_license_api()
+    if error:
+        return error
+    try:
+        filtros = _filtros_analytics_clientas_api(request.args)
+        data = _analitica_clientas_api(filtros=filtros)
+        return jsonify({"ok": True, "graficas": data["graficas"], "filtros": data["filtros"]})
+    except Exception as exc:
+        return _respuesta_error_analytics_clientas_api(exc, "consultar las graficas de clientas")
+
+
+@app.route("/api/clientes/<int:cliente_id>/analytics", methods=["GET"])
+def api_cliente_analytics(cliente_id):
+    _, error = _require_license_api()
+    if error:
+        return error
+    try:
+        fila = _buscar_metricas_clienta_api(cliente_id, incluir_historial=True)
+        fila["clienta"] = {
+            "id": fila.get("cliente_id"),
+            "nombre": fila.get("nombre"),
+            "telefono": fila.get("telefono"),
+            "direccion": fila.get("direccion") or {},
+        }
+        return jsonify({"ok": True, "analitica": fila})
+    except Exception as exc:
+        return _respuesta_error_analytics_clientas_api(exc, "consultar la ficha de clienta")
+
+
+@app.route("/api/clientes/<int:cliente_id>/historial-compras", methods=["GET"])
+def api_cliente_historial_compras(cliente_id):
+    _, error = _require_license_api()
+    if error:
+        return error
+    try:
+        fila = _buscar_metricas_clienta_api(cliente_id, incluir_historial=True)
+        historial = fila.get("historial_resumido", [])
+        return jsonify({
+            "ok": True,
+            "cliente_id": fila.get("cliente_id"),
+            "historial": historial,
+            "total": len(historial),
+        })
+    except Exception as exc:
+        return _respuesta_error_analytics_clientas_api(exc, "consultar el historial de compras")
 
 
 @app.route("/api/clientes", methods=["GET"])

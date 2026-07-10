@@ -162,6 +162,35 @@ class RenderApiClient:
     def buscar_clientes(self, params=None, token=None):
         return self.get("/api/clientes/buscar", params=params, token=token)
 
+    def get_clientes_analytics_resumen(self, desde=None, hasta=None, q=None, segmento=None, token=None):
+        params = _params_clientes_analytics(desde=desde, hasta=hasta, q=q, segmento=segmento)
+        return self.get("/api/clientes/analytics/resumen", params=params or None, token=token)
+
+    def get_clientes_analytics_ranking(
+        self,
+        desde=None,
+        hasta=None,
+        q=None,
+        segmento=None,
+        orden="total_comprado",
+        limit=100,
+        token=None,
+    ):
+        params = _params_clientes_analytics(desde=desde, hasta=hasta, q=q, segmento=segmento)
+        params["orden"] = orden or "total_comprado"
+        params["limit"] = limit or 100
+        return self.get("/api/clientes/analytics/ranking", params=params, token=token)
+
+    def get_cliente_analytics(self, cliente_id, token=None):
+        return self.get(f"/api/clientes/{cliente_id}/analytics", token=token)
+
+    def get_cliente_historial_compras(self, cliente_id, token=None):
+        return self.get(f"/api/clientes/{cliente_id}/historial-compras", token=token)
+
+    def get_clientes_analytics_graficas(self, desde=None, hasta=None, q=None, segmento=None, token=None):
+        params = _params_clientes_analytics(desde=desde, hasta=hasta, q=q, segmento=segmento)
+        return self.get("/api/clientes/analytics/graficas", params=params or None, token=token)
+
     def listar_notas(self, params=None, token=None):
         return self.get("/api/notas", params=params, token=token)
 
@@ -322,3 +351,17 @@ class RenderApiClient:
                 path=path,
                 base_url=self.base_url,
             ) from exc
+
+
+def _params_clientes_analytics(desde=None, hasta=None, q=None, segmento=None):
+    valores = {
+        "desde": desde,
+        "hasta": hasta,
+        "q": q,
+        "segmento": segmento,
+    }
+    return {
+        clave: str(valor).strip()
+        for clave, valor in valores.items()
+        if valor not in (None, "") and str(valor).strip()
+    }
