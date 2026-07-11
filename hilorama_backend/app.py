@@ -3192,30 +3192,40 @@ def _where_estados_ventas_finales_api(alias="n"):
     )
 
 
-def _consultar_clientes_crm_api(conn):
+def _consultar_clientes_crm_api(conn, cliente_id=None):
     if not _tabla_existe_api(conn, "clientes"):
         return []
     columnas = _columnas_tabla_api(conn, "clientes")
     if "id" not in columnas:
         return []
     orden = "LOWER(nombre), id" if "nombre" in columnas else "id"
-    rows = conn.execute(f"SELECT * FROM clientes ORDER BY {orden}").fetchall()
+    where = ""
+    valores = ()
+    if cliente_id is not None:
+        where = " WHERE id = %s"
+        valores = (cliente_id,)
+    rows = conn.execute(f"SELECT * FROM clientes{where} ORDER BY {orden}", valores).fetchall()
     return [_normalizar_cliente_api(row) for row in rows if row]
 
 
-def _consultar_ventas_crm_api(conn):
+def _consultar_ventas_crm_api(conn, cliente_id=None):
     if not _tabla_existe_api(conn, "notas"):
         return []
     columnas = _columnas_tabla_api(conn, "notas")
     if not {"id", "cliente_id", "estado"}.issubset(columnas):
         return []
     where_estados, valores = _where_estados_ventas_finales_api("n")
+    cliente_where = ""
+    if cliente_id is not None:
+        cliente_where = "\n          AND n.cliente_id = %s"
+        valores = tuple(valores) + (cliente_id,)
     rows = conn.execute(f"""
         SELECT n.*, it.subtotal_productos
         FROM notas n
         {_join_subtotal_items_nota_api()}
         WHERE n.cliente_id IS NOT NULL
           AND {where_estados}
+          {cliente_where}
         ORDER BY n.fecha ASC NULLS LAST, n.id ASC
     """, valores).fetchall()
     ventas = []
@@ -3231,7 +3241,7 @@ def _consultar_ventas_crm_api(conn):
     return ventas
 
 
-def _consultar_items_ventas_crm_api(conn):
+def _consultar_items_ventas_crm_api(conn, cliente_id=None):
     if not _tabla_existe_api(conn, "items") or not _tabla_existe_api(conn, "notas"):
         return []
     items_cols = _columnas_tabla_api(conn, "items")
@@ -3273,6 +3283,10 @@ def _consultar_items_ventas_crm_api(conn):
     cantidad_expr = _sql_num_col("i", "cantidad", items_cols)
     precio_expr = _sql_num_col("i", "precio", items_cols)
     where_estados, valores = _where_estados_ventas_finales_api("n")
+    cliente_where = ""
+    if cliente_id is not None:
+        cliente_where = "\n          AND n.cliente_id = %s"
+        valores = tuple(valores) + (cliente_id,)
 
     rows = conn.execute(f"""
         SELECT
@@ -3288,21 +3302,34 @@ def _consultar_items_ventas_crm_api(conn):
         JOIN notas n ON n.id = i.nota_id
         {join_productos}
         WHERE {where_estados}
+          {cliente_where}
     """, valores).fetchall()
     return [_normalizar_item_nota_api(row) for row in rows]
 
 
-def _analitica_clientas_api(filtros=None, incluir_historial=False):
+def _analitica_clientas_api(
+    filtros=None,
+    cliente_id=None,
+    incluir_historial=False,
+    incluir_favoritos=False,
+    incluir_graficas=False,
+):
     with get_conn() as conn:
-        clientes = _consultar_clientes_crm_api(conn)
-        ventas = _consultar_ventas_crm_api(conn)
-        items = _consultar_items_ventas_crm_api(conn)
+        clientes = _consultar_clientes_crm_api(conn, cliente_id=cliente_id)
+        ventas = _consultar_ventas_crm_api(conn, cliente_id=cliente_id)
+        items = (
+            _consultar_items_ventas_crm_api(conn, cliente_id=cliente_id)
+            if incluir_historial or incluir_favoritos
+            else []
+        )
     return construir_analitica_clientas(
         clientes,
         ventas,
         items,
         filtros=filtros,
         incluir_historial=incluir_historial,
+        incluir_favoritos=incluir_favoritos,
+        incluir_graficas=incluir_graficas,
     )
 
 
@@ -3340,8 +3367,12 @@ def _fila_ranking_clienta_api(fila):
     }
 
 
-def _buscar_metricas_clienta_api(cliente_id, incluir_historial=False):
-    data = _analitica_clientas_api(incluir_historial=incluir_historial)
+def _buscar_metricas_clienta_api(cliente_id, incluir_historial=False, incluir_favoritos=False):
+    data = _analitica_clientas_api(
+        cliente_id=cliente_id,
+        incluir_historial=incluir_historial,
+        incluir_favoritos=incluir_favoritos,
+    )
     cliente_id = str(cliente_id)
     for fila in data.get("clientes", []):
         if str(fila.get("cliente_id")) == cliente_id:
@@ -3365,7 +3396,11 @@ def api_clientes_analytics_resumen():
         return error
     try:
         filtros = _filtros_analytics_clientas_api(request.args)
-        data = _analitica_clientas_api(filtros=filtros)
+        data = _analitica_clientas_api(
+            filtros=filtros,
+            incluir_favoritos=False,
+            incluir_graficas=False,
+        )
         return jsonify({"ok": True, "resumen": data["resumen"], "filtros": data["filtros"]})
     except Exception as exc:
         return _respuesta_error_analytics_clientas_api(exc, "consultar el resumen de clientas")
@@ -3382,10 +3417,15 @@ def api_clientes_analytics_ranking():
         if orden not in ORDENES_RANKING_CLIENTAS:
             raise ValueError("Orden de ranking no valido.")
         limit = _api_limite(request.args.get("limit"), default=100, maximo=500)
-        data = _analitica_clientas_api(filtros=filtros)
+        data = _analitica_clientas_api(
+            filtros=filtros,
+            incluir_favoritos=False,
+            incluir_graficas=False,
+        )
         ranking = _ranking_clientas_api(data["clientes"], orden)
         return jsonify({
             "ok": True,
+            "resumen": data["resumen"],
             "ranking": [_fila_ranking_clienta_api(fila) for fila in ranking[:limit]],
             "total": len(ranking),
             "limit": limit,
@@ -3403,7 +3443,11 @@ def api_clientes_analytics_graficas():
         return error
     try:
         filtros = _filtros_analytics_clientas_api(request.args)
-        data = _analitica_clientas_api(filtros=filtros)
+        data = _analitica_clientas_api(
+            filtros=filtros,
+            incluir_favoritos=False,
+            incluir_graficas=True,
+        )
         return jsonify({"ok": True, "graficas": data["graficas"], "filtros": data["filtros"]})
     except Exception as exc:
         return _respuesta_error_analytics_clientas_api(exc, "consultar las graficas de clientas")
@@ -3415,7 +3459,7 @@ def api_cliente_analytics(cliente_id):
     if error:
         return error
     try:
-        fila = _buscar_metricas_clienta_api(cliente_id, incluir_historial=True)
+        fila = _buscar_metricas_clienta_api(cliente_id, incluir_favoritos=True)
         fila["clienta"] = {
             "id": fila.get("cliente_id"),
             "nombre": fila.get("nombre"),

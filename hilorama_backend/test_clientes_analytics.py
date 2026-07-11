@@ -88,6 +88,22 @@ class ClientesAnalyticsTests(unittest.TestCase):
         self.assertTrue(data["graficas"]["top_clientas_por_total"])
         self.assertGreater(data["resumen"]["venta_total_periodo"], 0)
 
+    def test_ranking_ligero_omite_favoritos_e_historial(self):
+        data = construir_analitica_clientas(
+            self.clientes,
+            self.ventas,
+            self.items,
+            ahora=AHORA,
+            incluir_historial=False,
+            incluir_favoritos=False,
+            incluir_graficas=False,
+        )
+        filas = {fila["cliente_id"]: fila for fila in data["clientes"]}
+        self.assertEqual(filas[3]["marcas_favoritas"], [])
+        self.assertEqual(filas[3]["productos_favoritos"], [])
+        self.assertNotIn("historial_resumido", filas[3])
+        self.assertEqual(data["graficas"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

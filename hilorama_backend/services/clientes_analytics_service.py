@@ -302,6 +302,7 @@ def construir_metricas_clienta(
     items_por_nota: dict[str, list[dict[str, Any]]],
     ahora: datetime | None = None,
     incluir_historial: bool = False,
+    incluir_favoritos: bool | None = None,
 ) -> dict[str, Any]:
     ahora = (ahora or datetime.now()).replace(tzinfo=None)
     ventas_normalizadas = []
@@ -334,26 +335,34 @@ def construir_metricas_clienta(
     )
     segmento = determinar_segmento(numero_compras, indice, dias_desde_ultima)
 
+    if incluir_favoritos is None:
+        incluir_favoritos = incluir_historial
+
     todos_items: list[dict[str, Any]] = []
     historial = []
-    for venta in reversed(ventas_normalizadas):
-        nota_id = str(venta.get("id") or venta.get("nota_id") or "")
-        items = list(items_por_nota.get(nota_id, []))
-        todos_items.extend(items)
-        if incluir_historial:
-            productos, marcas = _resumen_items(items)
-            historial.append({
-                "nota_id": nota_id,
-                "folio": _texto(venta.get("folio") or venta.get("id")),
-                "fecha": _fecha_iso(venta["_fecha"]),
-                "total": round(venta["_total"], 2),
-                "estado": _texto(venta.get("estado")),
-                "productos": productos,
-                "marcas": marcas,
-                "cantidad_total": sum(_entero(item.get("cantidad")) for item in items),
-            })
+    if incluir_favoritos or incluir_historial:
+        for venta in reversed(ventas_normalizadas):
+            nota_id = str(venta.get("id") or venta.get("nota_id") or "")
+            items = list(items_por_nota.get(nota_id, []))
+            if incluir_favoritos:
+                todos_items.extend(items)
+            if incluir_historial:
+                productos, marcas = _resumen_items(items)
+                historial.append({
+                    "nota_id": nota_id,
+                    "folio": _texto(venta.get("folio") or venta.get("id")),
+                    "fecha": _fecha_iso(venta["_fecha"]),
+                    "total": round(venta["_total"], 2),
+                    "estado": _texto(venta.get("estado")),
+                    "productos": productos,
+                    "marcas": marcas,
+                    "cantidad_total": sum(_entero(item.get("cantidad")) for item in items),
+                })
 
-    marcas_favoritas, productos_favoritos = _favoritos(todos_items)
+    if incluir_favoritos:
+        marcas_favoritas, productos_favoritos = _favoritos(todos_items)
+    else:
+        marcas_favoritas, productos_favoritos = [], []
     metricas = {
         "cliente_id": cliente.get("id"),
         "nombre": _texto(cliente.get("nombre")) or "Sin nombre",
@@ -386,11 +395,15 @@ def construir_analitica_clientas(
     filtros: dict[str, Any] | None = None,
     ahora: datetime | None = None,
     incluir_historial: bool = False,
+    incluir_favoritos: bool | None = None,
+    incluir_graficas: bool = True,
     estados_finales: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Agrupa ventas finales por clienta y devuelve ranking, resumen y graficas."""
     filtros = dict(filtros or {})
     ahora = (ahora or datetime.now()).replace(tzinfo=None)
+    if incluir_favoritos is None:
+        incluir_favoritos = incluir_historial
     estados_finales = {
         normalizar_estado(estado)
         for estado in (estados_finales or ESTADOS_VENTAS_FINALES)
@@ -431,11 +444,12 @@ def construir_analitica_clientas(
         ventas_filtradas.append(venta)
 
     items_por_nota: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    notas_incluidas = {str(venta.get("id") or venta.get("nota_id") or "") for venta in ventas_filtradas}
-    for item in items:
-        nota_id = str(item.get("nota_id") or "")
-        if nota_id and nota_id in notas_incluidas:
-            items_por_nota[nota_id].append(dict(item))
+    if incluir_favoritos or incluir_historial:
+        notas_incluidas = {str(venta.get("id") or venta.get("nota_id") or "") for venta in ventas_filtradas}
+        for item in items:
+            nota_id = str(item.get("nota_id") or "")
+            if nota_id and nota_id in notas_incluidas:
+                items_por_nota[nota_id].append(dict(item))
 
     metricas = [
         construir_metricas_clienta(
@@ -444,6 +458,7 @@ def construir_analitica_clientas(
             items_por_nota,
             ahora=ahora,
             incluir_historial=incluir_historial,
+            incluir_favoritos=incluir_favoritos,
         )
         for cliente_id, cliente in clientes_por_id.items()
     ]
@@ -455,7 +470,7 @@ def construir_analitica_clientas(
         reverse=True,
     )
     resumen = _crear_resumen(metricas, ahora)
-    graficas = _crear_graficas(metricas, ventas_filtradas)
+    graficas = _crear_graficas(metricas, ventas_filtradas) if incluir_graficas else {}
     return {
         "clientes": metricas,
         "resumen": resumen,

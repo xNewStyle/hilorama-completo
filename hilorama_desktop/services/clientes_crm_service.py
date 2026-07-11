@@ -46,6 +46,15 @@ def obtener_resumen(filtros: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def listar_ranking(filtros: dict[str, Any] | None = None, orden="total_comprado", limit=100) -> list[dict[str, Any]]:
+    return cargar_panoramica(filtros=filtros, orden=orden, limit=limit)["ranking"]
+
+
+def cargar_panoramica(
+    filtros: dict[str, Any] | None = None,
+    orden="total_comprado",
+    limit=100,
+) -> dict[str, Any]:
+    """Carga resumen y ranking con una sola llamada de API cuando el backend lo soporta."""
     params = _filtros(filtros)
     data = _call_api(
         "consultar ranking comercial de clientas",
@@ -57,7 +66,19 @@ def listar_ranking(filtros: dict[str, Any] | None = None, orden="total_comprado"
             **params,
         ),
     )
-    return [_normalizar_ranking(fila) for fila in data.get("ranking", [])]
+    resumen = data.get("resumen")
+    if resumen is None:
+        # Compatibilidad temporal con servidores anteriores a la respuesta unificada.
+        resumen = obtener_resumen(filtros)
+    else:
+        resumen = _normalizar_resumen(resumen)
+    return {
+        "resumen": resumen,
+        "ranking": [_normalizar_ranking(fila) for fila in data.get("ranking", [])],
+        "total": _entero(data.get("total")),
+        "limit": _entero(data.get("limit"), 100),
+        "orden": str(data.get("orden") or orden),
+    }
 
 
 def obtener_analitica_clienta(cliente_id) -> dict[str, Any]:
