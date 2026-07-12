@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+import json
+from datetime import datetime
 
 try:
     from ..api_client.render_api_client import RenderApiClient, RenderApiError
@@ -29,11 +31,13 @@ SESION_COLUMNS = (
 )
 
 AUDITORIA_COLUMNS = (
-    ("created_at", "Fecha", 170),
+    ("fecha_creacion", "Fecha", 170),
     ("usuario", "Usuario", 140),
-    ("evento", "Accion", 160),
-    ("nombre_negocio", "Cliente", 200),
-    ("detalle", "Detalle", 320),
+    ("modulo", "Modulo", 125),
+    ("accion", "Accion", 180),
+    ("descripcion", "Descripcion", 320),
+    ("entidad", "Entidad", 155),
+    ("resultado", "Resultado", 110),
 )
 
 USUARIO_COLUMNS = (
@@ -96,7 +100,29 @@ def _lista(data):
 
 def _valor(row, key):
     value = row.get(key, "") if isinstance(row, dict) else ""
-    return "" if value is None else str(value)
+    if value is None:
+        return ""
+    if key in {"fecha_creacion", "created_at", "updated_at", "ultimo_login", "ultimo_heartbeat"}:
+        return _fecha_local(value)
+    return str(value)
+
+
+def _fecha_local(value):
+    if hasattr(value, "astimezone"):
+        try:
+            return value.astimezone().strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            return value.strftime("%d/%m/%Y %H:%M")
+    texto = str(value or "").strip()
+    if not texto:
+        return ""
+    try:
+        fecha = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+        if fecha.tzinfo:
+            fecha = fecha.astimezone()
+        return fecha.strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return texto
 
 
 class AdminView(ttk.Frame):
@@ -108,6 +134,7 @@ class AdminView(ttk.Frame):
         self.usuarios_cliente = []
         self.sesiones = []
         self.auditoria = []
+        self.auditoria_pagination = {}
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
@@ -192,15 +219,52 @@ class AdminView(ttk.Frame):
     def _crear_tab_auditoria(self):
         tab = ttk.Frame(self.tabs, padding=8)
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(0, weight=1)
+        tab.rowconfigure(1, weight=1)
         self.tabs.add(tab, text="Auditoria")
 
+        filtros = ttk.LabelFrame(tab, text="Filtros", padding=8)
+        filtros.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.auditoria_vars = {
+            "texto": tk.StringVar(),
+            "modulo": tk.StringVar(),
+            "accion": tk.StringVar(),
+            "resultado": tk.StringVar(),
+            "usuario": tk.StringVar(),
+            "cliente": tk.StringVar(),
+            "entidad": tk.StringVar(),
+            "desde": tk.StringVar(),
+            "hasta": tk.StringVar(),
+        }
+        campos = (
+            ("Texto", "texto", 20),
+            ("Modulo", "modulo", 14),
+            ("Accion", "accion", 17),
+            ("Resultado", "resultado", 12),
+            ("Usuario", "usuario", 14),
+            ("Cliente", "cliente", 16),
+            ("Entidad", "entidad", 16),
+            ("Desde", "desde", 12),
+            ("Hasta", "hasta", 12),
+        )
+        for indice, (etiqueta, clave, ancho) in enumerate(campos):
+            fila = indice // 5
+            columna = (indice % 5) * 2
+            ttk.Label(filtros, text=etiqueta).grid(row=fila, column=columna, sticky="w", padx=(0 if columna == 0 else 6, 2))
+            ttk.Entry(filtros, textvariable=self.auditoria_vars[clave], width=ancho).grid(
+                row=fila, column=columna + 1, sticky="w"
+            )
+
         self.tree_auditoria = _crear_tree(tab, AUDITORIA_COLUMNS)
-        self.tree_auditoria.grid(row=0, column=0, sticky="nsew")
+        self.tree_auditoria.grid(row=1, column=0, sticky="nsew")
+        _tree_from_container(self.tree_auditoria).bind("<Double-1>", self.ver_detalle_auditoria)
 
         acciones = ttk.Frame(tab)
-        acciones.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        acciones.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         ttk.Button(acciones, text="Actualizar auditoria", command=self.cargar_auditoria).pack(side="left")
+        ttk.Button(acciones, text="Limpiar filtros", command=self.limpiar_filtros_auditoria).pack(side="left", padx=(6, 0))
+        ttk.Button(acciones, text="Anterior", command=lambda: self.cambiar_pagina_auditoria(-1)).pack(side="left", padx=(6, 0))
+        ttk.Button(acciones, text="Siguiente", command=lambda: self.cambiar_pagina_auditoria(1)).pack(side="left", padx=(6, 0))
+        ttk.Button(acciones, text="Ver detalle", command=self.ver_detalle_auditoria).pack(side="left", padx=(6, 0))
 
     def cargar_clientes(self):
         try:
@@ -242,14 +306,90 @@ class AdminView(ttk.Frame):
             log_error("hilorama_desktop", "Error al cargar sesiones activas admin", exc)
             _mostrar_error(self, "No se pudieron cargar las sesiones activas.", exc)
 
-    def cargar_auditoria(self):
+    def cargar_auditoria(self, reset=True):
+        if reset:
+            self.auditoria_pagination = {"page": 1, "per_page": 50}
         try:
             log_info("hilorama_desktop", "Cargando auditoria admin")
-            self.auditoria = _lista(self.api.admin_auditoria(token=_token(self.session)))
+            filtros = {
+                clave: variable.get().strip()
+                for clave, variable in self.auditoria_vars.items()
+                if variable.get().strip()
+            }
+            filtros["page"] = self.auditoria_pagination.get("page", 1)
+            filtros["per_page"] = self.auditoria_pagination.get("per_page", 50)
+            respuesta = self.api.admin_auditoria(params=filtros, token=_token(self.session))
+            self.auditoria = _lista(respuesta)
+            self.auditoria_pagination = respuesta.get("pagination") or self.auditoria_pagination
+            for registro in self.auditoria:
+                entidad_tipo = _valor(registro, "entidad_tipo")
+                entidad_id = _valor(registro, "entidad_id")
+                registro["entidad"] = " / ".join(valor for valor in (entidad_tipo, entidad_id) if valor)
             _llenar_tree(self.tree_auditoria, AUDITORIA_COLUMNS, self.auditoria)
         except Exception as exc:
             log_error("hilorama_desktop", "Error al cargar auditoria admin", exc)
             _mostrar_error(self, "No se pudo cargar la auditoria.", exc)
+
+    def limpiar_filtros_auditoria(self):
+        for variable in self.auditoria_vars.values():
+            variable.set("")
+        self.cargar_auditoria(reset=True)
+
+    def cambiar_pagina_auditoria(self, delta):
+        pagina = int(self.auditoria_pagination.get("page") or 1)
+        paginas = int(self.auditoria_pagination.get("pages") or 1)
+        nueva = max(1, min(paginas, pagina + delta))
+        if nueva != pagina:
+            self.auditoria_pagination["page"] = nueva
+            self.cargar_auditoria(reset=False)
+
+    def ver_detalle_auditoria(self, _event=None):
+        tree = _tree_from_container(self.tree_auditoria)
+        seleccionado = tree.focus()
+        if not seleccionado:
+            messagebox.showwarning("Auditoria", "Seleccione un registro de auditoria.", parent=self)
+            return
+        try:
+            registro = self.auditoria[int(seleccionado)]
+        except (IndexError, TypeError, ValueError):
+            messagebox.showwarning("Auditoria", "No se pudo identificar el registro seleccionado.", parent=self)
+            return
+        try:
+            respuesta = self.api.admin_auditoria_detalle(registro["id"], token=_token(self.session))
+            registro = respuesta.get("auditoria") or registro
+        except Exception as exc:
+            log_error("hilorama_desktop", "Error al cargar detalle de auditoria", exc)
+            _mostrar_error(self, "No se pudo cargar el detalle de auditoria.", exc)
+            return
+
+        ventana = tk.Toplevel(self)
+        ventana.title("Detalle de auditoria")
+        ventana.geometry("820x620")
+        ventana.transient(self.winfo_toplevel())
+        texto = tk.Text(ventana, wrap="word", font=("Consolas", 10), padx=12, pady=12)
+        texto.pack(fill="both", expand=True)
+        datos_anteriores = registro.get("datos_anteriores_json") or {}
+        datos_nuevos = registro.get("datos_nuevos_json") or {}
+        lineas = (
+            f"Fecha: {_valor(registro, 'fecha_creacion')}",
+            f"Usuario: {_valor(registro, 'usuario') or _valor(registro, 'usuario_nombre')}",
+            f"Modulo: {_valor(registro, 'modulo')}",
+            f"Accion: {_valor(registro, 'accion')}",
+            f"Descripcion: {_valor(registro, 'descripcion')}",
+            f"Entidad: {_valor(registro, 'entidad_tipo')} / {_valor(registro, 'entidad_id')}",
+            f"Resultado: {_valor(registro, 'resultado')}",
+            f"Codigo de error: {_valor(registro, 'codigo_error')}",
+            f"Dispositivo: {_valor(registro, 'device_id')}",
+            f"IP: {_valor(registro, 'ip')}",
+            "",
+            "Datos anteriores:",
+            json.dumps(datos_anteriores, ensure_ascii=False, indent=2, default=str),
+            "",
+            "Datos nuevos:",
+            json.dumps(datos_nuevos, ensure_ascii=False, indent=2, default=str),
+        )
+        texto.insert("1.0", "\n".join(lineas))
+        texto.configure(state="disabled")
 
     def crear_cliente(self):
         self._abrir_form_cliente("Crear cliente", None)

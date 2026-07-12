@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import os
 from clientes import (
     listar_clientes,
     obtener_cliente_por_id, 
@@ -12,7 +13,36 @@ from clientes import normalizar_nombre
 
 # ================= VISOR DE CLIENTES =================
 
+def _modo_api():
+    try:
+        from hilorama_desktop.config import is_api_mode
+        return is_api_mode()
+    except Exception:
+        return os.environ.get("HILORAMA_DATA_MODE", "local").strip().lower() == "api"
+
+
 def abrir_clientes(root, cliente=None):
+    """Abre CRM por API o conserva el visor actual cuando se usa base local."""
+    if _modo_api():
+        try:
+            from hilorama_desktop.ui.clientes_crm_view import abrir_clientes_crm
+            return abrir_clientes_crm(
+                root,
+                cliente=cliente,
+                editar_cliente_callback=editar_cliente_por_id,
+            )
+        except Exception as exc:
+            try:
+                from hilorama_desktop.utils.logger import log_error
+                log_error("hilorama_desktop", "No se pudo abrir CRM de clientas", exc)
+            except Exception:
+                pass
+            messagebox.showerror("Clientas", f"No se pudo abrir el CRM de clientas.\n\n{exc}", parent=root)
+            return None
+    return _abrir_clientes_legacy(root, cliente)
+
+
+def _abrir_clientes_legacy(root, cliente=None):
 
     win = tk.Toplevel(root)
     win.title("Clientes")
