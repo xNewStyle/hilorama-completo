@@ -29,7 +29,7 @@ def _safe_collect_submodules(package_name):
 
 datas = []
 
-for package in ("customtkinter", "tkinterdnd2"):
+for package in ("customtkinter", "tkinterdnd2", "tzdata"):
     datas += _safe_collect_data(package)
 
 root_assets = (
@@ -71,6 +71,7 @@ for package in (
     "pytesseract",
     "barcode",
     "qrcode",
+    "tzdata",
     "hilorama_desktop.updater",
 ):
     hiddenimports += _safe_collect_submodules(package)
