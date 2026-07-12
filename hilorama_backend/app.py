@@ -119,6 +119,31 @@ except ImportError:
     )
 
 try:
+    from hilorama_backend.services.auditoria_service import (
+        diferencias_relevantes as _diferencias_auditoria,
+        limpiar_datos_sensibles as _limpiar_datos_auditoria,
+        registrar_auditoria as _registrar_auditoria_db,
+    )
+    from hilorama_backend.services.movimientos_almacen_service import (
+        agrupar_lineas_producto as _agrupar_lineas_movimiento,
+        cantidad_reintegrable as _cantidad_reintegrable_movimiento,
+        clave_producto_movimiento as _clave_producto_movimiento,
+        registrar_movimiento_almacen as _registrar_movimiento_db,
+    )
+except ImportError:
+    from services.auditoria_service import (
+        diferencias_relevantes as _diferencias_auditoria,
+        limpiar_datos_sensibles as _limpiar_datos_auditoria,
+        registrar_auditoria as _registrar_auditoria_db,
+    )
+    from services.movimientos_almacen_service import (
+        agrupar_lineas_producto as _agrupar_lineas_movimiento,
+        cantidad_reintegrable as _cantidad_reintegrable_movimiento,
+        clave_producto_movimiento as _clave_producto_movimiento,
+        registrar_movimiento_almacen as _registrar_movimiento_db,
+    )
+
+try:
     from hilorama_backend.services.clientes_analytics_service import (
         construir_analitica_clientas,
         normalizar_estado as _normalizar_estado_crm,
@@ -244,6 +269,39 @@ def _registrar_evento_licencia(conn, cliente_id, usuario_id, device_id_hash, eve
         detalle,
         request.headers.get("X-Forwarded-For", request.remote_addr),
     ))
+    acciones = {
+        "login_ok": ("INICIO_SESION_CORRECTO", "OK", "seguridad"),
+        "login_bloqueado": ("ACCESO_DENEGADO", "DENEGADO", "seguridad"),
+        "logout": ("CIERRE_SESION", "OK", "seguridad"),
+        "dispositivo_bloqueado": ("DISPOSITIVO_BLOQUEADO", "OK", "seguridad"),
+        "sesion_cerrada_remota": ("SESION_CERRADA_REMOTAMENTE", "OK", "seguridad"),
+        "CREAR_USUARIO_CLIENTE": ("USUARIO_CREADO", "OK", "administracion"),
+        "RESET_PASSWORD_USUARIO": ("PASSWORD_RESTABLECIDO", "OK", "administracion"),
+        "ACTIVAR_USUARIO_CLIENTE": ("USUARIO_ACTIVADO", "OK", "administracion"),
+        "DESACTIVAR_USUARIO_CLIENTE": ("USUARIO_DESACTIVADO", "OK", "administracion"),
+    }
+    accion, resultado, modulo = acciones.get(
+        evento,
+        (str(evento or "EVENTO_LICENCIA").upper(), "OK", "seguridad"),
+    )
+    try:
+        _registrar_auditoria_general_api(
+            conn,
+            {
+                "cliente_id": cliente_id,
+                "usuario_id": usuario_id,
+                "device_id_hash": device_id_hash,
+            },
+            accion,
+            modulo,
+            entidad_tipo="usuario_sistema",
+            entidad_id=usuario_id,
+            descripcion=detalle or str(evento or "").replace("_", " "),
+            resultado=resultado,
+        )
+    except Exception:
+        # La auditoria no debe impedir cerrar una sesion si falta la migracion durante la transicion.
+        app.logger.warning("No se pudo registrar auditoria general de seguridad", exc_info=True)
 
 
 def _auth_sistema(req):
@@ -345,6 +403,21 @@ def api_auth_login():
         """, (usuario,)).fetchone()
 
         if not row or not _check_password_sistema(row["password_hash"], password):
+            _registrar_auditoria_general_api(
+                conn,
+                {
+                    "cliente_id": (row or {}).get("cliente_id"),
+                    "usuario_id": (row or {}).get("usuario_id"),
+                    "device_id_hash": device_id_hash,
+                },
+                "INICIO_SESION_FALLIDO",
+                "seguridad",
+                entidad_tipo="usuario_sistema",
+                entidad_id=(row or {}).get("usuario_id"),
+                descripcion="Credenciales rechazadas.",
+                datos_nuevos={"usuario": usuario},
+                resultado="DENEGADO",
+            )
             return jsonify({"permitido": False, "estado": "rechazado", "mensaje": "Credenciales invalidas"}), 401
 
         permitido, estado, mensaje = _cliente_permitido(row)
@@ -866,84 +939,39 @@ def _payload_alta_producto_api(data):
 
 
 def _registrar_movimiento_producto_edicion_api(conn, campo, anterior, valor_nuevo, motivo, auth):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return
-    valores = {
-        "fecha": datetime.now(),
-        "usuario": _usuario_auth_api(auth),
-        "tipo": "EDICION_PRODUCTO",
-        "marca": anterior.get("marca"),
-        "hilo": anterior.get("hilo"),
-        "color": anterior.get("color"),
-        "codigo": anterior.get("codigo"),
-        "stock_anterior": anterior.get("stock"),
-        "stock_nuevo": anterior.get("stock"),
-        "cantidad": 0,
-        "campo": campo,
-        "valor_anterior": anterior.get(campo),
-        "valor_nuevo": valor_nuevo,
-        "motivo": motivo or "Edicion manual desde Almacen",
-    }
-    campos = [col for col in valores if col in columnas]
-    if not campos:
-        return
-    placeholders = ",".join(["%s"] * len(campos))
-    try:
-        conn.execute("SAVEPOINT sp_movimiento_producto_edicion")
-        conn.execute(
-            f"INSERT INTO movimientos_almacen({','.join(campos)}) VALUES ({placeholders})",
-            tuple(valores[col] for col in campos),
-        )
-        conn.execute("RELEASE SAVEPOINT sp_movimiento_producto_edicion")
-    except Exception:
-        try:
-            conn.execute("ROLLBACK TO SAVEPOINT sp_movimiento_producto_edicion")
-            conn.execute("RELEASE SAVEPOINT sp_movimiento_producto_edicion")
-        except Exception:
-            pass
-        app.logger.warning("No se pudo registrar movimiento de edicion de producto", exc_info=True)
+    antes, despues = _diferencias_auditoria(anterior, {campo: valor_nuevo}, campos=(campo,))
+    return _registrar_auditoria_general_api(
+        conn,
+        auth,
+        "PRODUCTO_EDITADO",
+        "almacen",
+        entidad_tipo="producto",
+        entidad_id=(anterior or {}).get("id"),
+        descripcion=motivo or "Edición manual de producto desde Almacén",
+        datos_anteriores=antes,
+        datos_nuevos=despues,
+    )
 
 
 def _registrar_movimiento_producto_alta_api(conn, producto, motivo, auth):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return
     stock = int((producto or {}).get("stock") or 0)
-    valores = {
-        "fecha": datetime.now(),
-        "usuario": _usuario_auth_api(auth),
-        "tipo": "ALTA_PRODUCTO" if _es_inventariable_tipo_api(producto.get("tipo_producto")) else "ALTA_ITEM_COTIZACION",
-        "marca": producto.get("marca"),
-        "hilo": producto.get("hilo"),
-        "color": producto.get("color"),
-        "codigo": producto.get("codigo"),
-        "stock_anterior": 0,
-        "stock_nuevo": stock,
-        "cantidad": stock,
-        "campo": "alta",
-        "valor_anterior": "",
-        "valor_nuevo": stock,
-        "motivo": motivo or "Alta rapida desde Almacen",
-    }
-    campos = [col for col in valores if col in columnas]
-    if not campos:
-        return
-    placeholders = ",".join(["%s"] * len(campos))
-    try:
-        conn.execute("SAVEPOINT sp_movimiento_producto_alta")
-        conn.execute(
-            f"INSERT INTO movimientos_almacen({','.join(campos)}) VALUES ({placeholders})",
-            tuple(valores[col] for col in campos),
-        )
-        conn.execute("RELEASE SAVEPOINT sp_movimiento_producto_alta")
-    except Exception:
-        try:
-            conn.execute("ROLLBACK TO SAVEPOINT sp_movimiento_producto_alta")
-            conn.execute("RELEASE SAVEPOINT sp_movimiento_producto_alta")
-        except Exception:
-            pass
-        app.logger.warning("No se pudo registrar movimiento de alta de producto", exc_info=True)
+    if stock <= 0 or not _es_inventariable_tipo_api(producto.get("tipo_producto")):
+        return None
+    producto_id = (producto or {}).get("id")
+    return _registrar_movimiento_inventario_api(
+        conn,
+        auth,
+        producto=producto,
+        tipo="STOCK_INICIAL",
+        cantidad=stock,
+        stock_anterior=0,
+        stock_nuevo=stock,
+        motivo=motivo or "Stock inicial al crear producto",
+        referencia_tipo="PRODUCTO",
+        referencia_id=producto_id,
+        idempotency_key=f"STOCK_INICIAL:{producto_id}" if producto_id is not None else None,
+        metadata={"origen": "alta_producto"},
+    )
 
 
 @app.route("/api/almacen/productos", methods=["POST"])
@@ -995,6 +1023,19 @@ def api_almacen_crear_producto():
             ).fetchone()
             producto_creado = _row_dict(row) or {}
             _registrar_movimiento_producto_alta_api(conn, producto_creado, motivo, auth)
+            _registrar_auditoria_general_api(
+                conn,
+                auth,
+                "PRODUCTO_CREADO",
+                "almacen",
+                entidad_tipo="producto",
+                entidad_id=producto_creado.get("id"),
+                descripcion=motivo,
+                datos_nuevos={
+                    campo: producto_creado.get(campo)
+                    for campo in ("marca", "hilo", "color", "codigo", "stock", "tipo_producto", "estado")
+                },
+            )
 
         producto_id = producto_creado.get("id")
         producto_respuesta = obtener_producto_por_id(producto_id) if producto_id else producto_creado
@@ -1059,31 +1100,33 @@ def api_almacen_actualizar_stock_producto(producto_id):
             stock_anterior = int(producto.get("stock") or 0)
             diferencia = stock_nuevo - stock_anterior
             estado_nuevo = _estado_por_stock_manual_api(stock_nuevo)
-            if "estado" in columnas:
-                conn.execute(
-                    "UPDATE productos SET stock=%s, estado=%s WHERE id=%s",
-                    (stock_nuevo, estado_nuevo, producto_id),
-                )
-            else:
-                conn.execute(
-                    "UPDATE productos SET stock=%s WHERE id=%s",
-                    (stock_nuevo, producto_id),
-                )
-
-            producto_mov = dict(producto)
-            producto_mov["_stock_nuevo"] = stock_nuevo
-            _registrar_movimiento_almacen_api(
+            movimiento = _cambiar_stock_con_movimiento_api(
                 conn,
-                "AJUSTE_STOCK_MANUAL",
-                producto,
-                producto_mov,
-                diferencia,
-                motivo,
                 auth,
+                producto,
+                stock_nuevo,
+                tipo="AJUSTE_POSITIVO" if diferencia >= 0 else "AJUSTE_NEGATIVO",
+                motivo=motivo,
+                referencia_tipo="PRODUCTO",
+                referencia_id=producto_id,
+                idempotency_key=data.get("idempotency_key"),
+                metadata={"origen": "ajuste_manual_almacen"},
+                estado_nuevo=estado_nuevo,
+            )
+            _registrar_auditoria_general_api(
+                conn,
+                auth,
+                "AJUSTE_STOCK_MANUAL",
+                "almacen",
+                entidad_tipo="producto",
+                entidad_id=producto_id,
+                descripcion=motivo,
+                datos_anteriores={"stock": stock_anterior, "estado": producto.get("estado")},
+                datos_nuevos={"stock": stock_nuevo, "estado": estado_nuevo},
             )
 
         producto_respuesta = obtener_producto_por_id(producto_id)
-        return jsonify({"ok": True, "producto": producto_respuesta})
+        return jsonify({"ok": True, "producto": producto_respuesta, "movimiento": movimiento})
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except LookupError as exc:
@@ -1143,46 +1186,42 @@ def _estado_por_tipo_producto_api(inventariable, stock):
 
 
 def _registrar_movimiento_tipo_producto_api(conn, anterior, tipo_nuevo, inventariable_nuevo, stock_nuevo, motivo, auth):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return
     stock_anterior = int((anterior or {}).get("stock") or 0)
     tipo_anterior = (anterior or {}).get("tipo_producto") or (anterior or {}).get("tipo") or "INVENTARIO"
     inventariable_anterior = _producto_inventariable_api(anterior)
-    valores = {
-        "fecha": datetime.now(),
-        "usuario": _usuario_auth_api(auth),
-        "tipo": "CAMBIO_TIPO_PRODUCTO",
-        "marca": anterior.get("marca"),
-        "hilo": anterior.get("hilo"),
-        "color": anterior.get("color"),
-        "codigo": anterior.get("codigo"),
-        "stock_anterior": stock_anterior,
-        "stock_nuevo": stock_nuevo,
-        "cantidad": stock_nuevo - stock_anterior,
-        "campo": "tipo_producto",
-        "valor_anterior": f"tipo={tipo_anterior}; es_inventariable={inventariable_anterior}",
-        "valor_nuevo": f"tipo={tipo_nuevo}; es_inventariable={inventariable_nuevo}",
-        "motivo": motivo,
-    }
-    campos = [campo for campo in valores if campo in columnas]
-    if not campos:
-        return
-    placeholders = ",".join(["%s"] * len(campos))
-    try:
-        conn.execute("SAVEPOINT sp_movimiento_tipo_producto")
-        conn.execute(
-            f"INSERT INTO movimientos_almacen({','.join(campos)}) VALUES ({placeholders})",
-            tuple(valores[campo] for campo in campos),
+    stock_nuevo = int(stock_nuevo or 0)
+    diferencia = stock_nuevo - stock_anterior
+    if diferencia:
+        if not inventariable_anterior and inventariable_nuevo:
+            tipo_movimiento = "STOCK_INICIAL"
+        elif inventariable_anterior and not inventariable_nuevo:
+            tipo_movimiento = "CORRECCION"
+        else:
+            tipo_movimiento = "AJUSTE_POSITIVO" if diferencia > 0 else "AJUSTE_NEGATIVO"
+        _registrar_movimiento_inventario_api(
+            conn,
+            auth,
+            producto=anterior,
+            tipo=tipo_movimiento,
+            cantidad=diferencia,
+            stock_anterior=stock_anterior,
+            stock_nuevo=stock_nuevo,
+            motivo=motivo,
+            referencia_tipo="PRODUCTO",
+            referencia_id=(anterior or {}).get("id"),
+            metadata={"operacion": "cambio_tipo_producto", "tipo_anterior": tipo_anterior, "tipo_nuevo": tipo_nuevo},
         )
-        conn.execute("RELEASE SAVEPOINT sp_movimiento_tipo_producto")
-    except Exception:
-        try:
-            conn.execute("ROLLBACK TO SAVEPOINT sp_movimiento_tipo_producto")
-            conn.execute("RELEASE SAVEPOINT sp_movimiento_tipo_producto")
-        except Exception:
-            pass
-        app.logger.warning("No se pudo registrar movimiento de cambio de tipo de producto", exc_info=True)
+    _registrar_auditoria_general_api(
+        conn,
+        auth,
+        "TIPO_PRODUCTO_ACTUALIZADO",
+        "almacen",
+        entidad_tipo="producto",
+        entidad_id=(anterior or {}).get("id"),
+        descripcion=motivo,
+        datos_anteriores={"tipo_producto": tipo_anterior, "es_inventariable": inventariable_anterior, "stock": stock_anterior},
+        datos_nuevos={"tipo_producto": tipo_nuevo, "es_inventariable": inventariable_nuevo, "stock": stock_nuevo},
+    )
 
 
 @app.route("/api/almacen/productos/<int:producto_id>/tipo", methods=["POST"])
@@ -1300,47 +1339,37 @@ def _advertencias_anulacion_producto_api(conn, producto, stock_anterior):
 
 
 def _registrar_movimiento_anulacion_producto_api(conn, producto, stock_anterior, motivo, auth, advertencias=None):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return
     tipo_anterior = producto.get("tipo_producto") or producto.get("tipo") or "INVENTARIO"
     motivo_final = motivo
     if advertencias:
         motivo_final = f"{motivo} | Advertencias: {'; '.join(advertencias)}"
-    valores = {
-        "fecha": datetime.now(),
-        "usuario": _usuario_auth_api(auth),
-        "tipo": "ANULACION_PRODUCTO",
-        "marca": producto.get("marca"),
-        "hilo": producto.get("hilo"),
-        "color": producto.get("color"),
-        "codigo": producto.get("codigo"),
-        "stock_anterior": stock_anterior,
-        "stock_nuevo": 0,
-        "cantidad": -stock_anterior,
-        "campo": "estado",
-        "valor_anterior": f"estado={producto.get('estado')}; tipo={tipo_anterior}",
-        "valor_nuevo": "estado=ANULADO; tipo=ANULADO; es_inventariable=False",
-        "motivo": motivo_final,
-    }
-    campos = [campo for campo in valores if campo in columnas]
-    if not campos:
-        return
-    placeholders = ",".join(["%s"] * len(campos))
-    try:
-        conn.execute("SAVEPOINT sp_movimiento_anulacion_producto")
-        conn.execute(
-            f"INSERT INTO movimientos_almacen({','.join(campos)}) VALUES ({placeholders})",
-            tuple(valores[campo] for campo in campos),
+    stock_anterior = int(stock_anterior or 0)
+    if stock_anterior:
+        _registrar_movimiento_inventario_api(
+            conn,
+            auth,
+            producto=producto,
+            tipo="CORRECCION",
+            cantidad=-stock_anterior,
+            stock_anterior=stock_anterior,
+            stock_nuevo=0,
+            motivo=motivo_final,
+            referencia_tipo="PRODUCTO",
+            referencia_id=producto.get("id"),
+            idempotency_key=f"ANULACION_PRODUCTO:{producto.get('id')}" if producto.get("id") is not None else None,
+            metadata={"operacion": "anulacion_producto", "advertencias": list(advertencias or [])},
         )
-        conn.execute("RELEASE SAVEPOINT sp_movimiento_anulacion_producto")
-    except Exception:
-        try:
-            conn.execute("ROLLBACK TO SAVEPOINT sp_movimiento_anulacion_producto")
-            conn.execute("RELEASE SAVEPOINT sp_movimiento_anulacion_producto")
-        except Exception:
-            pass
-        app.logger.warning("No se pudo registrar movimiento de anulacion de producto", exc_info=True)
+    _registrar_auditoria_general_api(
+        conn,
+        auth,
+        "PRODUCTO_ANULADO",
+        "almacen",
+        entidad_tipo="producto",
+        entidad_id=producto.get("id"),
+        descripcion=motivo_final,
+        datos_anteriores={"estado": producto.get("estado"), "tipo_producto": tipo_anterior, "stock": stock_anterior},
+        datos_nuevos={"estado": "ANULADO", "tipo_producto": "ANULADO", "es_inventariable": False, "stock": 0},
+    )
 
 
 @app.route("/api/almacen/productos/<int:producto_id>/anular", methods=["POST"])
@@ -1436,6 +1465,15 @@ def _select_movimiento_almacen_api(columnas):
         "valor_anterior",
         "valor_nuevo",
         "motivo",
+        "cliente_sistema_id",
+        "producto_id",
+        "referencia_tipo",
+        "referencia_id",
+        "usuario_id",
+        "device_id",
+        "idempotency_key",
+        "metadata_json",
+        "fecha_creacion",
     ):
         if columna in columnas:
             campos.append(f"{columna} AS {columna}")
@@ -1446,7 +1484,7 @@ def _select_movimiento_almacen_api(columnas):
 
 def _movimiento_row_api(row):
     data = _row_dict(row) or {}
-    fecha = data.get("fecha")
+    fecha = data.get("fecha_creacion") or data.get("fecha")
     if hasattr(fecha, "isoformat"):
         fecha = fecha.isoformat(sep=" ", timespec="seconds")
     return {
@@ -1465,10 +1503,28 @@ def _movimiento_row_api(row):
         "valor_anterior": data.get("valor_anterior") or "",
         "valor_nuevo": data.get("valor_nuevo") or "",
         "motivo": data.get("motivo") or "",
+        "cliente_sistema_id": data.get("cliente_sistema_id"),
+        "producto_id": data.get("producto_id"),
+        "referencia_tipo": data.get("referencia_tipo") or "",
+        "referencia_id": data.get("referencia_id") or "",
+        "usuario_id": data.get("usuario_id"),
+        "device_id": data.get("device_id") or "",
+        "idempotency_key": data.get("idempotency_key") or "",
+        "metadata_json": _limpiar_datos_auditoria(_json_field(data.get("metadata_json"), {})),
     }
 
 
-def _filtros_movimientos_almacen_api(conn, columnas, args):
+def _restriccion_cliente_movimientos_api(columnas, auth):
+    """Limita movimientos al cliente autenticado salvo para super_admin."""
+    if (auth or {}).get("rol") == "super_admin":
+        return "", ()
+    cliente_id = (auth or {}).get("cliente_id")
+    if cliente_id in (None, "") or "cliente_sistema_id" not in columnas:
+        raise PermissionError("No se puede consultar movimientos sin aislamiento por cliente.")
+    return "cliente_sistema_id=%s", (cliente_id,)
+
+
+def _filtros_movimientos_almacen_api(conn, columnas, args, auth=None):
     filtros = []
     valores = []
 
@@ -1478,92 +1534,217 @@ def _filtros_movimientos_almacen_api(conn, columnas, args):
             filtros.append(f"{columna} ILIKE %s")
             valores.append(f"%{valor}%")
 
-    producto_id = str(args.get("producto_id") or "").strip()
+    producto_id = str(args.get("producto_id") or args.get("producto") or "").strip()
     if producto_id:
-        producto = conn.execute("SELECT * FROM productos WHERE id=%s LIMIT 1", (producto_id,)).fetchone()
+        productos_cols = _columnas_tabla_api(conn, "productos")
+        condiciones_busqueda = ["CAST(id AS TEXT)=%s"] if "id" in productos_cols else []
+        valores_busqueda = [producto_id] if condiciones_busqueda else []
+        if "codigo" in productos_cols:
+            condiciones_busqueda.append("CAST(codigo AS TEXT) ILIKE %s")
+            valores_busqueda.append(f"%{producto_id}%")
+        if not condiciones_busqueda:
+            raise LookupError("No se puede resolver el producto solicitado.")
+        producto = conn.execute(
+            f"SELECT * FROM productos WHERE {' OR '.join(condiciones_busqueda)} ORDER BY id LIMIT 1",
+            tuple(valores_busqueda),
+        ).fetchone()
         producto = _row_dict(producto)
         if not producto:
             raise LookupError("Producto no encontrado.")
-        condiciones_producto = []
-        valores_producto = []
+        coincidencias_producto = []
         if "producto_id" in columnas:
-            condiciones_producto.append("producto_id=%s")
-            valores_producto.append(producto_id)
+            coincidencias_producto.append(("producto_id=%s", [producto_id]))
+        coincidencias_legacy = []
+        valores_legacy = []
         if "codigo" in columnas and producto.get("codigo"):
-            condiciones_producto.append("codigo=%s")
-            valores_producto.append(producto.get("codigo"))
+            coincidencias_legacy.append("codigo=%s")
+            valores_legacy.append(producto.get("codigo"))
         for campo in ("marca", "hilo", "color"):
             if campo in columnas and producto.get(campo):
-                condiciones_producto.append(f"UPPER({campo})=UPPER(%s)")
-                valores_producto.append(producto.get(campo))
-        if condiciones_producto:
-            filtros.append("(" + " AND ".join(condiciones_producto) + ")")
-            valores.extend(valores_producto)
+                coincidencias_legacy.append(f"UPPER({campo})=UPPER(%s)")
+                valores_legacy.append(producto.get(campo))
+        if coincidencias_legacy:
+            coincidencias_producto.append(("(" + " AND ".join(coincidencias_legacy) + ")", valores_legacy))
+        if coincidencias_producto:
+            filtros.append("(" + " OR ".join(condicion for condicion, _ in coincidencias_producto) + ")")
+            for _, valores_coincidencia in coincidencias_producto:
+                valores.extend(valores_coincidencia)
 
-    for param in ("codigo", "marca", "hilo", "color", "tipo"):
+    for param in ("codigo", "marca", "hilo", "color", "tipo", "usuario"):
         filtro_texto(param, param)
+
+    referencia = str(args.get("referencia") or "").strip()
+    if referencia:
+        campos_referencia = [campo for campo in ("referencia_tipo", "referencia_id") if campo in columnas]
+        if campos_referencia:
+            filtros.append("(" + " OR ".join(f"{campo} ILIKE %s" for campo in campos_referencia) + ")")
+            valores.extend([f"%{referencia}%"] * len(campos_referencia))
 
     q = str(args.get("q") or "").strip()
     if q:
-        campos_q = [campo for campo in ("marca", "hilo", "color", "codigo", "tipo", "campo", "motivo", "usuario") if campo in columnas]
+        campos_q = [campo for campo in ("marca", "hilo", "color", "codigo", "tipo", "campo", "motivo", "usuario", "referencia_tipo", "referencia_id") if campo in columnas]
         if campos_q:
             like = f"%{q}%"
             filtros.append("(" + " OR ".join(f"{campo} ILIKE %s" for campo in campos_q) + ")")
             valores.extend([like] * len(campos_q))
 
-    desde = str(args.get("desde") or "").strip()
-    if desde and "fecha" in columnas:
-        filtros.append("fecha >= %s")
+    fecha_columna = (
+        "COALESCE(fecha_creacion, fecha)"
+        if "fecha_creacion" in columnas and "fecha" in columnas
+        else ("fecha_creacion" if "fecha_creacion" in columnas else ("fecha" if "fecha" in columnas else None))
+    )
+    desde = str(args.get("desde") or args.get("fecha_inicial") or "").strip()
+    if desde and fecha_columna:
+        filtros.append(f"{fecha_columna} >= %s")
         valores.append(desde)
-    hasta = str(args.get("hasta") or "").strip()
-    if hasta and "fecha" in columnas:
-        filtros.append("fecha <= %s")
+    hasta = str(args.get("hasta") or args.get("fecha_final") or "").strip()
+    if hasta and fecha_columna:
+        filtros.append(f"{fecha_columna} < (%s::date + INTERVAL '1 day')")
         valores.append(hasta)
 
+    restriccion_cliente, valores_cliente = _restriccion_cliente_movimientos_api(columnas, auth)
+    if restriccion_cliente:
+        filtros.append(restriccion_cliente)
+        valores.extend(valores_cliente)
     where = "WHERE " + " AND ".join(filtros) if filtros else ""
     return where, tuple(valores)
 
 
+def _puede_consultar_movimientos_api(auth):
+    return (auth or {}).get("rol") in {"super_admin", "admin_cliente", "almacen"}
+
+
+def _respuesta_movimientos_paginada_api(conn, columnas, args, auth=None):
+    per_page = _api_limite(args.get("per_page") or args.get("limit"), default=50, maximo=500)
+    page_raw = str(args.get("page") or "").strip()
+    if page_raw:
+        try:
+            page = max(1, int(page_raw))
+        except ValueError:
+            raise ValueError("page debe ser un numero entero positivo.")
+        offset = (page - 1) * per_page
+    else:
+        offset = _api_offset(args.get("offset"))
+        page = (offset // per_page) + 1
+    where, valores = _filtros_movimientos_almacen_api(conn, columnas, args, auth=auth)
+    total_row = conn.execute(
+        f"SELECT COUNT(*) AS total FROM movimientos_almacen {where}",
+        valores,
+    ).fetchone()
+    total = int((total_row or {}).get("total") or 0)
+    if "fecha_creacion" in columnas and "fecha" in columnas:
+        fecha_order = "fecha_creacion DESC NULLS LAST, fecha DESC"
+    elif "fecha_creacion" in columnas:
+        fecha_order = "fecha_creacion DESC"
+    else:
+        fecha_order = "fecha DESC" if "fecha" in columnas else "id DESC"
+    rows = conn.execute(
+        f"""
+        SELECT {_select_movimiento_almacen_api(columnas)}
+        FROM movimientos_almacen
+        {where}
+        ORDER BY {fecha_order}
+        LIMIT %s OFFSET %s
+        """,
+        valores + (per_page, offset),
+    ).fetchall()
+    items = [_movimiento_row_api(row) for row in rows]
+    pagination = {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": (total + per_page - 1) // per_page if total else 0,
+    }
+    return {
+        "ok": True,
+        "items": items,
+        "pagination": pagination,
+        # Compatibilidad con la vista de Almacen existente.
+        "movimientos": items,
+        "total": total,
+        "limit": per_page,
+        "offset": offset,
+    }
+
+
 @app.route("/api/almacen/movimientos", methods=["GET"])
 def api_almacen_movimientos():
-    _, error = _require_license_api()
+    auth, error = _require_license_api()
     if error:
         return error
+    if not _puede_consultar_movimientos_api(auth):
+        return jsonify({"ok": False, "error": "Permiso denegado para consultar movimientos."}), 403
     try:
-        limit = _api_limite(request.args.get("limit"), default=100, maximo=500)
-        offset = _api_offset(request.args.get("offset"))
         with get_conn() as conn:
             columnas = _columnas_tabla_api(conn, "movimientos_almacen")
             if not columnas:
-                return jsonify({"ok": True, "movimientos": [], "total": 0, "limit": limit, "offset": offset})
-            where, valores = _filtros_movimientos_almacen_api(conn, columnas, request.args)
-            total_row = conn.execute(
-                f"SELECT COUNT(*) AS total FROM movimientos_almacen {where}",
-                valores,
-            ).fetchone()
-            fecha_order = "fecha DESC" if "fecha" in columnas else "id DESC"
-            rows = conn.execute(
-                f"""
-                SELECT {_select_movimiento_almacen_api(columnas)}
-                FROM movimientos_almacen
-                {where}
-                ORDER BY {fecha_order}
-                LIMIT %s OFFSET %s
-                """,
-                valores + (limit, offset),
-            ).fetchall()
-        return jsonify({
-            "ok": True,
-            "movimientos": [_movimiento_row_api(row) for row in rows],
-            "total": int((total_row or {}).get("total") or 0),
-            "limit": limit,
-            "offset": offset,
-        })
+                return jsonify({"ok": True, "items": [], "movimientos": [], "pagination": {"page": 1, "per_page": 50, "total": 0, "pages": 0}, "total": 0, "limit": 50, "offset": 0})
+            respuesta = _respuesta_movimientos_paginada_api(conn, columnas, request.args, auth=auth)
+        return jsonify(respuesta)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     except LookupError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 404
+    except PermissionError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 403
     except Exception:
         app.logger.exception("Error al consultar movimientos de almacen")
         return jsonify({"ok": False, "error": "No se pudieron consultar los movimientos de almacen."}), 500
+
+
+@app.route("/api/almacen/productos/<int:producto_id>/movimientos", methods=["GET"])
+def api_almacen_producto_movimientos(producto_id):
+    auth, error = _require_license_api()
+    if error:
+        return error
+    if not _puede_consultar_movimientos_api(auth):
+        return jsonify({"ok": False, "error": "Permiso denegado para consultar movimientos."}), 403
+    try:
+        with get_conn() as conn:
+            columnas = _columnas_tabla_api(conn, "movimientos_almacen")
+            if not columnas:
+                return jsonify({"ok": True, "items": [], "pagination": {"page": 1, "per_page": 50, "total": 0, "pages": 0}})
+            args = request.args.to_dict(flat=True)
+            args["producto_id"] = str(producto_id)
+            respuesta = _respuesta_movimientos_paginada_api(conn, columnas, args, auth=auth)
+        return jsonify(respuesta)
+    except LookupError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except PermissionError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 403
+    except Exception:
+        app.logger.exception("Error al consultar historial de movimiento por producto")
+        return jsonify({"ok": False, "error": "No se pudo consultar el historial del producto."}), 500
+
+
+@app.route("/api/almacen/movimientos/<int:movimiento_id>", methods=["GET"])
+def api_almacen_movimiento_detalle(movimiento_id):
+    auth, error = _require_license_api()
+    if error:
+        return error
+    if not _puede_consultar_movimientos_api(auth):
+        return jsonify({"ok": False, "error": "Permiso denegado para consultar movimientos."}), 403
+    try:
+        with get_conn() as conn:
+            columnas = _columnas_tabla_api(conn, "movimientos_almacen")
+            if not columnas:
+                raise LookupError("No hay movimientos registrados.")
+            where_cliente, valores_cliente = _restriccion_cliente_movimientos_api(columnas, auth)
+            condicion_cliente = f" AND {where_cliente}" if where_cliente else ""
+            row = conn.execute(
+                f"SELECT {_select_movimiento_almacen_api(columnas)} FROM movimientos_almacen WHERE id=%s{condicion_cliente} LIMIT 1",
+                (movimiento_id,) + valores_cliente,
+            ).fetchone()
+        if not row:
+            raise LookupError("Movimiento no encontrado.")
+        return jsonify({"ok": True, "movimiento": _movimiento_row_api(row)})
+    except LookupError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except PermissionError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 403
+    except Exception:
+        app.logger.exception("Error al consultar detalle de movimiento")
+        return jsonify({"ok": False, "error": "No se pudo consultar el movimiento."}), 500
 
 
 def _texto_masivo_almacen_api(data, campo):
@@ -1604,87 +1785,37 @@ def _resumen_productos_afectados_api(productos, limite=25):
 
 
 def _registrar_movimiento_masivo_producto_api(conn, tipo, campo, producto, valor_nuevo, motivo, auth):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return
-    valores = {
-        "fecha": datetime.now(),
-        "usuario": _usuario_auth_api(auth),
-        "tipo": tipo,
-        "marca": producto.get("marca"),
-        "hilo": producto.get("hilo"),
-        "color": producto.get("color"),
-        "codigo": producto.get("codigo"),
-        "stock_anterior": producto.get("stock"),
-        "stock_nuevo": producto.get("stock"),
-        "cantidad": 0,
-        "campo": campo,
-        "valor_anterior": producto.get(campo),
-        "valor_nuevo": valor_nuevo,
-        "motivo": motivo,
-    }
-    campos = [campo_valor for campo_valor in valores if campo_valor in columnas]
-    if not campos:
-        return
-    placeholders = ",".join(["%s"] * len(campos))
-    try:
-        conn.execute("SAVEPOINT sp_movimiento_masivo_producto")
-        conn.execute(
-            f"INSERT INTO movimientos_almacen({','.join(campos)}) VALUES ({placeholders})",
-            tuple(valores[campo_valor] for campo_valor in campos),
-        )
-        conn.execute("RELEASE SAVEPOINT sp_movimiento_masivo_producto")
-    except Exception:
-        try:
-            conn.execute("ROLLBACK TO SAVEPOINT sp_movimiento_masivo_producto")
-            conn.execute("RELEASE SAVEPOINT sp_movimiento_masivo_producto")
-        except Exception:
-            pass
-        app.logger.warning("No se pudo registrar movimiento masivo de producto", exc_info=True)
+    antes, despues = _diferencias_auditoria(producto, {campo: valor_nuevo}, campos=(campo,))
+    return _registrar_auditoria_general_api(
+        conn,
+        auth,
+        "PRODUCTO_ACTUALIZADO_MASIVO",
+        "almacen",
+        entidad_tipo="producto",
+        entidad_id=producto.get("id"),
+        descripcion=f"{motivo} ({tipo})",
+        datos_anteriores=antes,
+        datos_nuevos=despues,
+    )
 
 
 def _registrar_movimiento_precio_marca_api(conn, marca, anterior, distribuidor, venta, cantidad, motivo, auth):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return
-    valor_anterior = (
-        f"distribuidor={anterior.get('distribuidor')}, venta={anterior.get('venta')}"
-        if anterior else "sin precio previo"
+    antes, despues = _diferencias_auditoria(
+        anterior or {},
+        {"distribuidor": distribuidor, "venta": venta},
+        campos=("distribuidor", "venta"),
     )
-    valores = {
-        "fecha": datetime.now(),
-        "usuario": _usuario_auth_api(auth),
-        "tipo": "ACTUALIZACION_PRECIO_MASIVA",
-        "marca": marca,
-        "hilo": None,
-        "color": None,
-        "codigo": None,
-        "stock_anterior": None,
-        "stock_nuevo": None,
-        "cantidad": cantidad,
-        "campo": "precios_marca",
-        "valor_anterior": valor_anterior,
-        "valor_nuevo": f"distribuidor={distribuidor}, venta={venta}",
-        "motivo": motivo,
-    }
-    campos = [campo for campo in valores if campo in columnas]
-    if not campos:
-        return
-    placeholders = ",".join(["%s"] * len(campos))
-    try:
-        conn.execute("SAVEPOINT sp_movimiento_precio_marca")
-        conn.execute(
-            f"INSERT INTO movimientos_almacen({','.join(campos)}) VALUES ({placeholders})",
-            tuple(valores[campo] for campo in campos),
-        )
-        conn.execute("RELEASE SAVEPOINT sp_movimiento_precio_marca")
-    except Exception:
-        try:
-            conn.execute("ROLLBACK TO SAVEPOINT sp_movimiento_precio_marca")
-            conn.execute("RELEASE SAVEPOINT sp_movimiento_precio_marca")
-        except Exception:
-            pass
-        app.logger.warning("No se pudo registrar movimiento masivo de precio por marca", exc_info=True)
+    return _registrar_auditoria_general_api(
+        conn,
+        auth,
+        "PRECIO_MARCA_ACTUALIZADO",
+        "almacen",
+        entidad_tipo="marca",
+        entidad_id=marca,
+        descripcion=f"{motivo}. Productos afectados: {cantidad}.",
+        datos_anteriores=antes,
+        datos_nuevos=despues,
+    )
 
 
 @app.route("/api/almacen/precios/marca/<path:marca>", methods=["PATCH"])
@@ -2097,12 +2228,138 @@ def _join_subtotal_items_nota_api():
 
 
 def _columnas_tabla_api(conn, tabla):
+    cache = None
+    try:
+        cache = getattr(conn, "_hilorama_columnas_cache", None)
+        if cache is None:
+            cache = {}
+            setattr(conn, "_hilorama_columnas_cache", cache)
+        if tabla in cache:
+            return set(cache[tabla])
+    except Exception:
+        cache = None
     rows = conn.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name=%s
     """, (tabla,)).fetchall()
-    return {row["column_name"] for row in rows}
+    columnas = {row["column_name"] for row in rows}
+    if cache is not None:
+        cache[tabla] = frozenset(columnas)
+    return columnas
+
+
+def _contexto_request_auditoria_api():
+    try:
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        return {
+            "ip": str(ip or "").split(",")[0].strip() or None,
+            "user_agent": request.headers.get("User-Agent"),
+            "request_id": request.headers.get("X-Request-ID") or request.headers.get("X-Request-Id"),
+        }
+    except RuntimeError:
+        return {"ip": None, "user_agent": None, "request_id": None}
+
+
+def _registrar_auditoria_general_api(
+    conn,
+    auth,
+    accion,
+    modulo,
+    *,
+    entidad_tipo=None,
+    entidad_id=None,
+    descripcion=None,
+    datos_anteriores=None,
+    datos_nuevos=None,
+    resultado="OK",
+    codigo_error=None,
+):
+    columnas = _columnas_tabla_api(conn, "auditoria_general")
+    if not columnas:
+        app.logger.warning("No se registro auditoria general porque falta la migracion FASE 9B")
+        return None
+    contexto = _contexto_request_auditoria_api()
+    return _registrar_auditoria_db(
+        conn,
+        columnas,
+        accion=accion,
+        modulo=modulo,
+        entidad_tipo=entidad_tipo,
+        entidad_id=entidad_id,
+        descripcion=descripcion,
+        datos_anteriores=datos_anteriores,
+        datos_nuevos=datos_nuevos,
+        resultado=resultado,
+        codigo_error=codigo_error,
+        usuario_id=(auth or {}).get("usuario_id"),
+        cliente_sistema_id=(auth or {}).get("cliente_id"),
+        device_id=(auth or {}).get("device_id_hash"),
+        **contexto,
+    )
+
+
+def _movimiento_idempotente_existente_api(conn, idempotency_key, cliente_sistema_id=None):
+    clave = str(idempotency_key or "").strip()
+    if not clave:
+        return None
+    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
+    if "idempotency_key" not in columnas:
+        return None
+    if "cliente_sistema_id" in columnas:
+        return conn.execute(
+            """
+            SELECT id, producto_id, tipo, cantidad, stock_anterior, stock_nuevo
+            FROM movimientos_almacen
+            WHERE idempotency_key=%s
+              AND COALESCE(cliente_sistema_id, 0)=COALESCE(%s, 0)
+            LIMIT 1
+            """,
+            (clave, cliente_sistema_id),
+        ).fetchone()
+    return conn.execute(
+        "SELECT id, producto_id, tipo, cantidad, stock_anterior, stock_nuevo FROM movimientos_almacen WHERE idempotency_key=%s LIMIT 1",
+        (clave,),
+    ).fetchone()
+
+
+def _registrar_movimiento_inventario_api(
+    conn,
+    auth,
+    *,
+    producto,
+    tipo,
+    cantidad,
+    stock_anterior,
+    stock_nuevo,
+    motivo=None,
+    referencia_tipo=None,
+    referencia_id=None,
+    idempotency_key=None,
+    metadata=None,
+):
+    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
+    if idempotency_key and not {"idempotency_key", "cliente_sistema_id"}.issubset(columnas):
+        raise RuntimeError("Falta aplicar la migracion FASE 9B para registrar movimientos idempotentes.")
+    usuario = (auth or {}).get("usuario") or (auth or {}).get("usuario_nombre") or "usuario_desconocido"
+    return _registrar_movimiento_db(
+        conn,
+        columnas,
+        producto=producto,
+        tipo=tipo,
+        cantidad=cantidad,
+        stock_anterior=stock_anterior,
+        stock_nuevo=stock_nuevo,
+        motivo=motivo,
+        referencia_tipo=referencia_tipo,
+        referencia_id=referencia_id,
+        usuario_id=(auth or {}).get("usuario_id"),
+        cliente_sistema_id=(auth or {}).get("cliente_id"),
+        usuario=usuario,
+        device_id=(auth or {}).get("device_id_hash"),
+        idempotency_key=idempotency_key,
+        metadata=metadata,
+    )
 
 
 def _sql_text_col(alias, columna, columnas, default="NULL"):
@@ -2446,6 +2703,7 @@ MENSAJE_COTIZACION_NO_PAGABLE = (
 ESTADOS_COTIZACION_NO_PAGABLE = {"COTIZACION", "COTIZACION_PENDIENTE"}
 ESTADOS_VENTA_PAGABLE = {"VENTA", "VENTA_PENDIENTE", "EN_PROCESO", "COMPLETA"}
 ESTADOS_NOTA_PAGADA_API = {"PAGADA", "COMPLETA", "VENTA_PAGADA"}
+ESTADOS_NOTA_ANULADA_API = {"ANULADA", "CANCELADA", "ELIMINADA"}
 STOCK_MINIMO_API = 50
 
 
@@ -2465,6 +2723,12 @@ def _normalizar_estado_pago_api(estado):
     return str(estado or "").strip().upper().replace("Ó", "O")
 
 
+def _rechazar_pago_nota_anulada_api(nota):
+    estado = _normalizar_estado_pago_api((nota or {}).get("estado"))
+    if estado in ESTADOS_NOTA_ANULADA_API:
+        raise NotaPagoNoPermitido("No se puede registrar un pago en una nota anulada o cancelada.", 409)
+
+
 def _nota_tiene_pagos_api(conn, nota_id):
     try:
         pagos_cols = _columnas_tabla_api(conn, "pagos")
@@ -2476,7 +2740,7 @@ def _nota_tiene_pagos_api(conn, nota_id):
         return False
 
 
-def _nota_requiere_devolucion_stock_api(conn, nota):
+def _nota_pago_ya_aplicado_api(conn, nota):
     if not nota:
         return False
     estado = _normalizar_estado_pago_api(nota.get("estado"))
@@ -2485,6 +2749,94 @@ def _nota_requiere_devolucion_stock_api(conn, nota):
     if nota.get("fecha_pago"):
         return True
     return _nota_tiene_pagos_api(conn, nota.get("id"))
+
+
+def _cantidades_movimiento_nota_api(conn, nota_id, auth, tipos, *, solo_positivos=False, solo_negativos=False):
+    """Resume movimientos reales de una nota, siempre aislados por cliente."""
+    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
+    requeridas = {"referencia_tipo", "referencia_id", "tipo", "cantidad"}
+    if not requeridas.issubset(columnas):
+        return {}
+
+    filtros = ["UPPER(COALESCE(referencia_tipo, ''))='NOTA'", "referencia_id=%s"]
+    valores = [str(nota_id)]
+    tipos_normalizados = tuple(str(tipo).strip().upper() for tipo in tipos)
+    filtros.append("UPPER(COALESCE(tipo, '')) IN (" + ",".join(["%s"] * len(tipos_normalizados)) + ")")
+    valores.extend(tipos_normalizados)
+    if "cliente_sistema_id" in columnas:
+        cliente_id = (auth or {}).get("cliente_id")
+        if cliente_id in (None, "") and (auth or {}).get("rol") != "super_admin":
+            raise PermissionError("No se puede consultar movimientos de otra empresa.")
+        if cliente_id not in (None, ""):
+            filtros.append("cliente_sistema_id=%s")
+            valores.append(cliente_id)
+
+    campos = [
+        "producto_id" if "producto_id" in columnas else "NULL AS producto_id",
+        "marca" if "marca" in columnas else "NULL AS marca",
+        "hilo" if "hilo" in columnas else "NULL AS hilo",
+        "codigo" if "codigo" in columnas else "NULL AS codigo",
+        "cantidad",
+    ]
+    rows = conn.execute(
+        f"SELECT {', '.join(campos)} FROM movimientos_almacen WHERE {' AND '.join(filtros)}",
+        tuple(valores),
+    ).fetchall()
+    cantidades = {}
+    for row in rows:
+        movimiento = _row_dict(row) or {}
+        try:
+            cantidad = int(movimiento.get("cantidad") or 0)
+        except (TypeError, ValueError):
+            continue
+        if solo_positivos and cantidad <= 0:
+            continue
+        if solo_negativos and cantidad >= 0:
+            continue
+        clave = _clave_producto_movimiento(movimiento, movimiento)
+        cantidades[clave] = cantidades.get(clave, 0) + abs(cantidad)
+    return cantidades
+
+
+def _cantidades_salida_nota_api(conn, nota_id, auth):
+    return _cantidades_movimiento_nota_api(
+        conn,
+        nota_id,
+        auth,
+        {"VENTA", "SALIDA_STOCK", "SALIDA_STOCK_API"},
+        solo_negativos=True,
+    )
+
+
+def _cantidades_reintegradas_nota_api(conn, nota_id, auth):
+    return _cantidades_movimiento_nota_api(
+        conn,
+        nota_id,
+        auth,
+        {"CANCELACION_VENTA", "DEVOLUCION", "DEVOLUCION_POR_ANULACION", "STOCK_RESTABLECIDO_NOTA_PAGADA"},
+        solo_positivos=True,
+    )
+
+
+def _cantidades_pendientes_devolucion_nota_api(conn, nota_id, auth):
+    salidas = _cantidades_salida_nota_api(conn, nota_id, auth)
+    reintegradas = _cantidades_reintegradas_nota_api(conn, nota_id, auth)
+    pendientes = {}
+    for clave, cantidad_salida in salidas.items():
+        pendiente = _cantidad_reintegrable_movimiento(
+            cantidad_salida,
+            reintegradas.get(clave, 0),
+        )
+        if pendiente > 0:
+            pendientes[clave] = pendiente
+    return pendientes
+
+
+def _nota_requiere_devolucion_stock_api(conn, nota, auth):
+    if not nota or nota.get("id") in (None, ""):
+        return False
+    # El estado PAGADA por si solo no prueba que esta nota desconto inventario.
+    return bool(_cantidades_pendientes_devolucion_nota_api(conn, nota.get("id"), auth))
 
 
 def _direccion_cliente_completa_api(direccion):
@@ -2607,12 +2959,27 @@ def _items_stock_nota_api(conn, nota_id, bloquear=False):
         FROM items
         WHERE nota_id=%s
     """, (nota_id_real,)).fetchall()
-    lineas = []
-    afectados = []
+    lineas_sin_agrupar = []
+    # Primero se resuelven y agrupan las lineas; despues se bloquean los
+    # productos en un orden estable para que dos ventas no dupliquen descuentos.
     for row in rows:
         item = _row_dict(row) or {}
-        producto = _buscar_producto_item_api(conn, item, bloquear=bloquear)
-        producto_data = _row_dict(producto) or {}
+        producto = _buscar_producto_item_api(conn, item, bloquear=False)
+        lineas_sin_agrupar.append((item, _row_dict(producto) or {}, None))
+
+    lineas = _agrupar_lineas_movimiento(lineas_sin_agrupar)
+    if bloquear:
+        lineas_bloqueadas = []
+        for item, producto, afectado in lineas:
+            if producto:
+                producto_bloqueado = _buscar_producto_item_api(conn, item, bloquear=True)
+                producto = _row_dict(producto_bloqueado) or {}
+            lineas_bloqueadas.append((item, producto, afectado))
+        lineas = lineas_bloqueadas
+
+    afectados = []
+    lineas_validadas = []
+    for item, producto_data, _ in lineas:
         cantidad = _cantidad_item_stock_api(item)
 
         if producto_data and not _producto_inventariable_api(producto_data):
@@ -2644,8 +3011,8 @@ def _items_stock_nota_api(conn, nota_id, bloquear=False):
                 "estado": estado_stock,
             }
             afectados.append(afectado)
-        lineas.append((item, producto_data, afectado))
-    return lineas, afectados
+        lineas_validadas.append((item, producto_data, afectado))
+    return lineas_validadas, afectados
 
 
 def _clave_stock_autorizada_api(data):
@@ -2665,51 +3032,6 @@ def _usuario_auth_api(auth):
     return auth.get("usuario") or auth.get("usuario_nombre") or str(auth.get("usuario_id") or "usuario_desconocido")
 
 
-def _registrar_movimiento_almacen_api(conn, tipo, item, producto, cantidad, motivo, auth):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return
-    stock_anterior = int((producto or {}).get("stock") or 0) if producto else None
-    stock_nuevo = (producto or {}).get("_stock_nuevo")
-    tipos_salida = {"SALIDA_STOCK_API", "AJUSTE_ADMIN_NOTA_PAGADA_DESCUENTO"}
-    if stock_nuevo is None:
-        stock_nuevo = stock_anterior - int(cantidad) if stock_anterior is not None and tipo in tipos_salida else stock_anterior
-    valores = {
-        "fecha": datetime.now(),
-        "usuario": _usuario_auth_api(auth),
-        "tipo": tipo,
-        "marca": (item or {}).get("marca") or (producto or {}).get("marca"),
-        "hilo": (item or {}).get("hilo") or (producto or {}).get("hilo"),
-        "color": (item or {}).get("color") or (producto or {}).get("color"),
-        "codigo": (item or {}).get("codigo") or (producto or {}).get("codigo"),
-        "stock_anterior": stock_anterior,
-        "stock_nuevo": stock_nuevo,
-        "cantidad": -int(cantidad) if tipo in tipos_salida else int(cantidad or 0),
-        "campo": "stock",
-        "valor_anterior": stock_anterior,
-        "valor_nuevo": stock_nuevo,
-        "motivo": motivo,
-    }
-    campos = [campo for campo in valores if campo in columnas]
-    if not campos:
-        return
-    placeholders = ",".join(["%s"] * len(campos))
-    try:
-        conn.execute("SAVEPOINT sp_movimiento_almacen")
-        conn.execute(
-            f"INSERT INTO movimientos_almacen({','.join(campos)}) VALUES ({placeholders})",
-            tuple(valores[campo] for campo in campos),
-        )
-        conn.execute("RELEASE SAVEPOINT sp_movimiento_almacen")
-    except Exception:
-        app.logger.warning("No se pudo registrar movimiento de almacen %s", tipo, exc_info=True)
-        try:
-            conn.execute("ROLLBACK TO SAVEPOINT sp_movimiento_almacen")
-            conn.execute("RELEASE SAVEPOINT sp_movimiento_almacen")
-        except Exception:
-            pass
-
-
 def _registrar_autorizacion_stock_api(conn, nota_id, productos, accion, auth):
     if not productos:
         return
@@ -2723,20 +3045,17 @@ def _registrar_autorizacion_stock_api(conn, nota_id, productos, accion, auth):
         f"accion={accion} | usuario={usuario} | productos={detalle_productos}"
     )
     for producto in productos:
-        item = {
-            "codigo": producto.get("codigo"),
-            "marca": producto.get("marca"),
-            "hilo": producto.get("hilo"),
-            "color": producto.get("color"),
-        }
-        _registrar_movimiento_almacen_api(
+        _registrar_auditoria_general_api(
             conn,
-            "AUTORIZACION_STOCK",
-            item,
-            {"stock": producto.get("stock_actual")},
-            producto.get("cantidad_solicitada") or 0,
-            motivo,
             auth,
+            "AUTORIZACION_STOCK_ESPECIAL",
+            "ventas",
+            entidad_tipo="producto",
+            entidad_id=producto.get("id") or producto.get("codigo"),
+            descripcion=motivo,
+            datos_anteriores={"stock_actual": producto.get("stock_actual")},
+            datos_nuevos={"cantidad_solicitada": producto.get("cantidad_solicitada")},
+            resultado="AUTORIZADO",
         )
     notas_cols = _columnas_tabla_api(conn, "notas")
     campo_notas = "observaciones" if "observaciones" in notas_cols else ("notas" if "notas" in notas_cols else None)
@@ -2755,6 +3074,7 @@ def _descontar_stock_nota_api(conn, nota_id, auth, autorizacion_stock=False):
         _registrar_autorizacion_stock_api(conn, nota_id, afectados, "pago", auth)
 
     productos_cols = _columnas_tabla_api(conn, "productos")
+    movimientos = []
     for item, producto, _ in lineas:
         if not producto or not _producto_inventariable_api(producto):
             continue
@@ -2762,119 +3082,109 @@ def _descontar_stock_nota_api(conn, nota_id, auth, autorizacion_stock=False):
         stock_anterior = int(producto.get("stock") or 0)
         stock_nuevo = stock_anterior - cantidad
         estado_nuevo = "OK" if stock_nuevo >= STOCK_MINIMO_API else "RESURTIR"
-        if "id" in productos_cols and producto.get("id") is not None:
-            if "estado" in productos_cols:
-                conn.execute(
-                    "UPDATE productos SET stock=%s, estado=%s WHERE id=%s",
-                    (stock_nuevo, estado_nuevo, producto.get("id")),
-                )
-            else:
-                conn.execute(
-                    "UPDATE productos SET stock=%s WHERE id=%s",
-                    (stock_nuevo, producto.get("id")),
-                )
-        else:
-            if "estado" in productos_cols:
-                conn.execute(
-                    "UPDATE productos SET stock=%s, estado=%s WHERE marca=%s AND hilo=%s AND codigo=%s",
-                    (stock_nuevo, estado_nuevo, producto.get("marca"), producto.get("hilo"), producto.get("codigo")),
-                )
-            else:
-                conn.execute(
-                    "UPDATE productos SET stock=%s WHERE marca=%s AND hilo=%s AND codigo=%s",
-                    (stock_nuevo, producto.get("marca"), producto.get("hilo"), producto.get("codigo")),
-                )
-        _registrar_movimiento_almacen_api(
+        identificador_producto = producto.get("id") or item.get("codigo") or "sin_producto"
+        idempotency_key = f"VENTA:PAGO:{nota_id}:{identificador_producto}"
+        movimiento = _cambiar_stock_con_movimiento_api(
             conn,
-            "SALIDA_STOCK_API",
-            item,
-            producto,
-            cantidad,
-            f"Descuento por pago de nota {nota_id}",
             auth,
+            producto,
+            stock_nuevo,
+            tipo="VENTA",
+            motivo=f"Descuento por pago de nota {nota_id}",
+            referencia_tipo="NOTA",
+            referencia_id=nota_id,
+            idempotency_key=idempotency_key,
+            metadata={"operacion": "pago", "nota_id": str(nota_id), "cantidad_item": cantidad},
+            estado_nuevo=estado_nuevo,
         )
+        movimientos.append(movimiento)
+    return movimientos
 
 
-def _devolucion_stock_existente_api(conn, nota_id):
-    columnas = _columnas_tabla_api(conn, "movimientos_almacen")
-    if not columnas:
-        return False
-    filtros = []
-    valores = []
-    if "tipo" in columnas:
-        filtros.append("tipo IN (%s,%s)")
-        valores.extend(["DEVOLUCION_POR_ANULACION", "STOCK_RESTABLECIDO_NOTA_PAGADA"])
-    if "motivo" in columnas:
-        filtros.append("motivo ILIKE %s")
-        valores.append(f"%{nota_id}%")
-    if not filtros:
-        return False
-    row = conn.execute(
-        f"SELECT 1 FROM movimientos_almacen WHERE {' AND '.join(filtros)} LIMIT 1",
-        tuple(valores),
+def _devolucion_stock_existente_api(conn, nota_id, auth):
+    """Una devolucion previa de esta empresa bloquea una segunda anulacion."""
+    return bool(_cantidades_reintegradas_nota_api(conn, nota_id, auth))
+
+
+def _producto_por_clave_movimiento_api(conn, clave_producto, bloquear=False):
+    """Resuelve un producto desde la llave estable de un movimiento ya registrado."""
+    productos_cols = _columnas_tabla_api(conn, "productos")
+    bloqueo = " FOR UPDATE" if bloquear else ""
+    if not clave_producto:
+        return None
+
+    if clave_producto[0] == "producto_id":
+        if "id" not in productos_cols:
+            return None
+        return conn.execute(
+            f"SELECT * FROM productos WHERE id=%s LIMIT 1{bloqueo}",
+            (clave_producto[1],),
+        ).fetchone()
+
+    if len(clave_producto) != 4 or not {"marca", "hilo", "codigo"}.issubset(productos_cols):
+        return None
+    _, marca, hilo, codigo = clave_producto
+    return conn.execute(
+        f"""
+        SELECT *
+        FROM productos
+        WHERE UPPER(COALESCE(CAST(marca AS TEXT), ''))=%s
+          AND UPPER(COALESCE(CAST(hilo AS TEXT), ''))=%s
+          AND UPPER(COALESCE(CAST(codigo AS TEXT), ''))=%s
+        LIMIT 1{bloqueo}
+        """,
+        (str(marca).upper(), str(hilo).upper(), str(codigo).upper()),
     ).fetchone()
-    return bool(row)
 
 
 def _devolver_stock_nota_api(conn, nota_id, auth):
-    if _devolucion_stock_existente_api(conn, nota_id):
-        raise NotaPagoNoPermitido("Esta nota ya fue anulada o el stock ya fue regresado.", 409)
-
-    lineas, _ = _items_stock_nota_api(conn, nota_id, bloquear=True)
-    productos_cols = _columnas_tabla_api(conn, "productos")
+    cantidades_salida = _cantidades_salida_nota_api(conn, nota_id, auth)
+    cantidades_reintegradas = _cantidades_reintegradas_nota_api(conn, nota_id, auth)
+    pendientes = _cantidades_pendientes_devolucion_nota_api(conn, nota_id, auth)
     productos_devueltos = []
-    for item, producto, _ in lineas:
+    for clave_producto in sorted(pendientes, key=lambda clave: tuple(str(valor) for valor in clave)):
+        cantidad_salida = int(cantidades_salida.get(clave_producto, 0) or 0)
+        cantidad_reintegrada = int(cantidades_reintegradas.get(clave_producto, 0) or 0)
+        cantidad = int(pendientes[clave_producto])
+        producto = _row_dict(_producto_por_clave_movimiento_api(conn, clave_producto, bloquear=True)) or {}
         if not producto:
-            etiqueta = " ".join(
-                str(item.get(campo) or "").strip()
-                for campo in ("marca", "hilo", "color", "codigo")
-                if str(item.get(campo) or "").strip()
-            ) or str(item.get("codigo") or "sin codigo")
-            raise ValueError(f"No se pudo resolver el producto {etiqueta} para regresar stock.")
+            raise ValueError(f"No se pudo resolver el producto del movimiento {clave_producto!r} para regresar stock.")
         if not _producto_inventariable_api(producto):
             continue
-        cantidad = _cantidad_item_stock_api(item)
         stock_anterior = int(producto.get("stock") or 0)
         stock_nuevo = stock_anterior + cantidad
         estado_nuevo = "OK" if stock_nuevo >= STOCK_MINIMO_API else "RESURTIR"
-        if "id" in productos_cols and producto.get("id") is not None:
-            if "estado" in productos_cols:
-                conn.execute(
-                    "UPDATE productos SET stock=%s, estado=%s WHERE id=%s",
-                    (stock_nuevo, estado_nuevo, producto.get("id")),
-                )
-            else:
-                conn.execute(
-                    "UPDATE productos SET stock=%s WHERE id=%s",
-                    (stock_nuevo, producto.get("id")),
-                )
-        else:
-            if "estado" in productos_cols:
-                conn.execute(
-                    "UPDATE productos SET stock=%s, estado=%s WHERE marca=%s AND hilo=%s AND codigo=%s",
-                    (stock_nuevo, estado_nuevo, producto.get("marca"), producto.get("hilo"), producto.get("codigo")),
-                )
-            else:
-                conn.execute(
-                    "UPDATE productos SET stock=%s WHERE marca=%s AND hilo=%s AND codigo=%s",
-                    (stock_nuevo, producto.get("marca"), producto.get("hilo"), producto.get("codigo")),
-                )
-        producto_mov = dict(producto)
-        producto_mov["_stock_nuevo"] = stock_nuevo
-        _registrar_movimiento_almacen_api(
+        identificador_producto = producto.get("id") or producto.get("codigo") or "sin_producto"
+        resultado_movimiento = _cambiar_stock_con_movimiento_api(
             conn,
-            "DEVOLUCION_POR_ANULACION",
-            item,
-            producto_mov,
-            cantidad,
-            f"Stock regresado por anulacion de nota pagada autorizada. nota={nota_id}",
             auth,
+            producto,
+            stock_nuevo,
+            tipo="CANCELACION_VENTA",
+            motivo=f"Stock regresado por anulacion de nota pagada autorizada. nota={nota_id}",
+            referencia_tipo="NOTA",
+            referencia_id=nota_id,
+            idempotency_key=(
+                f"CANCELACION:NOTA:{nota_id}:{identificador_producto}:"
+                f"SALIDA:{cantidad_salida}:REINTEGRADA:{cantidad_reintegrada}"
+            ),
+            metadata={
+                "operacion": "anulacion",
+                "nota_id": str(nota_id),
+                "cantidad_reintegrada": cantidad,
+                "cantidad_salida_registrada": cantidad_salida,
+                "cantidad_reintegrada_previa": cantidad_reintegrada,
+            },
+            estado_nuevo=estado_nuevo,
         )
+        if resultado_movimiento.get("idempotente"):
+            raise RuntimeError("La reposicion pendiente colisiono con una llave idempotente existente.")
         productos_devueltos.append({
-            "codigo": item.get("codigo") or producto.get("codigo") or "",
-            "marca": item.get("marca") or producto.get("marca") or "",
-            "hilo": item.get("hilo") or producto.get("hilo") or "",
-            "color": item.get("color") or producto.get("color") or "",
+            "producto_id": producto.get("id"),
+            "codigo": producto.get("codigo") or "",
+            "marca": producto.get("marca") or "",
+            "hilo": producto.get("hilo") or "",
+            "color": producto.get("color") or "",
             "cantidad": cantidad,
             "stock_anterior": stock_anterior,
             "stock_nuevo": stock_nuevo,
@@ -2921,9 +3231,10 @@ def _agrupar_items_ajuste_api(conn, items, bloquear=False):
     return grupos
 
 
-def _actualizar_stock_producto_api(conn, producto, stock_nuevo):
+def _actualizar_stock_producto_api(conn, producto, stock_nuevo, estado_nuevo=None):
     productos_cols = _columnas_tabla_api(conn, "productos")
-    estado_nuevo = "OK" if int(stock_nuevo) >= STOCK_MINIMO_API else "RESURTIR"
+    if estado_nuevo is None:
+        estado_nuevo = "OK" if int(stock_nuevo) >= STOCK_MINIMO_API else "RESURTIR"
     if "id" in productos_cols and producto.get("id") is not None:
         if "estado" in productos_cols:
             conn.execute(
@@ -2942,10 +3253,56 @@ def _actualizar_stock_producto_api(conn, producto, stock_nuevo):
                 (stock_nuevo, estado_nuevo, producto.get("marca"), producto.get("hilo"), producto.get("codigo")),
             )
         else:
-            conn.execute(
-                "UPDATE productos SET stock=%s WHERE marca=%s AND hilo=%s AND codigo=%s",
-                (stock_nuevo, producto.get("marca"), producto.get("hilo"), producto.get("codigo")),
-            )
+                conn.execute(
+                    "UPDATE productos SET stock=%s WHERE marca=%s AND hilo=%s AND codigo=%s",
+                    (stock_nuevo, producto.get("marca"), producto.get("hilo"), producto.get("codigo")),
+                )
+
+
+def _cambiar_stock_con_movimiento_api(
+    conn,
+    auth,
+    producto,
+    stock_nuevo,
+    *,
+    tipo,
+    motivo,
+    referencia_tipo,
+    referencia_id,
+    idempotency_key=None,
+    metadata=None,
+    estado_nuevo=None,
+):
+    """Actualiza stock y persiste su movimiento en la misma transaccion."""
+    stock_anterior = int((producto or {}).get("stock") or 0)
+    stock_nuevo = int(stock_nuevo)
+    cantidad = stock_nuevo - stock_anterior
+    if cantidad == 0:
+        return {"creado": False, "sin_cambio": True, "movimiento": None}
+
+    existente = _movimiento_idempotente_existente_api(
+        conn,
+        idempotency_key,
+        (auth or {}).get("cliente_id"),
+    )
+    if existente:
+        return {"creado": False, "idempotente": True, "movimiento": _row_dict(existente)}
+
+    _actualizar_stock_producto_api(conn, producto, stock_nuevo, estado_nuevo=estado_nuevo)
+    return _registrar_movimiento_inventario_api(
+        conn,
+        auth,
+        producto=producto,
+        tipo=tipo,
+        cantidad=cantidad,
+        stock_anterior=stock_anterior,
+        stock_nuevo=stock_nuevo,
+        motivo=motivo,
+        referencia_tipo=referencia_tipo,
+        referencia_id=referencia_id,
+        idempotency_key=idempotency_key,
+        metadata=metadata,
+    )
 
 
 def _agregar_observacion_nota_api(conn, nota_id, detalle):
@@ -3000,26 +3357,22 @@ def _ajustar_stock_items_pagados_api(conn, nota_id, items_originales, items_nuev
                     "estado": "STOCK INSUFICIENTE" if faltante else "STOCK BAJO",
                 })
 
-        _actualizar_stock_producto_api(conn, producto, stock_nuevo)
-        producto_mov = dict(producto)
-        producto_mov["_stock_nuevo"] = stock_nuevo
-        tipo_mov = (
-            "AJUSTE_ADMIN_NOTA_PAGADA_DESCUENTO"
-            if diferencia > 0
-            else "AJUSTE_ADMIN_NOTA_PAGADA_DEVOLUCION"
-        )
         detalle = (
             f"{motivo}. nota={nota_id}; cantidad_anterior={cantidad_anterior}; "
             f"cantidad_nueva={cantidad_nueva}; diferencia={diferencia}"
         )
-        _registrar_movimiento_almacen_api(
+        identificador_producto = producto.get("id") or item_base.get("codigo") or "sin_producto"
+        _cambiar_stock_con_movimiento_api(
             conn,
-            tipo_mov,
-            item_base,
-            producto_mov,
-            abs(diferencia),
-            detalle,
             auth,
+            producto,
+            stock_nuevo,
+            tipo="CORRECCION",
+            motivo=detalle,
+            referencia_tipo="NOTA",
+            referencia_id=nota_id,
+            idempotency_key=f"CORRECCION:NOTA:{nota_id}:{identificador_producto}:{cantidad_anterior}:{cantidad_nueva}",
+            metadata={"operacion": "ajuste_admin_nota_pagada", "cantidad_anterior": cantidad_anterior, "cantidad_nueva": cantidad_nueva},
         )
         movimientos.append({
             "codigo": item_base.get("codigo") or producto.get("codigo") or "",
@@ -3031,7 +3384,7 @@ def _ajustar_stock_items_pagados_api(conn, nota_id, items_originales, items_nuev
             "diferencia": diferencia,
             "stock_anterior": stock_anterior,
             "stock_nuevo": stock_nuevo,
-            "tipo": tipo_mov,
+            "tipo": "CORRECCION",
         })
 
     if afectados:
@@ -3769,7 +4122,7 @@ def api_notas_listar():
 
 @app.route("/api/notas", methods=["POST"])
 def api_notas_crear():
-    _, error = _require_license_api()
+    auth, error = _require_license_api()
     if error:
         return error
     try:
@@ -3806,6 +4159,21 @@ def api_notas_crear():
                 tuple(valores[campo] for campo in campos),
             )
             _insertar_items_nota_api(conn, nota_id, items)
+            _registrar_auditoria_general_api(
+                conn,
+                auth,
+                "COTIZACION_CREADA",
+                "ventas",
+                entidad_tipo="nota",
+                entidad_id=nota_id,
+                descripcion=f"Cotizacion creada con {len(items)} producto(s).",
+                datos_nuevos={
+                    "cliente_id": cliente_id,
+                    "estado": "COTIZACION",
+                    "subtotal_productos": total,
+                    "items": len(items),
+                },
+            )
 
         nota = _nota_con_detalle_api(nota_id)
         return jsonify({"ok": True, "nota": nota}), 201
@@ -3850,13 +4218,13 @@ def api_notas_detalle_completo(nota_id):
 
 @app.route("/api/notas/<string:nota_id>", methods=["PATCH"])
 def api_notas_actualizar(nota_id):
-    _, error = _require_license_api()
+    auth, error = _require_license_api()
     if error:
         return error
     try:
         data = _body_json()
         with get_conn() as conn:
-            nota_id_real, _ = _resolver_nota_api(conn, nota_id)
+            nota_id_real, actual = _resolver_nota_api(conn, nota_id)
             _validar_no_escritura_restringida_nota_api(conn, nota_id_real, data)
             notas_cols = _columnas_tabla_api(conn, "notas")
             cambios = {}
@@ -3891,6 +4259,18 @@ def api_notas_actualizar(nota_id):
                     f"UPDATE notas SET {sets} WHERE id=%s",
                     tuple(cambios.values()) + (nota_id_real,),
                 )
+                antes, despues = _diferencias_auditoria(actual, cambios, campos=tuple(cambios))
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "COTIZACION_MODIFICADA",
+                    "ventas",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Cotizacion actualizada.",
+                    datos_anteriores=antes,
+                    datos_nuevos=despues,
+                )
 
         nota = _nota_con_detalle_api(nota_id_real)
         return jsonify({"ok": True, "nota": nota})
@@ -3900,7 +4280,7 @@ def api_notas_actualizar(nota_id):
 
 @app.route("/api/notas/<string:nota_id>/admin", methods=["PATCH"])
 def api_notas_actualizar_admin(nota_id):
-    _, error = _require_license_api()
+    auth, error = _require_license_api()
     if error:
         return error
     try:
@@ -3954,6 +4334,18 @@ def api_notas_actualizar_admin(nota_id):
                 conn.execute(
                     f"UPDATE notas SET {sets} WHERE id=%s",
                     tuple(cambios.values()) + (nota_id_real,),
+                )
+                antes, despues = _diferencias_auditoria(actual, cambios, campos=tuple(cambios))
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "NOTA_EDITADA_ADMIN",
+                    "ventas",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Datos administrativos de nota actualizados.",
+                    datos_anteriores=antes,
+                    datos_nuevos=despues,
                 )
 
         nota = _nota_con_detalle_api(nota_id_real)
@@ -4033,6 +4425,18 @@ def api_notas_admin_ajustar_items(nota_id):
             if round(total_anterior_final, 2) != round(total_nuevo_final, 2):
                 detalle += " Total ajustado administrativamente. Revisar diferencia contra pago registrado."
             _agregar_observacion_nota_api(conn, nota_id_real, detalle)
+            _registrar_auditoria_general_api(
+                conn,
+                auth,
+                "NOTA_PAGADA_AJUSTADA",
+                "ventas",
+                entidad_tipo="nota",
+                entidad_id=nota_id_real,
+                descripcion=motivo,
+                datos_anteriores={"subtotal": subtotal_anterior, "total_final": total_anterior_final},
+                datos_nuevos={"subtotal": subtotal_nuevo, "total_final": total_nuevo_final, "movimientos": len(movimientos)},
+                resultado="AUTORIZADO",
+            )
 
         nota = _nota_con_detalle_api(nota_id_real)
         return jsonify({
@@ -4118,6 +4522,17 @@ def api_notas_convertir_a_venta(nota_id):
                 f"UPDATE notas SET {sets} WHERE id=%s",
                 tuple(cambios.values()) + (nota_id_real,),
             )
+            _registrar_auditoria_general_api(
+                conn,
+                auth,
+                "COTIZACION_CONVERTIDA_A_VENTA",
+                "ventas",
+                entidad_tipo="nota",
+                entidad_id=nota_id_real,
+                descripcion="Cotizacion convertida a venta pendiente de pago.",
+                datos_anteriores={"estado": actual.get("estado")},
+                datos_nuevos={"estado": "VENTA_PENDIENTE", "subtotal_productos": total},
+            )
 
         nota = _nota_con_detalle_api(nota_id_real)
         return jsonify({"ok": True, "nota": nota})
@@ -4138,7 +4553,7 @@ def api_notas_items(nota_id):
 
 @app.route("/api/notas/<string:nota_id>/items", methods=["PATCH"])
 def api_notas_actualizar_items(nota_id):
-    _, error = _require_license_api()
+    auth, error = _require_license_api()
     if error:
         return error
     try:
@@ -4149,11 +4564,23 @@ def api_notas_actualizar_items(nota_id):
             nota_id_real, actual = _resolver_nota_api(conn, nota_id)
             if _normalizar_estado_pago_api(actual.get("estado")) in ESTADOS_NOTA_PAGADA_API:
                 raise PermissionError("Editar items de una nota pagada todavia no esta disponible en modo API.")
+            items_anteriores = _items_actuales_nota_api(conn, nota_id_real, bloquear=False)
             notas_cols = _columnas_tabla_api(conn, "notas")
             conn.execute("DELETE FROM items WHERE nota_id=%s", (nota_id_real,))
             _insertar_items_nota_api(conn, nota_id_real, items)
             if "total" in notas_cols:
                 conn.execute("UPDATE notas SET total=%s WHERE id=%s", (total, nota_id_real))
+            _registrar_auditoria_general_api(
+                conn,
+                auth,
+                "COTIZACION_ITEMS_MODIFICADOS",
+                "ventas",
+                entidad_tipo="nota",
+                entidad_id=nota_id_real,
+                descripcion="Productos de cotizacion actualizados.",
+                datos_anteriores={"items": len(items_anteriores), "subtotal": actual.get("total")},
+                datos_nuevos={"items": len(items), "subtotal": total},
+            )
 
         nota = _nota_con_detalle_api(nota_id_real)
         return jsonify({"ok": True, "nota": nota})
@@ -4181,35 +4608,61 @@ def api_notas_marcar_pago(nota_id):
         data = _body_json()
         comprobante = str(data.get("comprobante") or "").strip() or None
         fecha_pago = data.get("fecha_pago") or datetime.now().isoformat(timespec="seconds")
+        pago_idempotente = False
         with get_conn() as conn:
-            nota_id_real, actual = _resolver_nota_api(conn, nota_id)
-            _validar_nota_pagable_api(conn, actual)
-            _descontar_stock_nota_api(
-                conn,
-                nota_id_real,
-                auth,
-                autorizacion_stock=_clave_stock_autorizada_api(data),
-            )
-            notas_cols = _columnas_tabla_api(conn, "notas")
-            cambios = {}
-            if "estado" in notas_cols:
-                cambios["estado"] = "PAGADA"
-            if "fecha_pago" in notas_cols:
-                cambios["fecha_pago"] = fecha_pago
-            if comprobante and "comprobante" in notas_cols:
-                cambios["comprobante"] = comprobante
-            if cambios:
-                sets = ", ".join(f"{campo}=%s" for campo in cambios)
-                conn.execute(
-                    f"UPDATE notas SET {sets} WHERE id=%s",
-                    tuple(cambios.values()) + (nota_id_real,),
+            nota_id_real, actual = _resolver_nota_api(conn, nota_id, bloquear=True)
+            _rechazar_pago_nota_anulada_api(actual)
+            if _nota_pago_ya_aplicado_api(conn, actual):
+                pago_idempotente = True
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "PAGO_REPETIDO",
+                    "ventas",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Solicitud de pago repetida; no se descontó stock nuevamente.",
+                    resultado="IDEMPOTENTE",
                 )
-            if comprobante:
-                _insertar_pago_api(conn, nota_id_real, comprobante)
+            else:
+                _validar_nota_pagable_api(conn, actual)
+                movimientos = _descontar_stock_nota_api(
+                    conn,
+                    nota_id_real,
+                    auth,
+                    autorizacion_stock=_clave_stock_autorizada_api(data),
+                )
+                notas_cols = _columnas_tabla_api(conn, "notas")
+                cambios = {}
+                if "estado" in notas_cols:
+                    cambios["estado"] = "PAGADA"
+                if "fecha_pago" in notas_cols:
+                    cambios["fecha_pago"] = fecha_pago
+                if comprobante and "comprobante" in notas_cols:
+                    cambios["comprobante"] = comprobante
+                if cambios:
+                    sets = ", ".join(f"{campo}=%s" for campo in cambios)
+                    conn.execute(
+                        f"UPDATE notas SET {sets} WHERE id=%s",
+                        tuple(cambios.values()) + (nota_id_real,),
+                    )
+                if comprobante:
+                    _insertar_pago_api(conn, nota_id_real, comprobante)
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "PAGO_REGISTRADO",
+                    "ventas",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Venta marcada como pagada y stock descontado.",
+                    datos_anteriores={"estado": actual.get("estado"), "fecha_pago": actual.get("fecha_pago")},
+                    datos_nuevos={"estado": "PAGADA", "fecha_pago": fecha_pago, "movimientos": len(movimientos)},
+                )
 
         nota = _nota_con_detalle_api(nota_id_real)
         nota["pagos"] = _pagos_nota_api(nota_id_real)
-        return jsonify({"ok": True, "nota": nota})
+        return jsonify({"ok": True, "nota": nota, "idempotente": pago_idempotente})
     except Exception as exc:
         return _respuesta_error_nota_api(exc)
 
@@ -4262,22 +4715,20 @@ def api_notas_anular(nota_id):
             nota_id_real, actual = _resolver_nota_api(conn, nota_id, bloquear=True)
 
             estado = _normalizar_estado_pago_api(actual.get("estado"))
-            if estado in {"ANULADA", "CANCELADA", "ELIMINADA"} or _devolucion_stock_existente_api(conn, nota_id_real):
-                raise NotaPagoNoPermitido("Esta nota ya fue anulada o el stock ya fue regresado.", 409)
-
+            ya_anulada = estado in {"ANULADA", "CANCELADA", "ELIMINADA"}
             productos_devueltos = []
-            requiere_devolver_stock = _nota_requiere_devolucion_stock_api(conn, actual)
+            requiere_devolver_stock = _nota_requiere_devolucion_stock_api(conn, actual, auth)
             if requiere_devolver_stock:
                 if not _clave_stock_autorizada_api(data):
                     raise NotaPagoNoPermitido(
                         "Esta nota ya fue pagada. Para anularla y regresar stock se requiere autorizacion.",
                         409,
-                    )
+                )
                 productos_devueltos = _devolver_stock_nota_api(conn, nota_id_real, auth)
 
             notas_cols = _columnas_tabla_api(conn, "notas")
             cambios = {}
-            if "estado" in notas_cols:
+            if not ya_anulada and "estado" in notas_cols:
                 cambios["estado"] = "ANULADA"
             if cambios:
                 sets = ", ".join(f"{campo}=%s" for campo in cambios)
@@ -4286,11 +4737,24 @@ def api_notas_anular(nota_id):
                     tuple(cambios.values()) + (nota_id_real,),
                 )
 
-            detalle = (
-                f"Nota anulada por {_usuario_auth_api(auth)}. "
-                f"Stock devuelto: {len(productos_devueltos)} producto(s)."
-            )
-            _registrar_anulacion_nota_api(conn, nota_id_real, detalle)
+            idempotente = ya_anulada and not productos_devueltos
+            if not idempotente:
+                detalle = (
+                    f"Nota {'reparada' if ya_anulada else 'anulada'} por {_usuario_auth_api(auth)}. "
+                    f"Stock devuelto: {len(productos_devueltos)} producto(s)."
+                )
+                _registrar_anulacion_nota_api(conn, nota_id_real, detalle)
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "VENTA_ANULADA",
+                    "ventas",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion=detalle,
+                    datos_anteriores={"estado": actual.get("estado"), "fecha_pago": actual.get("fecha_pago")},
+                    datos_nuevos={"estado": "ANULADA", "productos_reintegrados": len(productos_devueltos)},
+                )
 
         nota = _nota_con_detalle_api(nota_id_real)
         return jsonify({
@@ -4298,6 +4762,7 @@ def api_notas_anular(nota_id):
             "nota": nota,
             "productos_devueltos": productos_devueltos,
             "stock_devuelto": bool(productos_devueltos),
+            "idempotente": idempotente,
         })
     except Exception as exc:
         return _respuesta_error_nota_api(exc, accion="anular")
@@ -4328,31 +4793,60 @@ def api_pagos_registrar():
         comprobante = str(data.get("comprobante") or "").strip() or None
         if not nota_id:
             raise ValueError("Falta nota_id.")
+        pago_idempotente = False
         with get_conn() as conn:
-            nota_id_real, actual = _resolver_nota_api(conn, nota_id)
-            _validar_nota_pagable_api(conn, actual)
-            _descontar_stock_nota_api(
-                conn,
-                nota_id_real,
-                auth,
-                autorizacion_stock=_clave_stock_autorizada_api(data),
-            )
-            notas_cols = _columnas_tabla_api(conn, "notas")
-            cambios = {}
-            if "estado" in notas_cols:
-                cambios["estado"] = "PAGADA"
-            if "fecha_pago" in notas_cols:
-                cambios["fecha_pago"] = datetime.now().isoformat(timespec="seconds")
-            if comprobante and "comprobante" in notas_cols:
-                cambios["comprobante"] = comprobante
-            if cambios:
-                sets = ", ".join(f"{campo}=%s" for campo in cambios)
-                conn.execute(
-                    f"UPDATE notas SET {sets} WHERE id=%s",
-                    tuple(cambios.values()) + (nota_id_real,),
+            nota_id_real, actual = _resolver_nota_api(conn, nota_id, bloquear=True)
+            _rechazar_pago_nota_anulada_api(actual)
+            if _nota_pago_ya_aplicado_api(conn, actual):
+                pago_idempotente = True
+                pagos_existentes = _pagos_nota_api_conn(conn, nota_id_real)
+                pago = pagos_existentes[-1] if pagos_existentes else None
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "PAGO_REPETIDO",
+                    "ventas",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Solicitud de pago repetida; no se descontó stock nuevamente.",
+                    resultado="IDEMPOTENTE",
                 )
-            pago = _insertar_pago_api(conn, nota_id_real, comprobante)
-        return jsonify({"ok": True, "pago": _row_dict(pago) if pago else None})
+            else:
+                _validar_nota_pagable_api(conn, actual)
+                movimientos = _descontar_stock_nota_api(
+                    conn,
+                    nota_id_real,
+                    auth,
+                    autorizacion_stock=_clave_stock_autorizada_api(data),
+                )
+                notas_cols = _columnas_tabla_api(conn, "notas")
+                cambios = {}
+                fecha_pago = datetime.now().isoformat(timespec="seconds")
+                if "estado" in notas_cols:
+                    cambios["estado"] = "PAGADA"
+                if "fecha_pago" in notas_cols:
+                    cambios["fecha_pago"] = fecha_pago
+                if comprobante and "comprobante" in notas_cols:
+                    cambios["comprobante"] = comprobante
+                if cambios:
+                    sets = ", ".join(f"{campo}=%s" for campo in cambios)
+                    conn.execute(
+                        f"UPDATE notas SET {sets} WHERE id=%s",
+                        tuple(cambios.values()) + (nota_id_real,),
+                    )
+                pago = _insertar_pago_api(conn, nota_id_real, comprobante)
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "PAGO_REGISTRADO",
+                    "ventas",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Pago registrado y stock descontado.",
+                    datos_anteriores={"estado": actual.get("estado"), "fecha_pago": actual.get("fecha_pago")},
+                    datos_nuevos={"estado": "PAGADA", "fecha_pago": fecha_pago, "movimientos": len(movimientos)},
+                )
+        return jsonify({"ok": True, "pago": _row_dict(pago) if pago else None, "idempotente": pago_idempotente})
     except Exception as exc:
         return _respuesta_error_nota_api(exc)
 
@@ -4949,6 +5443,20 @@ def api_admin_clientes():
             data.get("plan"),
             data.get("notas_admin"),
         )).fetchone()
+        _registrar_auditoria_general_api(
+            conn,
+            auth,
+            "CLIENTE_SISTEMA_CREADO",
+            "administracion",
+            entidad_tipo="cliente_sistema",
+            entidad_id=row["id"],
+            descripcion="Cliente de sistema creado.",
+            datos_nuevos={
+                "nombre_negocio": data.get("nombre_negocio"),
+                "estado": data.get("estado") or "activo",
+                "plan": data.get("plan"),
+            },
+        )
     return jsonify({"ok": True, "id": row["id"]})
 
 
@@ -4972,7 +5480,25 @@ def api_admin_cliente_patch(cliente_id):
         return jsonify({"ok": True})
     params.append(cliente_id)
     with get_conn() as conn:
+        anterior = conn.execute(
+            "SELECT * FROM clientes_sistema WHERE id=%s",
+            (cliente_id,),
+        ).fetchone()
+        if not anterior:
+            return jsonify({"ok": False, "error": "Cliente no encontrado."}), 404
         conn.execute(f"UPDATE clientes_sistema SET {', '.join(sets)}, updated_at=NOW() WHERE id=%s", tuple(params))
+        antes, despues = _diferencias_auditoria(anterior, data, campos=tuple(sets_item.split("=")[0] for sets_item in sets))
+        _registrar_auditoria_general_api(
+            conn,
+            auth,
+            "CLIENTE_SISTEMA_EDITADO",
+            "administracion",
+            entidad_tipo="cliente_sistema",
+            entidad_id=cliente_id,
+            descripcion="Datos de cliente de sistema actualizados.",
+            datos_anteriores=antes,
+            datos_nuevos=despues,
+        )
     return jsonify({"ok": True})
 
 
@@ -5147,6 +5673,12 @@ def _admin_set_estado_cliente(cliente_id, estado):
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
     with get_conn() as conn:
+        anterior = conn.execute(
+            "SELECT id, nombre_negocio, estado FROM clientes_sistema WHERE id=%s",
+            (cliente_id,),
+        ).fetchone()
+        if not anterior:
+            return jsonify({"ok": False, "error": "Cliente no encontrado."}), 404
         conn.execute("UPDATE clientes_sistema SET estado=%s, updated_at=NOW() WHERE id=%s", (estado, cliente_id))
         if estado != "activo":
             conn.execute("""
@@ -5154,6 +5686,22 @@ def _admin_set_estado_cliente(cliente_id, estado):
                 SET estado='bloqueada', updated_at=NOW()
                 WHERE cliente_id=%s AND estado='activa'
             """, (cliente_id,))
+        accion = {
+            "suspendido": "CLIENTE_SUSPENDIDO",
+            "bloqueado": "CLIENTE_BLOQUEADO",
+            "activo": "CLIENTE_REACTIVADO",
+        }.get(estado, "CLIENTE_ESTADO_ACTUALIZADO")
+        _registrar_auditoria_general_api(
+            conn,
+            auth,
+            accion,
+            "administracion",
+            entidad_tipo="cliente_sistema",
+            entidad_id=cliente_id,
+            descripcion=f"Estado del cliente actualizado a {estado}.",
+            datos_anteriores={"estado": (anterior or {}).get("estado")},
+            datos_nuevos={"estado": estado},
+        )
     return jsonify({"ok": True, "estado": estado})
 
 
@@ -5190,8 +5738,99 @@ def api_admin_sesiones_activas():
     return jsonify(rows)
 
 
+def _select_auditoria_general_api(columnas):
+    campos = []
+    for columna in (
+        "id", "cliente_sistema_id", "usuario_id", "accion", "modulo",
+        "entidad_tipo", "entidad_id", "descripcion", "datos_anteriores_json",
+        "datos_nuevos_json", "resultado", "codigo_error", "ip", "user_agent",
+        "device_id", "request_id", "fecha_creacion",
+    ):
+        if columna in columnas:
+            campos.append(f"a.{columna} AS {columna}")
+        else:
+            campos.append(f"NULL AS {columna}")
+    campos.extend((
+        "u.usuario AS usuario",
+        "u.nombre AS usuario_nombre",
+        "c.nombre_negocio AS nombre_negocio",
+    ))
+    return ", ".join(campos)
+
+
+def _filtros_auditoria_general_api(columnas, args):
+    filtros, valores = [], []
+
+    def texto(parametro, columna):
+        valor = str(args.get(parametro) or "").strip()
+        if valor and columna in columnas:
+            filtros.append(f"a.{columna} ILIKE %s")
+            valores.append(f"%{valor}%")
+
+    for parametro, columna in (
+        ("modulo", "modulo"),
+        ("accion", "accion"),
+        ("resultado", "resultado"),
+    ):
+        texto(parametro, columna)
+    cliente = str(args.get("cliente") or "").strip()
+    if cliente:
+        if cliente.isdigit() and "cliente_sistema_id" in columnas:
+            filtros.append("a.cliente_sistema_id=%s")
+            valores.append(int(cliente))
+        else:
+            filtros.append("c.nombre_negocio ILIKE %s")
+            valores.append(f"%{cliente}%")
+    entidad = str(args.get("entidad") or "").strip()
+    if entidad:
+        campos_entidad = [campo for campo in ("entidad_tipo", "entidad_id") if campo in columnas]
+        if campos_entidad:
+            filtros.append("(" + " OR ".join(f"a.{campo} ILIKE %s" for campo in campos_entidad) + ")")
+            valores.extend([f"%{entidad}%"] * len(campos_entidad))
+    usuario = str(args.get("usuario") or "").strip()
+    if usuario:
+        filtros.append("(u.usuario ILIKE %s OR u.nombre ILIKE %s)")
+        valores.extend([f"%{usuario}%", f"%{usuario}%"])
+    texto_busqueda = str(args.get("texto") or args.get("q") or "").strip()
+    if texto_busqueda:
+        campos = [campo for campo in ("accion", "modulo", "entidad_tipo", "entidad_id", "descripcion", "resultado") if campo in columnas]
+        if campos:
+            filtros.append("(" + " OR ".join(f"a.{campo} ILIKE %s" for campo in campos) + ")")
+            valores.extend([f"%{texto_busqueda}%"] * len(campos))
+    desde = str(args.get("desde") or args.get("fecha_inicial") or "").strip()
+    if desde and "fecha_creacion" in columnas:
+        filtros.append("a.fecha_creacion >= %s")
+        valores.append(desde)
+    hasta = str(args.get("hasta") or args.get("fecha_final") or "").strip()
+    if hasta and "fecha_creacion" in columnas:
+        filtros.append("a.fecha_creacion <= %s")
+        valores.append(hasta)
+    return ("WHERE " + " AND ".join(filtros) if filtros else ""), tuple(valores)
+
+
+def _normalizar_auditoria_general_api(row):
+    data = _row_dict(row) or {}
+    for campo in ("fecha_creacion",):
+        valor = data.get(campo)
+        if hasattr(valor, "isoformat"):
+            data[campo] = valor.isoformat(timespec="seconds")
+    for campo in ("datos_anteriores_json", "datos_nuevos_json"):
+        data[campo] = _limpiar_datos_auditoria(_json_field(data.get(campo), {}))
+    return data
+
+
+def _validar_acceso_auditoria_general_api():
+    auth, error = _require_license_api()
+    if error:
+        return None, error
+    if (auth or {}).get("rol") != "super_admin":
+        return None, (jsonify({"ok": False, "error": "Permiso denegado para consultar auditoría general."}), 403)
+    return auth, None
+
+
 @app.route("/api/admin/auditoria", methods=["GET"])
 def api_admin_auditoria():
+    """Contrato legacy: eventos de licencia como lista directa."""
     auth = _require_super_admin()
     if not auth:
         return jsonify({"error": "No autorizado"}), 401
@@ -5206,6 +5845,87 @@ def api_admin_auditoria():
             LIMIT 200
         """).fetchall()
     return jsonify(rows)
+
+
+@app.route("/api/admin/auditoria-general", methods=["GET"])
+def api_admin_auditoria_general():
+    _, error = _validar_acceso_auditoria_general_api()
+    if error:
+        return error
+    try:
+        per_page = _api_limite(request.args.get("per_page") or request.args.get("limit"), default=50, maximo=200)
+        try:
+            page = max(1, int(request.args.get("page") or 1))
+        except ValueError:
+            raise ValueError("page debe ser un numero entero positivo.")
+        offset = (page - 1) * per_page
+        with get_conn() as conn:
+            columnas = _columnas_tabla_api(conn, "auditoria_general")
+            if not columnas:
+                return jsonify({"ok": True, "items": [], "auditoria": [], "pagination": {"page": page, "per_page": per_page, "total": 0, "pages": 0}})
+            where, valores = _filtros_auditoria_general_api(columnas, request.args)
+            total_row = conn.execute(
+                f"""
+                SELECT COUNT(*) AS total
+                FROM auditoria_general a
+                LEFT JOIN usuarios_sistema u ON u.id=a.usuario_id
+                LEFT JOIN clientes_sistema c ON c.id=a.cliente_sistema_id
+                {where}
+                """,
+                valores,
+            ).fetchone()
+            rows = conn.execute(
+                f"""
+                SELECT {_select_auditoria_general_api(columnas)}
+                FROM auditoria_general a
+                LEFT JOIN usuarios_sistema u ON u.id=a.usuario_id
+                LEFT JOIN clientes_sistema c ON c.id=a.cliente_sistema_id
+                {where}
+                ORDER BY a.fecha_creacion DESC, a.id DESC
+                LIMIT %s OFFSET %s
+                """,
+                valores + (per_page, offset),
+            ).fetchall()
+        total = int((total_row or {}).get("total") or 0)
+        items = [_normalizar_auditoria_general_api(row) for row in rows]
+        pagination = {"page": page, "per_page": per_page, "total": total, "pages": (total + per_page - 1) // per_page if total else 0}
+        return jsonify({"ok": True, "items": items, "auditoria": items, "pagination": pagination})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        app.logger.exception("Error al consultar auditoria general")
+        return jsonify({"ok": False, "error": "No se pudo consultar la auditoría general."}), 500
+
+
+@app.route("/api/admin/auditoria/<int:auditoria_id>", methods=["GET"])
+def api_admin_auditoria_detalle(auditoria_id):
+    _, error = _validar_acceso_auditoria_general_api()
+    if error:
+        return error
+    try:
+        with get_conn() as conn:
+            columnas = _columnas_tabla_api(conn, "auditoria_general")
+            if not columnas:
+                raise LookupError("No hay auditoría general disponible.")
+            row = conn.execute(
+                f"""
+                SELECT {_select_auditoria_general_api(columnas)}
+                FROM auditoria_general a
+                LEFT JOIN usuarios_sistema u ON u.id=a.usuario_id
+                LEFT JOIN clientes_sistema c ON c.id=a.cliente_sistema_id
+                WHERE a.id=%s
+                LIMIT 1
+                """,
+                (auditoria_id,),
+            ).fetchone()
+        if not row:
+            raise LookupError("Registro de auditoría no encontrado.")
+        return jsonify({"ok": True, "auditoria": _normalizar_auditoria_general_api(row)})
+    except LookupError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception:
+        app.logger.exception("Error al consultar detalle de auditoria")
+        return jsonify({"ok": False, "error": "No se pudo consultar el detalle de auditoría."}), 500
 
 
 def _pedido_payload_numero(data):
