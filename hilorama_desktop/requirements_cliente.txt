@@ -5,3 +5,4 @@ reportlab
 pytesseract
 python-barcode
 qrcode
+tzdata

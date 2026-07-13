@@ -2078,276 +2078,34 @@ def mostrar_resumen_inventario_real():
     ).pack(side="right")
 
 
-def ver_movimientos():
-    """Consulta paginada de movimientos cuando el Almacen usa la API.
-
-    El modo local conserva exactamente su visor anterior abajo. Esta vista no
-    ofrece acciones de edicion o eliminacion: los historicos son inmutables.
-    """
+def _puede_consultar_movimientos_ui():
     if not _modo_api():
-        return _ver_movimientos_legacy()
+        return True
+    try:
+        from hilorama_desktop.security.local_secure_store import LocalSecureStore
 
-    win = tk.Toplevel(root)
-    win.title("Movimientos de almacen")
-    win.geometry("1420x760")
-    win.minsize(1050, 620)
-    win.configure(bg="#EEF3F8")
-
-    style = ttk.Style(win)
-    style.configure("Movimientos.Treeview", rowheight=30, font=("Segoe UI", 10))
-    style.configure("Movimientos.Treeview.Heading", font=("Segoe UI", 10, "bold"))
-
-    header = tk.Frame(win, bg="#1F3A5F", height=72)
-    header.pack(fill="x")
-    tk.Label(
-        header,
-        text="Movimientos de almacen",
-        font=("Segoe UI", 18, "bold"),
-        fg="white",
-        bg="#1F3A5F",
-    ).pack(anchor="w", padx=18, pady=(12, 0))
-    tk.Label(
-        header,
-        text="Historial de solo consulta. Cada registro representa un cambio real de existencias.",
-        font=("Segoe UI", 10),
-        fg="#D9E6F2",
-        bg="#1F3A5F",
-    ).pack(anchor="w", padx=18, pady=(0, 12))
-
-    body = tk.Frame(win, bg="#EEF3F8")
-    body.pack(fill="both", expand=True, padx=14, pady=14)
-
-    filtros = tk.LabelFrame(body, text="Filtros", bg="white", padx=10, pady=8)
-    filtros.pack(fill="x", pady=(0, 10))
-    producto_var = tk.StringVar()
-    tipo_var = tk.StringVar()
-    usuario_var = tk.StringVar()
-    desde_var = tk.StringVar()
-    hasta_var = tk.StringVar()
-    texto_var = tk.StringVar()
-
-    campos = (
-        ("Producto / ID", producto_var, 15),
-        ("Tipo", tipo_var, 18),
-        ("Usuario", usuario_var, 15),
-        ("Desde AAAA-MM-DD", desde_var, 13),
-        ("Hasta AAAA-MM-DD", hasta_var, 13),
-        ("Buscar", texto_var, 20),
-    )
-    for indice, (etiqueta, variable, ancho) in enumerate(campos):
-        columna = indice * 2
-        tk.Label(filtros, text=etiqueta, bg="white", font=("Segoe UI", 9, "bold")).grid(
-            row=0, column=columna, sticky="w", padx=(0 if indice == 0 else 7, 3), pady=(0, 3)
+        session = LocalSecureStore().load() or {}
+        usuario = session.get("usuario") or {}
+        permisos = session.get("permisos") or []
+        rol = str(usuario.get("rol") or "").strip().lower()
+        return rol in {"super_admin", "admin_cliente", "almacen"} or any(
+            permiso in {"super_admin", "admin_cliente", "almacen"} for permiso in permisos
         )
-        if etiqueta == "Tipo":
-            control = ttk.Combobox(
-                filtros,
-                textvariable=variable,
-                width=ancho,
-                state="readonly",
-                values=(
-                    "",
-                    "ENTRADA_MANUAL",
-                    "SALIDA_MANUAL",
-                    "AJUSTE_POSITIVO",
-                    "AJUSTE_NEGATIVO",
-                    "VENTA",
-                    "CANCELACION_VENTA",
-                    "DEVOLUCION",
-                    "STOCK_INICIAL",
-                    "CORRECCION",
-                    "OTRO",
-                ),
-            )
-        else:
-            control = ttk.Entry(filtros, textvariable=variable, width=ancho)
-        control.grid(row=0, column=columna + 1, sticky="w", padx=(0, 2), pady=(0, 3))
+    except Exception:
+        return False
 
-    columnas = (
-        "Fecha", "Producto", "Marca", "Hilo", "Color", "Tipo", "Cantidad",
-        "Stock", "Motivo", "Referencia", "Usuario",
-    )
-    tabla_wrap = ttk.Frame(body)
-    tabla_wrap.pack(fill="both", expand=True)
-    tabla_wrap.rowconfigure(0, weight=1)
-    tabla_wrap.columnconfigure(0, weight=1)
-    tabla = ttk.Treeview(tabla_wrap, columns=columnas, show="headings", style="Movimientos.Treeview")
-    for columna in columnas:
-        ancho = 115
-        if columna == "Fecha":
-            ancho = 145
-        elif columna == "Motivo":
-            ancho = 300
-        elif columna == "Stock":
-            ancho = 125
-        elif columna in {"Tipo", "Referencia"}:
-            ancho = 150
-        tabla.heading(columna, text=columna)
-        tabla.column(columna, width=ancho, anchor="center")
-    scroll_y = ttk.Scrollbar(tabla_wrap, orient="vertical", command=tabla.yview)
-    scroll_x = ttk.Scrollbar(tabla_wrap, orient="horizontal", command=tabla.xview)
-    tabla.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
-    tabla.grid(row=0, column=0, sticky="nsew")
-    scroll_y.grid(row=0, column=1, sticky="ns")
-    scroll_x.grid(row=1, column=0, sticky="ew")
-    tabla.tag_configure("entrada", background="#EEF9F1")
-    tabla.tag_configure("salida", background="#FFF1F2")
-    tabla.tag_configure("ajuste", background="#F3F8FF")
 
-    pie = tk.Frame(body, bg="#EEF3F8")
-    pie.pack(fill="x", pady=(10, 0))
-    info = tk.Label(pie, text="", bg="#EEF3F8", fg="#5E718D", font=("Segoe UI", 9))
-    info.pack(side="left")
-    estado = {"page": 1, "per_page": 50, "pagination": {}, "rows": []}
-
-    def fecha_local(valor):
-        if hasattr(valor, "astimezone"):
-            try:
-                return valor.astimezone().strftime("%d/%m/%Y %H:%M")
-            except Exception:
-                return valor.strftime("%d/%m/%Y %H:%M")
-        texto = str(valor or "").strip()
-        if not texto:
-            return ""
+def ver_movimientos():
+    """Abre el historial API nuevo o conserva el visor local legacy."""
+    if _modo_api():
         try:
-            fecha = datetime.fromisoformat(texto.replace("Z", "+00:00"))
-            if fecha.tzinfo:
-                fecha = fecha.astimezone()
-            return fecha.strftime("%d/%m/%Y %H:%M")
-        except ValueError:
-            return texto
+            from hilorama_desktop.ui.movimientos_almacen_dialog import abrir_movimientos_almacen
 
-    def parametros():
-        valores = {
-            "producto": producto_var.get().strip(),
-            "tipo": tipo_var.get().strip(),
-            "usuario": usuario_var.get().strip(),
-            "desde": desde_var.get().strip(),
-            "hasta": hasta_var.get().strip(),
-            "q": texto_var.get().strip(),
-            "page": estado["page"],
-            "per_page": estado["per_page"],
-        }
-        return {clave: valor for clave, valor in valores.items() if valor not in (None, "")}
-
-    def cargar(reset=True):
-        if reset:
-            estado["page"] = 1
-        try:
-            respuesta = _productos_api_service().listar_movimientos_almacen(parametros())
+            return abrir_movimientos_almacen(root)
         except Exception as exc:
-            info.config(text="No se pudo cargar el historial.")
-            _alerta_almacen("Movimientos", f"No se pudieron consultar movimientos por API:\n{exc}")
-            return
-        filas = respuesta.get("items") or respuesta.get("movimientos") or []
-        estado["rows"] = list(filas)
-        estado["pagination"] = respuesta.get("pagination") or {}
-        tabla.delete(*tabla.get_children())
-        for indice, fila in enumerate(estado["rows"]):
-            try:
-                cantidad = int(fila.get("cantidad") or 0)
-            except (TypeError, ValueError):
-                cantidad = 0
-            tipo = str(fila.get("tipo") or "")
-            etiqueta = "salida" if cantidad < 0 else ("entrada" if cantidad > 0 else "ajuste")
-            referencia = " / ".join(
-                str(valor).strip()
-                for valor in (fila.get("referencia_tipo"), fila.get("referencia_id"))
-                if str(valor or "").strip()
-            )
-            stock = ""
-            if fila.get("stock_anterior") is not None or fila.get("stock_nuevo") is not None:
-                stock = f"{fila.get('stock_anterior')} -> {fila.get('stock_nuevo')}"
-            tabla.insert(
-                "",
-                "end",
-                iid=str(indice),
-                tags=(etiqueta,),
-                values=(
-                    fecha_local(fila.get("fecha")),
-                    fila.get("producto_id") or fila.get("codigo") or "",
-                    fila.get("marca") or "",
-                    fila.get("hilo") or "",
-                    fila.get("color") or "",
-                    tipo,
-                    f"{cantidad:+d}",
-                    stock,
-                    fila.get("motivo") or "",
-                    referencia,
-                    fila.get("usuario") or "",
-                ),
-            )
-        pagina = int(estado["pagination"].get("page") or estado["page"])
-        paginas = int(estado["pagination"].get("pages") or 0)
-        total = int(estado["pagination"].get("total") or len(filas))
-        info.config(text=f"Pagina {pagina} de {paginas or 1} | {total} movimientos")
-
-    def limpiar():
-        for variable in (producto_var, tipo_var, usuario_var, desde_var, hasta_var, texto_var):
-            variable.set("")
-        cargar(True)
-
-    def pagina(delta):
-        actual = int(estado["pagination"].get("page") or estado["page"])
-        total_paginas = int(estado["pagination"].get("pages") or 1)
-        nueva = max(1, min(total_paginas, actual + delta))
-        if nueva != actual:
-            estado["page"] = nueva
-            cargar(False)
-
-    def detalle(_event=None):
-        seleccionado = tabla.focus()
-        if not seleccionado:
-            messagebox.showwarning("Movimientos", "Seleccione un movimiento.", parent=win)
-            return
-        try:
-            movimiento = dict(estado["rows"][int(seleccionado)])
-        except (IndexError, TypeError, ValueError):
-            messagebox.showwarning("Movimientos", "No se pudo identificar el movimiento.", parent=win)
-            return
-        try:
-            if movimiento.get("id"):
-                movimiento = _productos_api_service().obtener_movimiento_almacen(movimiento["id"])
-        except Exception as exc:
-            _alerta_almacen("Movimientos", f"No se pudo cargar el detalle por API:\n{exc}")
-            return
-        ventana = tk.Toplevel(win)
-        ventana.title("Detalle de movimiento")
-        ventana.geometry("760x560")
-        ventana.transient(win)
-        texto = tk.Text(ventana, wrap="word", font=("Consolas", 10), padx=12, pady=12)
-        texto.pack(fill="both", expand=True)
-        metadata = movimiento.get("metadata_json") or {}
-        if not isinstance(metadata, (dict, list)):
-            metadata = {"valor": str(metadata)}
-        lineas = (
-            f"Fecha: {fecha_local(movimiento.get('fecha'))}",
-            f"Producto: {movimiento.get('producto_id') or movimiento.get('codigo') or ''}",
-            f"Marca / hilo / color: {movimiento.get('marca') or ''} / {movimiento.get('hilo') or ''} / {movimiento.get('color') or ''}",
-            f"Tipo: {movimiento.get('tipo') or ''}",
-            f"Cantidad: {movimiento.get('cantidad') or 0}",
-            f"Stock: {movimiento.get('stock_anterior')} -> {movimiento.get('stock_nuevo')}",
-            f"Motivo: {movimiento.get('motivo') or ''}",
-            f"Referencia: {movimiento.get('referencia_tipo') or ''} / {movimiento.get('referencia_id') or ''}",
-            f"Usuario: {movimiento.get('usuario') or ''}",
-            f"Dispositivo: {movimiento.get('device_id') or ''}",
-            "",
-            "Metadatos:",
-            json.dumps(metadata, ensure_ascii=False, indent=2, default=str),
-        )
-        texto.insert("1.0", "\n".join(lineas))
-        texto.configure(state="disabled")
-
-    botones = ttk.Frame(pie)
-    botones.pack(side="right")
-    ttk.Button(botones, text="Actualizar", command=lambda: cargar(True)).pack(side="left", padx=3)
-    ttk.Button(botones, text="Limpiar", command=limpiar).pack(side="left", padx=3)
-    ttk.Button(botones, text="Anterior", command=lambda: pagina(-1)).pack(side="left", padx=3)
-    ttk.Button(botones, text="Siguiente", command=lambda: pagina(1)).pack(side="left", padx=3)
-    ttk.Button(botones, text="Ver detalle", command=detalle).pack(side="left", padx=3)
-    tabla.bind("<Double-1>", detalle)
-    win.bind("<Return>", lambda _event: cargar(True), add="+")
-    cargar(True)
+            _alerta_almacen("Movimientos", f"No se pudo abrir el historial de movimientos:\n{exc}")
+            return None
+    return _ver_movimientos_legacy()
 
 
 def _ver_movimientos_legacy():
@@ -3649,6 +3407,8 @@ def construir_interfaz(parent=None):
         ("Estadísticas venta", ver_estadisticas_ventas, "#8E5AF7", "white"),
         ("Qué comprar", generar_lista_compra, "#D08B00", "white"),
     ]
+    if _modo_api() and not _puede_consultar_movimientos_ui():
+        acciones = [accion for accion in acciones if accion[0] != "Movimientos"]
     for i, (txt, cmd, bg, fg) in enumerate(acciones):
         tk.Button(grid_actions, text=txt, command=cmd, bg=bg, fg=fg, relief="flat", width=15, pady=6, cursor="hand2").grid(row=i // 2, column=i % 2, padx=4, pady=4, sticky="we")
 

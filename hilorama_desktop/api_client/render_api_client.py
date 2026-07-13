@@ -82,6 +82,13 @@ class RenderApiClient:
     def admin_auditoria_detalle(self, auditoria_id, token=None):
         return self.get(f"/api/admin/auditoria/{auditoria_id}", token=token)
 
+    def listar_auditoria_general(self, params=None, token=None):
+        return self.get("/api/admin/auditoria-general", params=params, token=token)
+
+    def obtener_auditoria_general(self, auditoria_id, token=None):
+        auditoria_url = quote(str(auditoria_id or ""), safe="")
+        return self.get(f"/api/admin/auditoria/{auditoria_url}", token=token)
+
     def listar_productos(self, params=None, token=None):
         return self.get("/api/productos", params=params, token=token)
 

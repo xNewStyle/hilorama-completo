@@ -31,6 +31,7 @@ class HiloramaDesktopApp(BaseTk):
         self.auth_service = auth_service
         self.session = session
         self.heartbeat = None
+        self._session_expiration_in_progress = False
         self.views_cache = {}
         self.current_view = None
         self.current_module = None
@@ -300,6 +301,25 @@ class HiloramaDesktopApp(BaseTk):
             parent=self,
         )
         self.destroy()
+
+    def manejar_sesion_expirada(self, mensaje="La sesion expiro. Inicia sesion nuevamente."):
+        """Cierra la aplicacion de forma controlada cuando una lectura recibe HTTP 401."""
+        if self._session_expiration_in_progress:
+            return
+        self._session_expiration_in_progress = True
+        log_info("hilorama_desktop", "Sesion expirada detectada desde una consulta API")
+        if self.heartbeat:
+            self.heartbeat.stop()
+            self.heartbeat = None
+        try:
+            self._borrar_sesion_local()
+        except Exception as exc:
+            log_error("hilorama_desktop", "No se pudo borrar la sesion expirada local", exc)
+        try:
+            messagebox.showerror("Sesion expirada", mensaje, parent=self)
+        finally:
+            if self.winfo_exists():
+                self.destroy()
 
     def _borrar_sesion_local(self):
         store = getattr(self.auth_service, "store", None) if self.auth_service else None

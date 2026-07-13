@@ -1,14 +1,19 @@
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
-import json
-from datetime import datetime
 
 try:
     from ..api_client.render_api_client import RenderApiClient, RenderApiError
+    from ..services.auditoria_api_service import AuditoriaApiService
+    from ..services.read_api_support import ApiReadError, PermissionDeniedError, RecordNotFoundError, SessionExpiredError
     from ..utils.logger import log_error, log_info
+    from ..utils.presentation import EMPTY_VALUE, format_datetime_mexico, optional_text, safe_pretty_json
 except ImportError:
     from api_client.render_api_client import RenderApiClient, RenderApiError
+    from services.auditoria_api_service import AuditoriaApiService
+    from services.read_api_support import ApiReadError, PermissionDeniedError, RecordNotFoundError, SessionExpiredError
     from utils.logger import log_error, log_info
+    from utils.presentation import EMPTY_VALUE, format_datetime_mexico, optional_text, safe_pretty_json
 
 
 CLIENTE_COLUMNS = (
@@ -31,13 +36,14 @@ SESION_COLUMNS = (
 )
 
 AUDITORIA_COLUMNS = (
-    ("fecha_creacion", "Fecha", 170),
-    ("usuario", "Usuario", 140),
+    ("fecha_creacion", "Fecha", 180),
     ("modulo", "Modulo", 125),
-    ("accion", "Accion", 180),
-    ("descripcion", "Descripcion", 320),
-    ("entidad", "Entidad", 155),
-    ("resultado", "Resultado", 110),
+    ("accion", "Accion", 185),
+    ("resultado", "Resultado", 100),
+    ("usuario", "Usuario", 140),
+    ("entidad", "Entidad", 150),
+    ("cliente", "Cliente", 185),
+    ("descripcion", "Descripcion", 300),
 )
 
 USUARIO_COLUMNS = (
@@ -74,7 +80,7 @@ def crear_vista_admin(parent, auth_service=None, session=None):
         return _crear_no_autorizado(parent)
 
     api = getattr(auth_service, "api", None) or RenderApiClient()
-    return AdminView(parent, api, session)
+    return AdminView(parent, api, session, auth_service=auth_service)
 
 
 def _es_super_admin(session):
@@ -100,41 +106,24 @@ def _lista(data):
 
 def _valor(row, key):
     value = row.get(key, "") if isinstance(row, dict) else ""
-    if value is None:
-        return ""
     if key in {"fecha_creacion", "created_at", "updated_at", "ultimo_login", "ultimo_heartbeat"}:
-        return _fecha_local(value)
-    return str(value)
-
-
-def _fecha_local(value):
-    if hasattr(value, "astimezone"):
-        try:
-            return value.astimezone().strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            return value.strftime("%d/%m/%Y %H:%M")
-    texto = str(value or "").strip()
-    if not texto:
-        return ""
-    try:
-        fecha = datetime.fromisoformat(texto.replace("Z", "+00:00"))
-        if fecha.tzinfo:
-            fecha = fecha.astimezone()
-        return fecha.strftime("%d/%m/%Y %H:%M")
-    except ValueError:
-        return texto
+        return format_datetime_mexico(value)
+    return optional_text(value, default="")
 
 
 class AdminView(ttk.Frame):
-    def __init__(self, parent, api, session):
+    def __init__(self, parent, api, session, auth_service=None):
         super().__init__(parent, padding=10)
         self.api = api
         self.session = session or {}
+        self.auth_service = auth_service
+        self.auditoria_service = AuditoriaApiService(api_client=api, session_provider=lambda: self.session)
         self.clientes = []
         self.usuarios_cliente = []
         self.sesiones = []
         self.auditoria = []
-        self.auditoria_pagination = {}
+        self.auditoria_pagination = {"page": 1, "per_page": 50, "total": 0, "pages": 0}
+        self._auditoria_loading = False
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
@@ -236,23 +225,22 @@ class AdminView(ttk.Frame):
             "hasta": tk.StringVar(),
         }
         campos = (
-            ("Texto", "texto", 20),
-            ("Modulo", "modulo", 14),
-            ("Accion", "accion", 17),
-            ("Resultado", "resultado", 12),
-            ("Usuario", "usuario", 14),
-            ("Cliente", "cliente", 16),
-            ("Entidad", "entidad", 16),
-            ("Desde", "desde", 12),
-            ("Hasta", "hasta", 12),
+            ("Texto", "texto", 0, 0),
+            ("Modulo", "modulo", 0, 2),
+            ("Accion", "accion", 0, 4),
+            ("Resultado", "resultado", 0, 6),
+            ("Usuario", "usuario", 1, 0),
+            ("Cliente", "cliente", 1, 2),
+            ("Entidad", "entidad", 1, 4),
+            ("Desde AAAA-MM-DD", "desde", 1, 6),
+            ("Hasta AAAA-MM-DD", "hasta", 2, 0),
         )
-        for indice, (etiqueta, clave, ancho) in enumerate(campos):
-            fila = indice // 5
-            columna = (indice % 5) * 2
-            ttk.Label(filtros, text=etiqueta).grid(row=fila, column=columna, sticky="w", padx=(0 if columna == 0 else 6, 2))
-            ttk.Entry(filtros, textvariable=self.auditoria_vars[clave], width=ancho).grid(
-                row=fila, column=columna + 1, sticky="w"
-            )
+        for label, key, row, column in campos:
+            ttk.Label(filtros, text=label).grid(row=row, column=column, sticky="w", padx=(0, 3), pady=3)
+            entry = ttk.Entry(filtros, textvariable=self.auditoria_vars[key], width=18)
+            entry.grid(row=row, column=column + 1, sticky="ew", padx=(0, 10), pady=3)
+            if key in {"texto", "hasta"}:
+                entry.bind("<Return>", lambda _event: self.cargar_auditoria(reset=True), add="+")
 
         self.tree_auditoria = _crear_tree(tab, AUDITORIA_COLUMNS)
         self.tree_auditoria.grid(row=1, column=0, sticky="nsew")
@@ -260,11 +248,17 @@ class AdminView(ttk.Frame):
 
         acciones = ttk.Frame(tab)
         acciones.grid(row=2, column=0, sticky="ew", pady=(8, 0))
-        ttk.Button(acciones, text="Actualizar auditoria", command=self.cargar_auditoria).pack(side="left")
-        ttk.Button(acciones, text="Limpiar filtros", command=self.limpiar_filtros_auditoria).pack(side="left", padx=(6, 0))
-        ttk.Button(acciones, text="Anterior", command=lambda: self.cambiar_pagina_auditoria(-1)).pack(side="left", padx=(6, 0))
-        ttk.Button(acciones, text="Siguiente", command=lambda: self.cambiar_pagina_auditoria(1)).pack(side="left", padx=(6, 0))
-        ttk.Button(acciones, text="Ver detalle", command=self.ver_detalle_auditoria).pack(side="left", padx=(6, 0))
+        self.auditoria_status = tk.StringVar(value="")
+        ttk.Label(acciones, textvariable=self.auditoria_status).pack(side="left")
+        self.auditoria_buttons = [
+            ttk.Button(acciones, text="Actualizar", command=lambda: self.cargar_auditoria(reset=True)),
+            ttk.Button(acciones, text="Limpiar filtros", command=self.limpiar_filtros_auditoria),
+            ttk.Button(acciones, text="Anterior", command=lambda: self.cambiar_pagina_auditoria(-1)),
+            ttk.Button(acciones, text="Siguiente", command=lambda: self.cambiar_pagina_auditoria(1)),
+            ttk.Button(acciones, text="Ver detalle", command=self.ver_detalle_auditoria),
+        ]
+        for button in self.auditoria_buttons:
+            button.pack(side="right", padx=(6, 0))
 
     def cargar_clientes(self):
         try:
@@ -307,28 +301,31 @@ class AdminView(ttk.Frame):
             _mostrar_error(self, "No se pudieron cargar las sesiones activas.", exc)
 
     def cargar_auditoria(self, reset=True):
+        if self._auditoria_loading or not self.winfo_exists():
+            return
         if reset:
-            self.auditoria_pagination = {"page": 1, "per_page": 50}
-        try:
-            log_info("hilorama_desktop", "Cargando auditoria admin")
-            filtros = {
-                clave: variable.get().strip()
-                for clave, variable in self.auditoria_vars.items()
-                if variable.get().strip()
-            }
-            filtros["page"] = self.auditoria_pagination.get("page", 1)
-            filtros["per_page"] = self.auditoria_pagination.get("per_page", 50)
-            respuesta = self.api.admin_auditoria(params=filtros, token=_token(self.session))
-            self.auditoria = _lista(respuesta)
-            self.auditoria_pagination = respuesta.get("pagination") or self.auditoria_pagination
-            for registro in self.auditoria:
-                entidad_tipo = _valor(registro, "entidad_tipo")
-                entidad_id = _valor(registro, "entidad_id")
-                registro["entidad"] = " / ".join(valor for valor in (entidad_tipo, entidad_id) if valor)
-            _llenar_tree(self.tree_auditoria, AUDITORIA_COLUMNS, self.auditoria)
-        except Exception as exc:
-            log_error("hilorama_desktop", "Error al cargar auditoria admin", exc)
-            _mostrar_error(self, "No se pudo cargar la auditoria.", exc)
+            self.auditoria_pagination.update({"page": 1, "per_page": 50})
+        filtros = {
+            key: variable.get().strip()
+            for key, variable in self.auditoria_vars.items()
+            if variable.get().strip()
+        }
+        filtros.update({
+            "page": self.auditoria_pagination.get("page", 1),
+            "per_page": self.auditoria_pagination.get("per_page", 50),
+        })
+        self._auditoria_loading = True
+        self._set_auditoria_loading(True)
+
+        def worker():
+            try:
+                result = self.auditoria_service.listar_auditoria(filtros)
+            except Exception as exc:
+                self._safe_after(lambda error=exc: self._finalizar_error_auditoria(error))
+                return
+            self._safe_after(lambda: self._finalizar_carga_auditoria(result))
+
+        threading.Thread(target=worker, name="auditoria-general", daemon=True).start()
 
     def limpiar_filtros_auditoria(self):
         for variable in self.auditoria_vars.values():
@@ -336,60 +333,98 @@ class AdminView(ttk.Frame):
         self.cargar_auditoria(reset=True)
 
     def cambiar_pagina_auditoria(self, delta):
-        pagina = int(self.auditoria_pagination.get("page") or 1)
-        paginas = int(self.auditoria_pagination.get("pages") or 1)
-        nueva = max(1, min(paginas, pagina + delta))
-        if nueva != pagina:
-            self.auditoria_pagination["page"] = nueva
+        current = int(self.auditoria_pagination.get("page") or 1)
+        pages = int(self.auditoria_pagination.get("pages") or 0)
+        target = max(1, min(pages or 1, current + delta))
+        if target != current:
+            self.auditoria_pagination["page"] = target
             self.cargar_auditoria(reset=False)
 
     def ver_detalle_auditoria(self, _event=None):
         tree = _tree_from_container(self.tree_auditoria)
-        seleccionado = tree.focus()
-        if not seleccionado:
+        selected = tree.focus()
+        if not selected:
             messagebox.showwarning("Auditoria", "Seleccione un registro de auditoria.", parent=self)
             return
         try:
-            registro = self.auditoria[int(seleccionado)]
-        except (IndexError, TypeError, ValueError):
-            messagebox.showwarning("Auditoria", "No se pudo identificar el registro seleccionado.", parent=self)
-            return
-        try:
-            respuesta = self.api.admin_auditoria_detalle(registro["id"], token=_token(self.session))
-            registro = respuesta.get("auditoria") or registro
-        except Exception as exc:
-            log_error("hilorama_desktop", "Error al cargar detalle de auditoria", exc)
-            _mostrar_error(self, "No se pudo cargar el detalle de auditoria.", exc)
+            row = dict(self.auditoria[int(selected)])
+            auditoria_id = row["id"]
+        except (IndexError, TypeError, ValueError, KeyError):
+            messagebox.showwarning("Auditoria", "No se pudo identificar el registro.", parent=self)
             return
 
-        ventana = tk.Toplevel(self)
-        ventana.title("Detalle de auditoria")
-        ventana.geometry("820x620")
-        ventana.transient(self.winfo_toplevel())
-        texto = tk.Text(ventana, wrap="word", font=("Consolas", 10), padx=12, pady=12)
-        texto.pack(fill="both", expand=True)
-        datos_anteriores = registro.get("datos_anteriores_json") or {}
-        datos_nuevos = registro.get("datos_nuevos_json") or {}
-        lineas = (
-            f"Fecha: {_valor(registro, 'fecha_creacion')}",
-            f"Usuario: {_valor(registro, 'usuario') or _valor(registro, 'usuario_nombre')}",
-            f"Modulo: {_valor(registro, 'modulo')}",
-            f"Accion: {_valor(registro, 'accion')}",
-            f"Descripcion: {_valor(registro, 'descripcion')}",
-            f"Entidad: {_valor(registro, 'entidad_tipo')} / {_valor(registro, 'entidad_id')}",
-            f"Resultado: {_valor(registro, 'resultado')}",
-            f"Codigo de error: {_valor(registro, 'codigo_error')}",
-            f"Dispositivo: {_valor(registro, 'device_id')}",
-            f"IP: {_valor(registro, 'ip')}",
-            "",
-            "Datos anteriores:",
-            json.dumps(datos_anteriores, ensure_ascii=False, indent=2, default=str),
-            "",
-            "Datos nuevos:",
-            json.dumps(datos_nuevos, ensure_ascii=False, indent=2, default=str),
+        window = tk.Toplevel(self)
+        window.title("Detalle de auditoria")
+        window.geometry("860x660")
+        window.minsize(650, 460)
+        window.transient(self.winfo_toplevel())
+        text = tk.Text(window, wrap="word", font=("Consolas", 10), padx=12, pady=12)
+        text.pack(fill="both", expand=True)
+        _render_auditoria_detail(text, row)
+
+        def worker():
+            try:
+                detail = self.auditoria_service.obtener_auditoria(auditoria_id)
+            except Exception as exc:
+                self._safe_after(lambda error=exc: _mostrar_error_lectura(window, error))
+                return
+            self._safe_after(lambda: _render_auditoria_detail(text, detail))
+
+        threading.Thread(target=worker, name="detalle-auditoria", daemon=True).start()
+
+    def _finalizar_carga_auditoria(self, response):
+        if not self.winfo_exists():
+            return
+        self._auditoria_loading = False
+        self._set_auditoria_loading(False)
+        self.auditoria = [dict(row or {}) for row in response.get("items") or response.get("auditoria") or []]
+        self.auditoria_pagination = dict(response.get("pagination") or self.auditoria_pagination)
+        for row in self.auditoria:
+            row["entidad"] = " / ".join(
+                value for value in (optional_text(row.get("entidad_tipo"), ""), optional_text(row.get("entidad_id"), "")) if value
+            )
+            row["cliente"] = optional_text(row.get("nombre_negocio") or row.get("cliente_sistema_id"), default="")
+        _llenar_tree(self.tree_auditoria, AUDITORIA_COLUMNS, self.auditoria)
+        total = int(self.auditoria_pagination.get("total") or 0)
+        page = int(self.auditoria_pagination.get("page") or 1)
+        pages = int(self.auditoria_pagination.get("pages") or 0)
+        self.auditoria_status.set(
+            "No hay registros de auditoria." if not self.auditoria else f"Pagina {page} de {pages or 1} | {total} registros"
         )
-        texto.insert("1.0", "\n".join(lineas))
-        texto.configure(state="disabled")
+        self._actualizar_botones_auditoria()
+
+    def _finalizar_error_auditoria(self, exc):
+        if not self.winfo_exists():
+            return
+        self._auditoria_loading = False
+        self._set_auditoria_loading(False)
+        self.auditoria_status.set("No se pudo cargar la auditoria.")
+        _mostrar_error_lectura(self, exc)
+
+    def _set_auditoria_loading(self, loading):
+        if not self.winfo_exists():
+            return
+        state = "disabled" if loading else "normal"
+        for button in self.auditoria_buttons:
+            button.configure(state=state)
+        if loading:
+            self.auditoria_status.set("Cargando auditoria...")
+
+    def _actualizar_botones_auditoria(self):
+        if self._auditoria_loading:
+            return
+        page = int(self.auditoria_pagination.get("page") or 1)
+        pages = int(self.auditoria_pagination.get("pages") or 0)
+        self.auditoria_buttons[2].configure(state="normal" if page > 1 else "disabled")
+        self.auditoria_buttons[3].configure(state="normal" if pages and page < pages else "disabled")
+        self.auditoria_buttons[4].configure(state="normal" if self.auditoria else "disabled")
+
+    def _safe_after(self, callback):
+        try:
+            if self.winfo_exists():
+                self.after(0, lambda: callback() if self.winfo_exists() else None)
+        except tk.TclError:
+            pass
 
     def crear_cliente(self):
         self._abrir_form_cliente("Crear cliente", None)
@@ -746,6 +781,74 @@ def _tree_from_container(container):
         if isinstance(child, ttk.Treeview):
             return child
     raise RuntimeError("Tabla no encontrada")
+
+
+def _render_auditoria_detail(text_widget, row):
+    try:
+        if not text_widget.winfo_exists():
+            return
+    except tk.TclError:
+        return
+    data = dict(row or {})
+    entidad = " / ".join(
+        value for value in (optional_text(data.get("entidad_tipo"), ""), optional_text(data.get("entidad_id"), "")) if value
+    ) or EMPTY_VALUE
+    cliente = data.get("nombre_negocio") or data.get("cliente_sistema_id")
+    lines = (
+        f"ID: {optional_text(data.get('id'))}",
+        f"Fecha: {format_datetime_mexico(data.get('fecha_creacion'))}",
+        f"Modulo: {optional_text(data.get('modulo'))}",
+        f"Accion: {optional_text(data.get('accion'))}",
+        f"Resultado: {optional_text(data.get('resultado'))}",
+        f"Usuario: {optional_text(data.get('usuario') or data.get('usuario_nombre'))}",
+        f"Cliente: {optional_text(cliente)}",
+        f"Entidad: {entidad}",
+        f"Descripcion: {optional_text(data.get('descripcion'))}",
+        f"Request ID: {optional_text(data.get('request_id'))}",
+        f"IP: {optional_text(data.get('ip'))}",
+        f"Dispositivo: {optional_text(data.get('device_id'))}",
+        f"User agent: {optional_text(data.get('user_agent'))}",
+        f"Codigo de error: {optional_text(data.get('codigo_error'))}",
+        "",
+        "Datos anteriores redactados:",
+        safe_pretty_json(data.get("datos_anteriores_json")),
+        "",
+        "Datos nuevos redactados:",
+        safe_pretty_json(data.get("datos_nuevos_json")),
+    )
+    text_widget.configure(state="normal")
+    text_widget.delete("1.0", tk.END)
+    text_widget.insert("1.0", "\n".join(lines))
+    text_widget.configure(state="disabled")
+
+
+def _mostrar_error_lectura(parent, exc):
+    try:
+        if hasattr(parent, "winfo_exists") and not parent.winfo_exists():
+            return
+    except tk.TclError:
+        return
+    if isinstance(exc, SessionExpiredError):
+        current = parent
+        seen = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            handler = getattr(current, "manejar_sesion_expirada", None)
+            if callable(handler):
+                handler(str(exc))
+                return
+            current = getattr(current, "master", None)
+    if isinstance(exc, PermissionDeniedError):
+        messagebox.showwarning("Administracion", str(exc), parent=parent)
+        return
+    if isinstance(exc, RecordNotFoundError):
+        messagebox.showinfo("Administracion", str(exc), parent=parent)
+        return
+    if isinstance(exc, ApiReadError):
+        messagebox.showerror("Administracion", str(exc), parent=parent)
+        return
+    log_error("hilorama_desktop", "Error inesperado de lectura en Administracion", exc)
+    messagebox.showerror("Administracion", "No se pudo completar la consulta.", parent=parent)
 
 
 def _mostrar_error(parent, mensaje, exc):
