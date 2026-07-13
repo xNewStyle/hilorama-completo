@@ -479,7 +479,7 @@ def ensure_schema():
 
 @app.before_request
 def before_request():
-    if request.path.startswith("/api/"):
+    if request.path.startswith("/api/") and request.path != "/api/health":
         ensure_schema()
         err = require_pin()
         if err:
@@ -517,15 +517,42 @@ def icon_512():
 # =========================
 # Basic APIs
 # =========================
+def _comprobar_postgresql_salud():
+    pool = get_pool()
+    conn = None
+    cursor = None
+    try:
+        conn = pool.getconn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        row = cursor.fetchone()
+        return bool(row and row[0] == 1)
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            try:
+                conn.rollback()
+            finally:
+                pool.putconn(conn)
+
+
 @app.route("/api/health")
 def health():
-    ensure_schema()
+    try:
+        if not _comprobar_postgresql_salud():
+            raise RuntimeError("Comprobacion de PostgreSQL sin respuesta.")
+    except Exception:
+        app.logger.warning("Health check: PostgreSQL no disponible.")
+        return jsonify({
+            "status": "degraded",
+            "service": "hilorama-celular",
+            "database": "unavailable",
+        }), 503
+
     return jsonify({
-        "ok": True,
-        "service": "Hilorama Celular API",
-        "version": "fase4",
-        "time": now_mexico().isoformat(sep=" ", timespec="seconds"),
-        "pin_enabled": bool(os.environ.get("MOBILE_PIN", "").strip()),
+        "status": "ok",
+        "service": "hilorama-celular",
     })
 
 
