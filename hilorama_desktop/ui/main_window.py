@@ -10,14 +10,14 @@ except Exception:
     BaseTk = tk.Tk
 
 try:
-    from ..config import APP_NAME, APP_VERSION, is_api_mode
+    from ..config import APP_NAME, APP_VERSION
     from ..services.heartbeat_service import HeartbeatService
     from ..utils.logger import log_error, log_info
     from .admin_view import crear_vista_admin
     from .almacen_view import crear_vista_almacen
     from .ventas_view import crear_vista_ventas
 except ImportError:  # Permite compilar/ejecutar main.py como script.
-    from config import APP_NAME, APP_VERSION, is_api_mode
+    from config import APP_NAME, APP_VERSION
     from services.heartbeat_service import HeartbeatService
     from utils.logger import log_error, log_info
     from ui.admin_view import crear_vista_admin
@@ -167,18 +167,8 @@ class HiloramaDesktopApp(BaseTk):
         self._mostrar_modulo("ventas", crear_vista_ventas)
 
     def mostrar_clientes(self):
-        """Abre CRM embebido por API o conserva el visor anterior en local."""
-        if is_api_mode():
-            self._mostrar_modulo("clientes", self._crear_vista_clientes_api)
-            return
-        self._set_modulo_actual("clientes")
-        try:
-            from ver_clientes import abrir_clientes
-            return abrir_clientes(self)
-        except Exception as exc:
-            log_error("clientes", "Error al abrir visor legacy de clientes", exc)
-            messagebox.showerror("Clientes", f"No se pudo abrir Clientes.\n\n{exc}", parent=self)
-            return None
+        """Monta siempre el CRM comercial embebido del cliente Desktop."""
+        self._mostrar_modulo("clientes", self._crear_vista_clientes_api)
 
     def _crear_vista_clientes_api(self, parent):
         """Import diferido: Clientes API no arrastra base local al iniciar Desktop."""
