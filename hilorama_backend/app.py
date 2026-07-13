@@ -2702,8 +2702,12 @@ MENSAJE_COTIZACION_NO_PAGABLE = (
 )
 ESTADOS_COTIZACION_NO_PAGABLE = {"COTIZACION", "COTIZACION_PENDIENTE"}
 ESTADOS_VENTA_PAGABLE = {"VENTA", "VENTA_PENDIENTE", "EN_PROCESO", "COMPLETA"}
-ESTADOS_NOTA_PAGADA_API = {"PAGADA", "COMPLETA", "VENTA_PAGADA"}
+ESTADOS_NOTA_PAGADA_API = {
+    "PAGADA", "EN_PROCESO", "INCOMPLETA", "COMPLETA", "ENVIADO", "VENTA_PAGADA"
+}
 ESTADOS_NOTA_ANULADA_API = {"ANULADA", "CANCELADA", "ELIMINADA"}
+ESTADOS_EMPAQUE_ASIGNABLES = {"PAGADA", "EN_PROCESO", "INCOMPLETA"}
+ESTADOS_EMPAQUE_EDITABLES = ESTADOS_EMPAQUE_ASIGNABLES | {"COMPLETA"}
 STOCK_MINIMO_API = 50
 
 
@@ -2723,10 +2727,38 @@ def _normalizar_estado_pago_api(estado):
     return str(estado or "").strip().upper().replace("Ó", "O")
 
 
+def _estado_empaque_por_totales(total, empacadas):
+    total = max(int(total or 0), 0)
+    empacadas = max(int(empacadas or 0), 0)
+    if total > 0 and empacadas >= total:
+        return "COMPLETA"
+    if empacadas > 0:
+        return "INCOMPLETA"
+    return "EN_PROCESO"
+
+
+def _actualizar_estado_empaque_nota_api(conn, nota_id, total, empacadas):
+    nuevo_estado = _estado_empaque_por_totales(total, empacadas)
+    notas_cols = _columnas_tabla_api(conn, "notas")
+    campos = ["estado=%s"]
+    valores = [nuevo_estado]
+    if "fecha_finalizacion" in notas_cols:
+        if nuevo_estado == "COMPLETA":
+            campos.append("fecha_finalizacion=COALESCE(fecha_finalizacion, NOW())")
+        else:
+            campos.append("fecha_finalizacion=NULL")
+    conn.execute(
+        f"UPDATE notas SET {', '.join(campos)} WHERE id=%s",
+        tuple(valores + [nota_id]),
+    )
+    return nuevo_estado
+
+
 def _rechazar_pago_nota_anulada_api(nota):
     estado = _normalizar_estado_pago_api((nota or {}).get("estado"))
-    if estado in ESTADOS_NOTA_ANULADA_API:
-        raise NotaPagoNoPermitido("No se puede registrar un pago en una nota anulada o cancelada.", 409)
+    if estado in ESTADOS_NOTA_ANULADA_API | {"ARCHIVADA"}:
+        mensaje = "No se puede registrar un pago en una nota anulada, cancelada o archivada."
+        raise NotaPagoNoPermitido(mensaje, 409)
 
 
 def _nota_tiene_pagos_api(conn, nota_id):
@@ -2983,7 +3015,7 @@ def _items_stock_nota_api(conn, nota_id, bloquear=False):
         cantidad = _cantidad_item_stock_api(item)
 
         if producto_data and not _producto_inventariable_api(producto_data):
-            lineas.append((item, producto_data, None))
+            lineas_validadas.append((item, producto_data, None))
             continue
 
         stock_actual = int((producto_data or {}).get("stock") or 0)
@@ -4704,6 +4736,22 @@ def api_notas_obtener_comprobante(nota_id):
         return _respuesta_error_nota_api(exc)
 
 
+def _cancelar_impresiones_pendientes_nota_api(conn, nota_id):
+    columnas = _columnas_tabla_api(conn, "cola_impresion")
+    if not {"nota_id", "estado"}.issubset(columnas):
+        return 0
+    filas = conn.execute(
+        """
+        UPDATE cola_impresion
+        SET estado='CANCELADA'
+        WHERE nota_id=%s AND estado='PENDIENTE'
+        RETURNING nota_id
+        """,
+        (nota_id,),
+    ).fetchall()
+    return len(filas or [])
+
+
 @app.route("/api/notas/<string:nota_id>/anular", methods=["POST"])
 def api_notas_anular(nota_id):
     auth, error = _require_license_api()
@@ -4715,6 +4763,8 @@ def api_notas_anular(nota_id):
             nota_id_real, actual = _resolver_nota_api(conn, nota_id, bloquear=True)
 
             estado = _normalizar_estado_pago_api(actual.get("estado"))
+            if estado == "ARCHIVADA":
+                raise NotaPagoNoPermitido("Una nota ARCHIVADA es terminal y no puede anularse.", 409)
             ya_anulada = estado in {"ANULADA", "CANCELADA", "ELIMINADA"}
             productos_devueltos = []
             requiere_devolver_stock = _nota_requiere_devolucion_stock_api(conn, actual, auth)
@@ -4736,6 +4786,7 @@ def api_notas_anular(nota_id):
                     f"UPDATE notas SET {sets} WHERE id=%s",
                     tuple(cambios.values()) + (nota_id_real,),
                 )
+            tareas_impresion_canceladas = _cancelar_impresiones_pendientes_nota_api(conn, nota_id_real)
 
             idempotente = ya_anulada and not productos_devueltos
             if not idempotente:
@@ -4753,7 +4804,11 @@ def api_notas_anular(nota_id):
                     entidad_id=nota_id_real,
                     descripcion=detalle,
                     datos_anteriores={"estado": actual.get("estado"), "fecha_pago": actual.get("fecha_pago")},
-                    datos_nuevos={"estado": "ANULADA", "productos_reintegrados": len(productos_devueltos)},
+                    datos_nuevos={
+                        "estado": "ANULADA",
+                        "productos_reintegrados": len(productos_devueltos),
+                        "impresiones_canceladas": tareas_impresion_canceladas,
+                    },
                 )
 
         nota = _nota_con_detalle_api(nota_id_real)
@@ -4762,6 +4817,7 @@ def api_notas_anular(nota_id):
             "nota": nota,
             "productos_devueltos": productos_devueltos,
             "stock_devuelto": bool(productos_devueltos),
+            "impresiones_canceladas": tareas_impresion_canceladas,
             "idempotente": idempotente,
         })
     except Exception as exc:
@@ -4859,7 +4915,6 @@ def _estado_envio_filtro_api(valor):
         "EN_PROCESO": "EN_PROCESO",
         "INCOMPLETAS": "INCOMPLETA",
         "INCOMPLETA": "INCOMPLETA",
-        "TODAS_PAGADAS": "PAGADA",
         "PAGADA": "PAGADA",
     }
     return mapa.get(clave, clave if clave else "")
@@ -4934,8 +4989,21 @@ def api_envios_notas_listar():
             selects, join, notas_cols = _select_envios_notas_api(conn)
             filtros = []
             valores = []
-            estado = _estado_envio_filtro_api(request.args.get("estado"))
-            if estado and "estado" in notas_cols:
+            if "estado" in notas_cols:
+                filtros.append("""
+                    UPPER(COALESCE(n.estado, '')) NOT IN (
+                        'COTIZACION','COTIZACION_PENDIENTE','VENTA','VENTA_PENDIENTE',
+                        'ANULADA','CANCELADA','ELIMINADA','ARCHIVADA','ENVIADO'
+                    )
+                """)
+            estado_solicitado = str(request.args.get("estado") or "").strip().upper()
+            estado = _estado_envio_filtro_api(estado_solicitado)
+            if estado_solicitado == "TODAS_PAGADAS" and "estado" in notas_cols:
+                filtros.append(
+                    "UPPER(COALESCE(n.estado, '')) IN "
+                    "('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"
+                )
+            elif estado and "estado" in notas_cols:
                 filtros.append("n.estado=%s")
                 valores.append(estado)
             pedido_id = str(request.args.get("pedido_id") or "").strip()
@@ -4992,6 +5060,16 @@ def api_envios_nota_actualizar(nota_id):
         with get_conn() as conn:
             nota_id_real, nota = _resolver_nota_api(conn, nota_id, bloquear=True)
             notas_cols = _columnas_tabla_api(conn, "notas")
+            estado_actual = _normalizar_estado_pago_api(nota.get("estado"))
+            if estado_actual in ESTADOS_NOTA_ANULADA_API | {"ARCHIVADA"}:
+                raise NotaPagoNoPermitido("Una nota terminal no puede volver a la cola de envios.", 409)
+            if "guia" in data and estado_actual != "COMPLETA":
+                raise NotaPagoNoPermitido("Solo una nota COMPLETA puede recibir una guia.", 409)
+            if _normalizar_estado_pago_api(data.get("estado_envio")) == "ENVIADO" or "fecha_envio" in data:
+                raise NotaPagoNoPermitido(
+                    "Usa la accion Marcar como enviado para confirmar la entrega a paqueteria.",
+                    409,
+                )
             cambios = {}
             for campo in ("guia", "paqueteria", "estado_envio", "fecha_envio", "observaciones_envio"):
                 if campo in data:
@@ -5024,6 +5102,8 @@ def api_envios_nota_actualizar(nota_id):
                 (nota_id_real,),
             ).fetchone()
         return jsonify({"ok": True, "envio": _normalizar_envio_nota_api(row)})
+    except NotaPagoNoPermitido as exc:
+        return jsonify({"ok": False, "error": str(exc)}), exc.status
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except LookupError as exc:
@@ -5031,6 +5111,63 @@ def api_envios_nota_actualizar(nota_id):
     except Exception:
         app.logger.exception("Error al actualizar envio")
         return jsonify({"ok": False, "error": "No se pudo actualizar el envio."}), 500
+
+
+def _marcar_nota_enviada_api_conn(conn, nota_id):
+    nota_id_real, nota = _resolver_nota_api(conn, nota_id, bloquear=True)
+    estado_actual = _normalizar_estado_pago_api(nota.get("estado"))
+    if estado_actual == "ENVIADO":
+        return nota_id_real, nota, True, "fecha_envio" in _columnas_tabla_api(conn, "notas")
+    if estado_actual != "COMPLETA":
+        raise NotaPagoNoPermitido("Solo una nota COMPLETA puede marcarse como enviada.", 409)
+    if not str(nota.get("guia") or "").strip():
+        raise NotaPagoNoPermitido("Guarda la guia antes de marcar el envio.", 409)
+
+    notas_cols = _columnas_tabla_api(conn, "notas")
+    campos = ["estado='ENVIADO'"]
+    if "estado_envio" in notas_cols:
+        campos.append("estado_envio='ENVIADO'")
+    fecha_envio_disponible = "fecha_envio" in notas_cols
+    if fecha_envio_disponible:
+        campos.append("fecha_envio=COALESCE(fecha_envio, NOW())")
+    conn.execute(
+        f"UPDATE notas SET {', '.join(campos)} WHERE id=%s",
+        (nota_id_real,),
+    )
+    actualizada = conn.execute("SELECT * FROM notas WHERE id=%s", (nota_id_real,)).fetchone()
+    return nota_id_real, _row_dict(actualizada) or {}, False, fecha_envio_disponible
+
+
+@app.route("/api/envios/notas/<string:nota_id>/marcar-enviado", methods=["POST"])
+def api_envios_nota_marcar_enviado(nota_id):
+    auth, error = _require_license_api()
+    if error:
+        return error
+    try:
+        with get_conn() as conn:
+            nota_id_real, nota, idempotente, fecha_disponible = _marcar_nota_enviada_api_conn(conn, nota_id)
+            if not idempotente:
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "ENVIO_MARCADO_ENVIADO",
+                    "envios",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Paquete marcado como entregado a paqueteria.",
+                    datos_anteriores={"estado": "COMPLETA"},
+                    datos_nuevos={"estado": "ENVIADO", "fecha_envio_guardada": fecha_disponible},
+                )
+        return jsonify({
+            "ok": True,
+            "nota_id": nota_id_real,
+            "estado": nota.get("estado") or "ENVIADO",
+            "fecha_envio": nota.get("fecha_envio"),
+            "fecha_envio_guardada": fecha_disponible,
+            "idempotente": idempotente,
+        })
+    except Exception as exc:
+        return _respuesta_error_nota_api(exc, accion="marcar como enviada")
 
 
 def _tabla_existe_api(conn, tabla):
@@ -5243,8 +5380,10 @@ def api_reportes_dashboard_ventas():
                     COUNT(*) AS total_notas,
                     COALESCE(SUM(COALESCE(total, 0)), 0) AS total_ventas,
                     COALESCE(AVG(NULLIF(total, 0)), 0) AS ticket_promedio,
-                    COUNT(*) FILTER (WHERE estado IN ('PAGADA','COMPLETA','ENVIADO','VENTA_PAGADA')) AS ventas_pagadas,
-                    COUNT(*) FILTER (WHERE estado NOT IN ('PAGADA','COMPLETA','ENVIADO','VENTA_PAGADA')) AS ventas_pendientes
+                    COUNT(*) FILTER (
+                        WHERE estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA','ENVIADO','VENTA_PAGADA')
+                    ) AS ventas_pagadas,
+                    COUNT(*) FILTER (WHERE estado IN ('VENTA','VENTA_PENDIENTE')) AS ventas_pendientes
                 FROM notas n
                 {where}
             """, tuple(valores)).fetchone()
@@ -6263,16 +6402,7 @@ def _notas_asignacion_empacador_api(conn):
 
     where = []
     if "estado" in notas_cols:
-        if "fecha_asignacion" in notas_cols:
-            where.append("""
-                n.estado != 'ARCHIVADA'
-                AND (
-                    n.estado NOT IN ('COMPLETA')
-                    OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
-                )
-            """)
-        else:
-            where.append("n.estado != 'ARCHIVADA'")
+        where.append("UPPER(COALESCE(n.estado, '')) IN ('PAGADA','EN_PROCESO','INCOMPLETA')")
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     order_sql = "ORDER BY n.fecha_asignacion DESC NULLS LAST, n.id DESC" if "fecha_asignacion" in notas_cols else "ORDER BY n.id DESC"
     return conn.execute(
@@ -6338,20 +6468,41 @@ def api_notas_asignar_empacador():
             ).fetchone()
             if not emp:
                 raise LookupError("Empacador no encontrado o inactivo.")
+            notas_validas = []
+            for nota_id in nota_ids:
+                nota = conn.execute(
+                    "SELECT id, estado FROM notas WHERE id=%s FOR UPDATE",
+                    (nota_id,),
+                ).fetchone()
+                if not nota:
+                    raise LookupError(f"Nota {nota_id} no encontrada.")
+                estado = _normalizar_estado_pago_api(nota.get("estado"))
+                if estado not in ESTADOS_EMPAQUE_ASIGNABLES:
+                    raise NotaPagoNoPermitido(
+                        f"La nota {nota_id} no puede asignarse a empaque desde el estado {estado or 'SIN ESTADO'}.",
+                        409,
+                    )
+                notas_validas.append(nota_id)
             campos = ["empacador_id=%s"]
             valores_base = [empacador_id]
             if "fecha_asignacion" in notas_cols:
                 campos.append("fecha_asignacion=NOW()")
             if "estado" in notas_cols:
-                campos.append("estado='EN_PROCESO'")
+                campos.append(
+                    "estado=CASE "
+                    "WHEN UPPER(COALESCE(estado, ''))='PAGADA' THEN 'EN_PROCESO' "
+                    "ELSE estado END"
+                )
             if "fecha_finalizacion" in notas_cols:
                 campos.append("fecha_finalizacion=NULL")
-            for nota_id in nota_ids:
+            for nota_id in notas_validas:
                 conn.execute(
                     f"UPDATE notas SET {', '.join(campos)} WHERE id=%s",
                     tuple(valores_base + [nota_id]),
                 )
-        return jsonify({"ok": True, "asignadas": len(nota_ids), "usuario": _usuario_auth_api(auth)})
+        return jsonify({"ok": True, "asignadas": len(notas_validas), "usuario": _usuario_auth_api(auth)})
+    except NotaPagoNoPermitido as exc:
+        return jsonify({"ok": False, "error": str(exc)}), exc.status
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except LookupError as exc:
@@ -6399,9 +6550,8 @@ def notas_pagadas():
             SELECT id, cliente_nombre, estado, paqueteria
             FROM notas
             WHERE empacador_id=%s
-            AND estado != 'ARCHIVADA'
             AND (
-                estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','ENVIADO')
+                estado IN ('PAGADA','EN_PROCESO','INCOMPLETA')
                 OR
                 (
                     estado='COMPLETA'
@@ -6452,11 +6602,25 @@ def asignar_nota():
     empacador_id = data["empacador_id"]
 
     with get_conn() as conn:
+        nota = conn.execute(
+            "SELECT id, estado FROM notas WHERE id=%s FOR UPDATE",
+            (nota_id,),
+        ).fetchone()
+        if not nota:
+            return jsonify({"error": "Nota no encontrada"}), 404
+        estado = _normalizar_estado_pago_api(nota.get("estado"))
+        if estado not in ESTADOS_EMPAQUE_ASIGNABLES:
+            return jsonify({
+                "error": f"La nota no puede asignarse a empaque desde el estado {estado or 'SIN ESTADO'}"
+            }), 409
         conn.execute("""
             UPDATE notas
             SET empacador_id=%s,
                 fecha_asignacion=NOW(),
-                estado='EN_PROCESO',
+                estado=CASE
+                    WHEN UPPER(COALESCE(estado, ''))='PAGADA' THEN 'EN_PROCESO'
+                    ELSE estado
+                END,
                 fecha_finalizacion=NULL
             WHERE id=%s
         """,(empacador_id, nota_id))
@@ -6542,15 +6706,19 @@ def resetear_nota(nota_id):
     with get_conn() as conn:
 
         nota = conn.execute("""
-            SELECT id
+            SELECT id, estado
             FROM notas
             WHERE id=%s
             AND empacador_id=%s
-            AND estado!='ARCHIVADA'
         """,(nota_id, auth["empacador_id"])).fetchone()
 
         if not nota:
             return jsonify({"error": "Nota no encontrada o no autorizada"}), 403
+        estado = _normalizar_estado_pago_api(nota.get("estado"))
+        if estado not in ESTADOS_EMPAQUE_ASIGNABLES:
+            return jsonify({
+                "error": f"La nota no puede reiniciarse desde el estado {estado or 'SIN ESTADO'}"
+            }), 409
 
         conn.execute("""
             UPDATE items
@@ -6560,7 +6728,8 @@ def resetear_nota(nota_id):
 
         conn.execute("""
             UPDATE notas
-            SET estado='EN_PROCESO'
+            SET estado='EN_PROCESO',
+                fecha_finalizacion=NULL
             WHERE id=%s
         """,(nota_id,))
 
@@ -6600,10 +6769,9 @@ def escanear_producto(nota_id):
     with get_conn() as conn:
 
         nota = conn.execute("""
-            SELECT empacador_id
+            SELECT empacador_id, estado
             FROM notas
             WHERE id=%s
-            AND estado!='ARCHIVADA'
         """,(nota_id,)).fetchone()
 
         if not nota or (
@@ -6611,6 +6779,11 @@ def escanear_producto(nota_id):
             and auth["rol"] != "ADMIN"
         ):
             return jsonify({"error": "No autorizado para esta nota"}), 403
+        estado = _normalizar_estado_pago_api(nota.get("estado"))
+        if estado not in ESTADOS_EMPAQUE_ASIGNABLES:
+            return jsonify({
+                "error": f"La nota no puede escanearse desde el estado {estado or 'SIN ESTADO'}"
+            }), 409
 
         item = conn.execute("""
             SELECT id, cantidad, empacadas
@@ -6641,28 +6814,9 @@ def escanear_producto(nota_id):
             WHERE nota_id=%s
         """,(nota_id,)).fetchone()
 
-        if totales["emp"] == totales["total"]:
-            nuevo_estado = "COMPLETA"
-            conn.execute("""
-                UPDATE notas
-                SET estado=%s,
-                    fecha_finalizacion=NOW()
-                WHERE id=%s
-            """,(nuevo_estado, nota_id))
-        elif totales["emp"] == 0:
-            nuevo_estado = "EN_PROCESO"
-            conn.execute("""
-                UPDATE notas
-                SET estado=%s
-                WHERE id=%s
-            """,(nuevo_estado, nota_id))
-        else:
-            nuevo_estado = "INCOMPLETA"
-            conn.execute("""
-                UPDATE notas
-                SET estado=%s
-                WHERE id=%s
-            """,(nuevo_estado, nota_id))
+        nuevo_estado = _actualizar_estado_empaque_nota_api(
+            conn, nota_id, totales["total"], totales["emp"]
+        )
 
         producto_actualizado = conn.execute("""
             SELECT id, marca, hilo, codigo,
@@ -6703,10 +6857,9 @@ def ajustar_producto(nota_id):
     with get_conn() as conn:
 
         nota = conn.execute("""
-            SELECT empacador_id
+            SELECT empacador_id, estado
             FROM notas
             WHERE id=%s
-            AND estado!='ARCHIVADA'
         """,(nota_id,)).fetchone()
 
         if not nota or (
@@ -6714,6 +6867,11 @@ def ajustar_producto(nota_id):
             and auth["rol"] != "ADMIN"
         ):
             return jsonify({"error": "No autorizado para esta nota"}), 403
+        estado = _normalizar_estado_pago_api(nota.get("estado"))
+        if estado not in ESTADOS_EMPAQUE_EDITABLES:
+            return jsonify({
+                "error": f"La nota no puede corregirse desde el estado {estado or 'SIN ESTADO'}"
+            }), 409
 
 
         item = conn.execute("""
@@ -6748,30 +6906,9 @@ def ajustar_producto(nota_id):
         """,(nota_id,)).fetchone()
 
 
-        if totales["emp"] == totales["total"]:
-            nuevo_estado = "COMPLETA"
-            conn.execute("""
-                UPDATE notas
-                SET estado=%s,
-                    fecha_finalizacion=NOW()
-                WHERE id=%s
-            """,(nuevo_estado, nota_id))
-
-        elif totales["emp"] == 0:
-            nuevo_estado = "EN_PROCESO"
-            conn.execute("""
-                UPDATE notas
-                SET estado=%s
-                WHERE id=%s
-            """,(nuevo_estado, nota_id))
-
-        else:
-            nuevo_estado = "INCOMPLETA"
-            conn.execute("""
-                UPDATE notas
-                SET estado=%s
-                WHERE id=%s
-            """,(nuevo_estado, nota_id))
+        nuevo_estado = _actualizar_estado_empaque_nota_api(
+            conn, nota_id, totales["total"], totales["emp"]
+        )
 
 
         producto_actualizado = conn.execute("""
@@ -6928,11 +7065,7 @@ def seguimiento(nota_id):
 
     estado = nota["estado"]
 
-    # 🔥 REGLA CORRECTA
-    if nota["guia"] and estado == "COMPLETA":
-        estado_visual = "ENVIADO"
-    else:
-        estado_visual = estado
+    estado_visual = estado
 
     progreso = progreso_map.get(estado_visual, 10)
 
@@ -6967,18 +7100,38 @@ def agregar_guia(nota_id):
         if not nota:
             return jsonify({"error": "Nota no encontrada"}), 404
 
-        # 🔥 VALIDACIÓN CLAVE
         if nota["estado"] != "COMPLETA":
-            return jsonify({"error": "Solo notas COMPLETAS pueden enviarse"}), 400
+            return jsonify({"error": "Solo notas COMPLETAS pueden recibir una guia"}), 409
 
         conn.execute("""
             UPDATE notas
             SET guia=%s,
-                paqueteria=%s,
-                estado='ENVIADO'
+                paqueteria=%s
             WHERE id=%s
         """,(guia, paqueteria, nota_id))
-    return jsonify({"ok": True, "estado": "ENVIADO"})
+    return jsonify({"ok": True, "estado": "COMPLETA", "guia": guia})
+
+
+@app.route("/notas/<nota_id>/enviar", methods=["POST"])
+def marcar_nota_enviada_legacy(nota_id):
+    auth = validar_token(request)
+    if not auth:
+        return jsonify({"error": "No autorizado"}), 401
+    try:
+        with get_conn() as conn:
+            nota_id_real, nota, idempotente, fecha_disponible = _marcar_nota_enviada_api_conn(conn, nota_id)
+        return jsonify({
+            "ok": True,
+            "nota_id": nota_id_real,
+            "estado": nota.get("estado") or "ENVIADO",
+            "fecha_envio": nota.get("fecha_envio"),
+            "fecha_envio_guardada": fecha_disponible,
+            "idempotente": idempotente,
+        })
+    except NotaPagoNoPermitido as exc:
+        return jsonify({"error": str(exc)}), exc.status
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
 
 
 # ==============================
@@ -6996,6 +7149,12 @@ def solicitar_impresion(nota_id, tipo):
         return jsonify({"error": "Tipo inválido"}), 400
 
     with get_conn() as conn:
+        nota = conn.execute("SELECT id, estado FROM notas WHERE id=%s", (nota_id,)).fetchone()
+        if not nota:
+            return jsonify({"error": "Nota no encontrada"}), 404
+        estado = _normalizar_estado_pago_api(nota.get("estado"))
+        if estado in ESTADOS_NOTA_ANULADA_API | {"ARCHIVADA"}:
+            return jsonify({"error": "Una nota terminal no puede enviarse a impresion"}), 409
         conn.execute("""
             INSERT INTO cola_impresion (nota_id, tipo)
             VALUES (%s,%s)
@@ -7018,6 +7177,7 @@ def datos_impresion(nota_id):
             SELECT n.id,
                    n.cliente_nombre,
                    n.paqueteria,
+                   n.estado,
                    c.telefono,
                    c.direccion
             FROM notas n
@@ -7027,6 +7187,9 @@ def datos_impresion(nota_id):
 
     if not nota:
         return jsonify({"error": "Nota no encontrada"}), 404
+    estado = _normalizar_estado_pago_api(nota.get("estado"))
+    if estado in ESTADOS_NOTA_ANULADA_API | {"ARCHIVADA"}:
+        return jsonify({"error": "La tarea de impresion ya no es valida"}), 409
 
     import json
 
@@ -7075,10 +7238,12 @@ def obtener_cola():
 
     with get_conn() as conn:
         tareas = conn.execute("""
-            SELECT id, nota_id, tipo
-            FROM cola_impresion
-            WHERE estado='PENDIENTE'
-            ORDER BY creado_en ASC
+            SELECT ci.id, ci.nota_id, ci.tipo
+            FROM cola_impresion ci
+            JOIN notas n ON n.id=ci.nota_id
+            WHERE ci.estado='PENDIENTE'
+              AND UPPER(COALESCE(n.estado, '')) NOT IN ('ANULADA','CANCELADA','ELIMINADA','ARCHIVADA')
+            ORDER BY ci.creado_en ASC
             LIMIT 5
         """).fetchall()
 

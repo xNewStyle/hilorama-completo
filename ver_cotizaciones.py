@@ -76,7 +76,9 @@ MENSAJE_COTIZACION_NO_PAGABLE = (
 )
 ESTADOS_COTIZACION_NO_PAGABLE = {"COTIZACION", "COTIZACION_PENDIENTE"}
 ESTADOS_VENTA_PAGABLE = {"VENTA", "VENTA_PENDIENTE", "EN_PROCESO", "COMPLETA"}
-ESTADOS_NOTA_PAGADA_UI = {"PAGADA", "COMPLETA", "VENTA_PAGADA"}
+ESTADOS_NOTA_PAGADA_UI = {
+    "PAGADA", "EN_PROCESO", "INCOMPLETA", "COMPLETA", "ENVIADO", "VENTA_PAGADA"
+}
 
 
 def _normalizar_estado_pago(estado):
@@ -101,6 +103,9 @@ def _validar_nota_pagable_ui(nota, parent=None):
         return False
 
     estado = _normalizar_estado_pago(nota.get("estado"))
+    if _nota_requiere_stock_pagado_ui(nota):
+        messagebox.showwarning("Aviso", "Esta nota ya tiene un pago registrado.", parent=parent)
+        return False
     if estado in ESTADOS_COTIZACION_NO_PAGABLE:
         messagebox.showwarning("Aviso", MENSAJE_COTIZACION_NO_PAGABLE, parent=parent)
         return False
@@ -1091,7 +1096,10 @@ def exportar_pdf_venta_premium(tree, win):
     id_nota = tree.item(sel, "values")[0]
     nota = obtener_cotizacion(id_nota)
 
-    if nota["estado"] not in ("VENTA_PENDIENTE", "PAGADA"):
+    if (
+        _normalizar_estado_pago(nota.get("estado")) != "VENTA_PENDIENTE"
+        and not _nota_requiere_stock_pagado_ui(nota)
+    ):
         messagebox.showwarning(
             "No permitido",
             "Solo se puede exportar PDF premium después de convertir a venta",
@@ -1138,7 +1146,10 @@ def exportar_pdf_venta_premium_desde_lista(tree, win):
         )
         return
 
-    if nota["estado"] not in ("VENTA_PENDIENTE", "PAGADA"):
+    if (
+        _normalizar_estado_pago(nota.get("estado")) != "VENTA_PENDIENTE"
+        and not _nota_requiere_stock_pagado_ui(nota)
+    ):
         messagebox.showwarning(
             "No permitido",
             "Solo se puede exportar la versión premium después de convertir a venta",
@@ -1545,7 +1556,7 @@ def abrir_visor(root):
         # Así lo más reciente siempre sale arriba y lo más antiguo abajo,
         # no solo cuando filtras PAGADA.
         def fecha_orden(n):
-            if n.get("estado") == "PAGADA":
+            if _nota_requiere_stock_pagado_ui(n):
                 return str(n.get("fecha_pago") or n.get("fecha") or "")
             return str(n.get("fecha") or "")
 
@@ -1570,7 +1581,11 @@ def abrir_visor(root):
 
             pedido = str(n.get("pedido", ""))
 
-            fecha = str(n.get("fecha_pago") or n.get("fecha", "")) if n.get("estado") == "PAGADA" else str(n.get("fecha", ""))
+            fecha = (
+                str(n.get("fecha_pago") or n.get("fecha", ""))
+                if _nota_requiere_stock_pagado_ui(n)
+                else str(n.get("fecha", ""))
+            )
 
             # 🔹 FILTRO CLIENTE/TEL
             if texto and texto not in nombre and texto not in tel:
@@ -4009,7 +4024,7 @@ def ver_comprobante(tree, win):
 
     ruta_comprobante = nota.get("comprobante")
 
-    if nota["estado"] != "PAGADA" or not ruta_comprobante:
+    if not _nota_requiere_stock_pagado_ui(nota) or not ruta_comprobante:
         messagebox.showwarning("Aviso", "No hay comprobante", parent=win)
         return
 

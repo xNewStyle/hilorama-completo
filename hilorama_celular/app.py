@@ -55,10 +55,21 @@ def json_api_errors(e):
 _pool = None
 _schema_ready = False
 MEXICO_TZ = ZoneInfo("America/Mexico_City")
+ESTADOS_EMPAQUE_MOVIL = {"PAGADA", "EN_PROCESO", "INCOMPLETA", "COMPLETA"}
 
 
 def now_mexico():
     return datetime.now(MEXICO_TZ).replace(tzinfo=None, microsecond=0)
+
+
+def _estado_empaque_movil(total, empacadas):
+    total = max(int(total or 0), 0)
+    empacadas = max(int(empacadas or 0), 0)
+    if total > 0 and empacadas >= total:
+        return "COMPLETA"
+    if empacadas > 0:
+        return "INCOMPLETA"
+    return "EN_PROCESO"
 
 
 def get_database_url():
@@ -2854,7 +2865,7 @@ def empacador_notas():
     q = (request.args.get("q") or "").strip().lower()
     only_pending = (request.args.get("pendientes") or "1") == "1"
     params = []
-    where = ["n.estado IN ('VENTA_PENDIENTE','PAGADA','EN_PROCESO','COTIZACION')"]
+    where = ["n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"]
     if q:
         where.append("(LOWER(n.id) LIKE %s OR LOWER(COALESCE(n.cliente_nombre,'')) LIKE %s OR LOWER(COALESCE(n.pedido,'')) LIKE %s)")
         like = f"%{q}%"
@@ -2893,6 +2904,18 @@ def actualizar_empacado_item(nota_id):
     empacadas = max(0, empacadas)
 
     with DB() as db:
+        nota = db.execute(
+            "SELECT id, estado FROM notas WHERE id=%s",
+            (nota_id,),
+        ).fetchone()
+        if not nota:
+            return jsonify({"ok": False, "error": "Nota no encontrada"}), 404
+        estado_actual = str(nota.get("estado") or "").strip().upper()
+        if estado_actual not in ESTADOS_EMPAQUE_MOVIL:
+            return jsonify({
+                "ok": False,
+                "error": f"La nota no puede modificarse desde el estado {estado_actual or 'SIN ESTADO'}",
+            }), 409
         if item_id:
             row = db.execute("""
                 UPDATE items
@@ -2913,9 +2936,22 @@ def actualizar_empacado_item(nota_id):
             SELECT COALESCE(SUM(cantidad),0) AS total, COALESCE(SUM(empacadas),0) AS empacadas
             FROM items WHERE nota_id=%s
         """, (nota_id,)).fetchone()
-        if int(totals.get("total") or 0) and int(totals.get("empacadas") or 0) >= int(totals.get("total") or 0):
-            db.execute("UPDATE notas SET fecha_finalizacion=COALESCE(fecha_finalizacion,%s) WHERE id=%s", (now_mexico(), nota_id))
-    return jsonify(json_safe({"ok": True, "item": dict(row)}))
+        nuevo_estado = _estado_empaque_movil(totals.get("total"), totals.get("empacadas"))
+        if nuevo_estado == "COMPLETA":
+            db.execute(
+                """
+                UPDATE notas
+                SET estado='COMPLETA', fecha_finalizacion=COALESCE(fecha_finalizacion,%s)
+                WHERE id=%s
+                """,
+                (now_mexico(), nota_id),
+            )
+        else:
+            db.execute(
+                "UPDATE notas SET estado=%s, fecha_finalizacion=NULL WHERE id=%s",
+                (nuevo_estado, nota_id),
+            )
+    return jsonify(json_safe({"ok": True, "item": dict(row), "estado": nuevo_estado}))
 
 
 # =========================

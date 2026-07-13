@@ -354,6 +354,14 @@ def imprimir_ambas(nota):
 
 
 def abrir_opciones_impresion(nota):
+    estado = str((nota or {}).get("estado") or "").strip().upper()
+    if estado in {"ANULADA", "CANCELADA", "ELIMINADA", "ARCHIVADA"}:
+        messagebox.showwarning(
+            "Impresion",
+            "Una nota anulada o archivada no puede volver a imprimirse.",
+            parent=root,
+        )
+        return
 
     win = ctk.CTkToplevel(root)
     win.title("Imprimir etiquetas")
@@ -493,11 +501,7 @@ def abrir_panel_asignacion():
             LEFT JOIN clientes c ON c.id = n.cliente_id
             LEFT JOIN items i ON i.nota_id = n.id
 
-            WHERE n.estado != 'ARCHIVADA'
-            AND (
-                n.estado NOT IN ('COMPLETA')
-                OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
-            )
+            WHERE n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA')
 
             GROUP BY n.id, e.nombre, c.telefono
             ORDER BY n.fecha_asignacion DESC NULLS LAST
@@ -557,15 +561,17 @@ def abrir_panel_asignacion():
                     if n["empacadas"] >= n["requeridas"]:
                         conn.execute("""
                             UPDATE notas
-                            SET estado='COMPLETA'
+                            SET estado='COMPLETA',
+                                fecha_finalizacion=COALESCE(fecha_finalizacion, NOW())
                             WHERE id=%s AND estado!='COMPLETA'
                         """, (n["id"],))
 
                     elif n["empacadas"] > 0:
                         conn.execute("""
                             UPDATE notas
-                            SET estado='EN_PROCESO'
-                            WHERE id=%s AND estado!='EN_PROCESO'
+                            SET estado='INCOMPLETA',
+                                fecha_finalizacion=NULL
+                            WHERE id=%s AND estado!='INCOMPLETA'
                         """, (n["id"],))
 
             conn.commit()
@@ -710,7 +716,7 @@ def abrir_panel_asignacion():
             if porcentaje == 100:
                 tag_estado = "COMPLETA"
             elif porcentaje > 0:
-                tag_estado = "EN_PROCESO"
+                tag_estado = "INCOMPLETA"
             elif not n["empacador_actual"]:
                 tag_estado = "SIN_ASIGNAR"            
             else:
@@ -725,7 +731,7 @@ def abrir_panel_asignacion():
                     n["pedido"],
                     progreso,
                     "COMPLETA" if porcentaje == 100 else
-                    "EN_PROCESO" if porcentaje > 0 else
+                    "INCOMPLETA" if porcentaje > 0 else
                     n["estado"],
 
                     n["empacador_actual"] if n["empacador_actual"] else "Sin asignar"
@@ -760,11 +766,7 @@ def abrir_panel_asignacion():
                 LEFT JOIN clientes c ON c.id = n.cliente_id
                 LEFT JOIN items i ON i.nota_id = n.id
 
-                WHERE n.estado != 'ARCHIVADA'
-                AND (
-                    n.estado NOT IN ('COMPLETA')
-                    OR n.fecha_asignacion >= NOW() - INTERVAL '24 HOURS'
-                )
+                WHERE n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA')
 
                 GROUP BY n.id, e.nombre, c.telefono
                 ORDER BY n.fecha_asignacion DESC NULLS LAST
@@ -839,6 +841,14 @@ def abrir_panel_asignacion():
         for item in seleccion:
             valores = tabla.item(item)["values"]
             nota_id = valores[0]
+            estado = str(valores[4] or "").strip().upper()
+            if estado not in {"PAGADA", "EN_PROCESO", "INCOMPLETA"}:
+                messagebox.showwarning(
+                    "Asignacion",
+                    f"La nota {nota_id} no puede asignarse desde el estado {estado or 'SIN ESTADO'}.",
+                    parent=win,
+                )
+                return
             nota_ids.append(nota_id)
 
         try:
@@ -846,18 +856,34 @@ def abrir_panel_asignacion():
                 asignar_notas_empacador(nota_ids, emp["id"])
             else:
                 conn = _get_conn_local("panel asignacion")
-
-                for nota_id in nota_ids:
-                    conn.execute("""
-                        UPDATE notas
-                        SET empacador_id=%s,
-                            fecha_asignacion=NOW(),
-                            estado='EN_PROCESO'
-                        WHERE id=%s
-                    """, (emp["id"], nota_id))
-
-                conn.commit()
-                conn.close()
+                try:
+                    for nota_id in nota_ids:
+                        nota = conn.execute(
+                            "SELECT estado FROM notas WHERE id=%s",
+                            (nota_id,),
+                        ).fetchone()
+                        estado = str((nota or {}).get("estado") or "").strip().upper()
+                        if estado not in {"PAGADA", "EN_PROCESO", "INCOMPLETA"}:
+                            raise ValueError(
+                                f"La nota {nota_id} no puede asignarse desde el estado {estado or 'SIN ESTADO'}."
+                            )
+                    for nota_id in nota_ids:
+                        conn.execute("""
+                            UPDATE notas
+                            SET empacador_id=%s,
+                                fecha_asignacion=NOW(),
+                                estado=CASE
+                                    WHEN UPPER(COALESCE(estado, ''))='PAGADA' THEN 'EN_PROCESO'
+                                    ELSE estado
+                                END
+                            WHERE id=%s
+                        """, (emp["id"], nota_id))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+                finally:
+                    conn.close()
         except Exception as exc:
             messagebox.showerror("Asignacion", f"No se pudo asignar empacador:\n{exc}")
             return
@@ -1028,7 +1054,11 @@ def abrir_panel_envios():
 
     modo_api = _modo_api()
     if modo_api:
-        from hilorama_desktop.services.envios_api_service import listar_envios, actualizar_envio_nota
+        from hilorama_desktop.services.envios_api_service import (
+            actualizar_envio_nota,
+            listar_envios,
+            marcar_envio_nota,
+        )
     else:
         pass
 
@@ -1055,9 +1085,9 @@ def abrir_panel_envios():
         elif estado == "INCOMPLETAS":
             where_extra = "WHERE n.estado = 'INCOMPLETA'"
         elif estado == "TODAS_PAGADAS":
-            where_extra = "WHERE n.estado = 'PAGADA'"
+            where_extra = "WHERE n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"
         else:
-            where_extra = ""
+            where_extra = "WHERE n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"
 
         notas_db = conn.execute(f"""
             SELECT 
@@ -1264,6 +1294,14 @@ def abrir_panel_envios():
                 actualizar_envio_nota(nota_id, datos)
             else:
                 conn = _get_conn_local("panel envios")
+                nota = conn.execute(
+                    "SELECT estado FROM notas WHERE id=%s",
+                    (nota_id,),
+                ).fetchone()
+                estado = str((nota or {}).get("estado") or "").strip().upper()
+                if estado != "COMPLETA":
+                    conn.close()
+                    raise ValueError("Solo una nota COMPLETA puede recibir una guia.")
                 if paqueteria:
                     conn.execute("""
                         UPDATE notas
@@ -1289,6 +1327,62 @@ def abrir_panel_envios():
         win.destroy()
         abrir_panel_envios()
 
+    def marcar_como_enviado():
+        seleccion = tabla.selection()
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona una nota")
+            return
+
+        nota_id = tabla.item(seleccion[0])["values"][0]
+        if not messagebox.askyesno(
+            "Marcar como enviado",
+            "Confirma que el paquete ya fue entregado a la paqueteria.",
+            parent=win,
+        ):
+            return
+
+        try:
+            if modo_api:
+                resultado = marcar_envio_nota(nota_id)
+                fecha_guardada = bool(resultado.get("fecha_envio_guardada"))
+            else:
+                conn = _get_conn_local("panel envios")
+                nota = conn.execute("SELECT * FROM notas WHERE id=%s", (nota_id,)).fetchone()
+                if not nota:
+                    conn.close()
+                    raise ValueError("Nota no encontrada.")
+                estado = str(nota.get("estado") or "").strip().upper()
+                if estado != "COMPLETA":
+                    conn.close()
+                    raise ValueError("Solo una nota COMPLETA puede marcarse como enviada.")
+                if not str(nota.get("guia") or "").strip():
+                    conn.close()
+                    raise ValueError("Guarda la guia antes de marcar el envio.")
+                campos = ["estado='ENVIADO'"]
+                if "estado_envio" in nota:
+                    campos.append("estado_envio='ENVIADO'")
+                fecha_guardada = "fecha_envio" in nota
+                if fecha_guardada:
+                    campos.append("fecha_envio=COALESCE(fecha_envio, NOW())")
+                conn.execute(
+                    f"UPDATE notas SET {', '.join(campos)} WHERE id=%s",
+                    (nota_id,),
+                )
+                conn.commit()
+                conn.close()
+        except Exception as exc:
+            messagebox.showerror("Envios", f"No se pudo marcar el envio:\n{exc}", parent=win)
+            return
+
+        aviso_fecha = "" if fecha_guardada else "\n\nLa base actual no tiene fecha_envio; se guardo solo el estado."
+        messagebox.showinfo(
+            "Envio actualizado",
+            f"La nota quedo marcada como ENVIADO.{aviso_fecha}",
+            parent=win,
+        )
+        win.destroy()
+        abrir_panel_envios()
+
     ctk.CTkButton(
         win,
         text="➕ Asignar guía",
@@ -1298,6 +1392,15 @@ def abrir_panel_envios():
         font=("Segoe UI", 14, "bold"),
         command=asignar_guia
     ).pack(pady=15)
+    ctk.CTkButton(
+        win,
+        text="Marcar como enviado",
+        height=45,
+        fg_color="#2563EB",
+        hover_color="#1D4ED8",
+        font=("Segoe UI", 14, "bold"),
+        command=marcar_como_enviado,
+    ).pack(pady=5)
     ctk.CTkButton(
         win,
         text="🖨 Imprimir etiquetas",
