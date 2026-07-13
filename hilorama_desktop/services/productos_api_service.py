@@ -178,6 +178,32 @@ def listar_movimientos_almacen(filtros=None):
     )
 
 
+def listar_movimientos_producto_almacen(producto_id, filtros=None):
+    if not producto_id:
+        raise ProductosApiError("Seleccione un producto para consultar su historial.")
+    params = dict(filtros or {})
+    return _call_api(
+        "consultar historial de producto",
+        f"/api/almacen/productos/{producto_id}/movimientos",
+        lambda api, token: api.listar_movimientos_producto_almacen(
+            producto_id,
+            params=params,
+            token=token,
+        ),
+    )
+
+
+def obtener_movimiento_almacen(movimiento_id):
+    if not movimiento_id:
+        raise ProductosApiError("Seleccione un movimiento para ver su detalle.")
+    data = _call_api(
+        "consultar detalle de movimiento",
+        f"/api/almacen/movimientos/{movimiento_id}",
+        lambda api, token: api.obtener_movimiento_almacen(movimiento_id, token=token),
+    )
+    return data.get("movimiento") or {}
+
+
 def listar_precios(params=None):
     cache = _cache_visual_get("listar_precios", params)
     if cache is not None:

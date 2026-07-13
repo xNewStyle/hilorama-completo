@@ -124,7 +124,11 @@ EXCLUDED_RELATIVE = {
     Path("hilorama_desktop") / "build_client_package.py",
     Path("hilorama_desktop") / "create_update_release.py",
     Path("hilorama_desktop") / "package_cleanup.py",
+    Path("hilorama_desktop") / "test_clientes_crm_service.py",
     Path("hilorama_desktop") / "test_fase2_security.py",
+    Path("hilorama_desktop") / "test_presentation.py",
+    Path("hilorama_desktop") / "test_movimientos_almacen_view.py",
+    Path("hilorama_desktop") / "test_admin_auditoria_view.py",
 }
 
 EXCLUDED_SUFFIXES = {

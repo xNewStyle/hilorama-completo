@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from datetime import datetime, timedelta
+import json
 import math
 import os
 from hilorama_desktop.security.authorization import get_admin_override_key
@@ -2077,7 +2078,37 @@ def mostrar_resumen_inventario_real():
     ).pack(side="right")
 
 
+def _puede_consultar_movimientos_ui():
+    if not _modo_api():
+        return True
+    try:
+        from hilorama_desktop.security.local_secure_store import LocalSecureStore
+
+        session = LocalSecureStore().load() or {}
+        usuario = session.get("usuario") or {}
+        permisos = session.get("permisos") or []
+        rol = str(usuario.get("rol") or "").strip().lower()
+        return rol in {"super_admin", "admin_cliente", "almacen"} or any(
+            permiso in {"super_admin", "admin_cliente", "almacen"} for permiso in permisos
+        )
+    except Exception:
+        return False
+
+
 def ver_movimientos():
+    """Abre el historial API nuevo o conserva el visor local legacy."""
+    if _modo_api():
+        try:
+            from hilorama_desktop.ui.movimientos_almacen_dialog import abrir_movimientos_almacen
+
+            return abrir_movimientos_almacen(root)
+        except Exception as exc:
+            _alerta_almacen("Movimientos", f"No se pudo abrir el historial de movimientos:\n{exc}")
+            return None
+    return _ver_movimientos_legacy()
+
+
+def _ver_movimientos_legacy():
     if not _modo_api():
         ensure_almacen_schema()
 
@@ -3376,6 +3407,8 @@ def construir_interfaz(parent=None):
         ("Estadísticas venta", ver_estadisticas_ventas, "#8E5AF7", "white"),
         ("Qué comprar", generar_lista_compra, "#D08B00", "white"),
     ]
+    if _modo_api() and not _puede_consultar_movimientos_ui():
+        acciones = [accion for accion in acciones if accion[0] != "Movimientos"]
     for i, (txt, cmd, bg, fg) in enumerate(acciones):
         tk.Button(grid_actions, text=txt, command=cmd, bg=bg, fg=fg, relief="flat", width=15, pady=6, cursor="hand2").grid(row=i // 2, column=i % 2, padx=4, pady=4, sticky="we")
 

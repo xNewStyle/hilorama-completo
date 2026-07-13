@@ -76,8 +76,18 @@ class RenderApiClient:
     def admin_sesiones_activas(self, token=None):
         return self.get("/api/admin/sesiones-activas", token=token)
 
-    def admin_auditoria(self, token=None):
-        return self.get("/api/admin/auditoria", token=token)
+    def admin_auditoria(self, params=None, token=None):
+        return self.get("/api/admin/auditoria-general", params=params, token=token)
+
+    def admin_auditoria_detalle(self, auditoria_id, token=None):
+        return self.get(f"/api/admin/auditoria/{auditoria_id}", token=token)
+
+    def listar_auditoria_general(self, params=None, token=None):
+        return self.get("/api/admin/auditoria-general", params=params, token=token)
+
+    def obtener_auditoria_general(self, auditoria_id, token=None):
+        auditoria_url = quote(str(auditoria_id or ""), safe="")
+        return self.get(f"/api/admin/auditoria/{auditoria_url}", token=token)
 
     def listar_productos(self, params=None, token=None):
         return self.get("/api/productos", params=params, token=token)
@@ -101,6 +111,18 @@ class RenderApiClient:
 
     def listar_movimientos_almacen(self, params=None, token=None):
         return self.get("/api/almacen/movimientos", params=params, token=token)
+
+    def listar_movimientos_producto_almacen(self, producto_id, params=None, token=None):
+        producto_url = quote(str(producto_id or ""), safe="")
+        return self.get(
+            f"/api/almacen/productos/{producto_url}/movimientos",
+            params=params,
+            token=token,
+        )
+
+    def obtener_movimiento_almacen(self, movimiento_id, token=None):
+        movimiento_url = quote(str(movimiento_id or ""), safe="")
+        return self.get(f"/api/almacen/movimientos/{movimiento_url}", token=token)
 
     def listar_precios(self, params=None, token=None):
         return self.get("/api/precios", params=params, token=token)
