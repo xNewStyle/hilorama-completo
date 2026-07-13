@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Hilorama Desktop"
-APP_VERSION = "0.2.5-fase2"
+APP_VERSION = "0.2.6-fase3"
 APP_UPDATE_NAME = "HiloramaCliente"
 
 HILORAMA_ENV = os.environ.get("HILORAMA_ENV", "production").strip().lower()
