@@ -293,6 +293,9 @@ class EstabilizacionEstadosTests(unittest.TestCase):
                 "_normalizar_estado_pago_api": lambda estado: str(estado or "").upper(),
                 "_columnas_tabla_api": lambda _conn, _tabla: set(columnas),
                 "_row_dict": lambda row: dict(row) if row else {},
+                "_json_field": lambda valor, default: valor if isinstance(valor, dict) else default,
+                "_guia_nota_notificaciones": lambda nota: str(nota.get("guia") or "").strip(),
+                "_requiere_guia_notificaciones": lambda _nota: True,
                 "NotaPagoNoPermitido": _NotaPagoNoPermitidoPrueba,
             },
         )

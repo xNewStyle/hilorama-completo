@@ -44,6 +44,18 @@ def marcar_envio_nota(nota_id):
     return data
 
 
+def marcar_envios_lote(nota_ids):
+    ids = list(nota_ids or [])
+    data = _call_api(
+        "marcar envios por lote",
+        "/api/envios/notas/marcar-enviadas",
+        lambda api, token: api.marcar_envios_notas(ids, token=token),
+    )
+    if data.get("procesados"):
+        _emitir_cambio_notificaciones()
+    return data
+
+
 def _emitir_cambio_notificaciones():
     try:
         from .notificaciones_service import emitir_actualizacion_notificaciones

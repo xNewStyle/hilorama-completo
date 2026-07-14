@@ -163,12 +163,16 @@ try:
         construir_notificaciones_operacion,
         construir_oportunidades_venta,
         construir_resumen_notificaciones,
+        guia_nota as _guia_nota_notificaciones,
+        requiere_guia as _requiere_guia_notificaciones,
     )
 except ImportError:
     from services.notificaciones_service import (
         construir_notificaciones_operacion,
         construir_oportunidades_venta,
         construir_resumen_notificaciones,
+        guia_nota as _guia_nota_notificaciones,
+        requiere_guia as _requiere_guia_notificaciones,
     )
 
 def registrar_error(nota_id, codigo, empacador_id, motivo):
@@ -5288,7 +5292,8 @@ def api_pagos_registrar():
 
 
 def _estado_envio_filtro_api(valor):
-    clave = str(valor or "").strip().upper()
+    clave = str(valor or "").strip().upper().replace(" ", "_")
+    clave = clave.replace("Í", "I").replace("Á", "A")
     mapa = {
         "COMPLETAS": "COMPLETA",
         "COMPLETA": "COMPLETA",
@@ -5300,6 +5305,22 @@ def _estado_envio_filtro_api(valor):
     return mapa.get(clave, clave if clave else "")
 
 
+def _normalizar_filtro_panel_envios_api(valor):
+    clave = str(valor or "").strip().upper().replace(" ", "_")
+    clave = clave.replace("Í", "I").replace("Á", "A")
+    aliases = {
+        "PENDIENTES_DE_GUIA": "PENDIENTES_GUIA",
+        "PENDIENTES_GUIA": "PENDIENTES_GUIA",
+        "LISTAS_PARA_ENVIAR": "LISTAS_ENVIAR",
+        "LISTOS_PARA_ENVIAR": "LISTAS_ENVIAR",
+        "LISTAS_ENVIAR": "LISTAS_ENVIAR",
+        "ENVIADOS": "ENVIADAS",
+        "ENVIADAS": "ENVIADAS",
+        "TODAS": "TODAS",
+    }
+    return aliases.get(clave, clave)
+
+
 def _normalizar_envio_nota_api(row):
     data = _row_dict(row) or {}
     envio = _json_field(data.get("envio"), {})
@@ -5309,7 +5330,14 @@ def _normalizar_envio_nota_api(row):
     costo_envio = data.get("costo_envio")
     if costo_envio is None:
         costo_envio = envio.get("precio")
-    return {
+    tipo_entrega = envio.get("tipo") or envio.get("metodo") or paqueteria or ""
+    observaciones = (
+        data.get("observaciones_envio")
+        or data.get("observaciones")
+        or data.get("notas")
+        or ""
+    )
+    normalizada = {
         "nota_id": data.get("id"),
         "folio": data.get("id"),
         "id": data.get("id"),
@@ -5325,10 +5353,34 @@ def _normalizar_envio_nota_api(row):
         "costo_envio": _float_api(costo_envio, default=0.0),
         "guia": data.get("guia"),
         "estado_envio": data.get("estado_envio"),
+        "fecha_guia": data.get("fecha_guia"),
         "fecha_envio": data.get("fecha_envio"),
         "observaciones_envio": data.get("observaciones_envio"),
+        "observaciones": observaciones,
+        "tipo_entrega": tipo_entrega,
+        "empacador": data.get("empacador_nombre"),
+        "articulos": int(data.get("articulos") or 0),
+        "piezas": _float_api(data.get("piezas"), default=0.0),
         "fecha": data.get("fecha"),
     }
+    normalizada["requiere_guia"] = bool(_requiere_guia_notificaciones(normalizada))
+    return normalizada
+
+
+def _envio_coincide_filtro_api(envio, filtro):
+    filtro = _normalizar_filtro_panel_envios_api(filtro)
+    estado = _normalizar_estado_pago_api((envio or {}).get("estado"))
+    tiene_guia = bool(_guia_nota_notificaciones(envio or {}))
+    requiere_guia = bool((envio or {}).get("requiere_guia", True))
+    if filtro == "PENDIENTES_GUIA":
+        return estado == "COMPLETA" and requiere_guia and not tiene_guia
+    if filtro == "LISTAS_ENVIAR":
+        return estado == "COMPLETA" and (tiene_guia or not requiere_guia)
+    if filtro == "ENVIADAS":
+        return estado == "ENVIADO"
+    if filtro == "TODAS":
+        return estado in {"COMPLETA", "ENVIADO"}
+    return True
 
 
 def _select_envios_notas_api(conn):
@@ -5336,9 +5388,11 @@ def _select_envios_notas_api(conn):
     clientes_cols = _columnas_tabla_api(conn, "clientes")
     if not notas_cols or "id" not in notas_cols:
         raise LookupError("No existe la tabla notas o falta id.")
+    joins = []
     selects = [
         "n.id AS id",
         "n.cliente_nombre AS cliente_nombre" if "cliente_nombre" in notas_cols else "NULL AS cliente_nombre",
+        "n.cliente AS cliente" if "cliente" in notas_cols else "NULL AS cliente",
         "n.pedido AS pedido" if "pedido" in notas_cols else "NULL AS pedido",
         "n.estado AS estado" if "estado" in notas_cols else "NULL AS estado",
         "n.total AS total" if "total" in notas_cols else "NULL AS total",
@@ -5348,15 +5402,42 @@ def _select_envios_notas_api(conn):
         "n.fecha AS fecha" if "fecha" in notas_cols else "NULL AS fecha",
         "n.costo_envio AS costo_envio" if "costo_envio" in notas_cols else "NULL AS costo_envio",
         "n.estado_envio AS estado_envio" if "estado_envio" in notas_cols else "NULL AS estado_envio",
+        "n.fecha_guia AS fecha_guia" if "fecha_guia" in notas_cols else "NULL AS fecha_guia",
         "n.fecha_envio AS fecha_envio" if "fecha_envio" in notas_cols else "NULL AS fecha_envio",
         "n.observaciones_envio AS observaciones_envio" if "observaciones_envio" in notas_cols else "NULL AS observaciones_envio",
+        "n.observaciones AS observaciones" if "observaciones" in notas_cols else "NULL AS observaciones",
+        "n.notas AS notas" if "notas" in notas_cols else "NULL AS notas",
         "c.telefono AS telefono" if {"cliente_id"}.issubset(notas_cols) and {"id", "telefono"}.issubset(clientes_cols) else "NULL AS telefono",
         "c.direccion AS direccion" if {"cliente_id"}.issubset(notas_cols) and {"id", "direccion"}.issubset(clientes_cols) else "NULL AS direccion",
     ]
-    join = ""
     if "cliente_id" in notas_cols and "id" in clientes_cols:
-        join = "LEFT JOIN clientes c ON c.id = n.cliente_id"
-    return ", ".join(selects), join, notas_cols
+        joins.append("LEFT JOIN clientes c ON c.id = n.cliente_id")
+
+    items_cols = _columnas_tabla_api(conn, "items") if _tabla_existe_api(conn, "items") else set()
+    if {"nota_id", "cantidad"}.issubset(items_cols):
+        joins.append("""
+            LEFT JOIN (
+                SELECT nota_id, COUNT(*) AS articulos,
+                       COALESCE(SUM(COALESCE(cantidad, 0)), 0) AS piezas
+                FROM items
+                GROUP BY nota_id
+            ) ei ON ei.nota_id = n.id
+        """)
+        selects.extend(("COALESCE(ei.articulos, 0) AS articulos", "COALESCE(ei.piezas, 0) AS piezas"))
+    else:
+        selects.extend(("0 AS articulos", "0 AS piezas"))
+
+    empacadores_cols = (
+        _columnas_tabla_api(conn, "empacadores")
+        if _tabla_existe_api(conn, "empacadores")
+        else set()
+    )
+    if "empacador_id" in notas_cols and {"id", "nombre"}.issubset(empacadores_cols):
+        joins.append("LEFT JOIN empacadores ee ON ee.id = n.empacador_id")
+        selects.append("ee.nombre AS empacador_nombre")
+    else:
+        selects.append("NULL AS empacador_nombre")
+    return ", ".join(selects), "\n".join(joins), notas_cols
 
 
 @app.route("/api/envios/notas", methods=["GET"])
@@ -5373,19 +5454,31 @@ def api_envios_notas_listar():
                 filtros.append("""
                     UPPER(COALESCE(n.estado, '')) NOT IN (
                         'COTIZACION','COTIZACION_PENDIENTE','VENTA','VENTA_PENDIENTE',
-                        'ANULADA','CANCELADA','ELIMINADA','ARCHIVADA','ENVIADO'
+                        'ANULADA','CANCELADA','ELIMINADA','ARCHIVADA'
                     )
                 """)
             estado_solicitado = str(request.args.get("estado") or "").strip().upper()
+            filtro_panel = _normalizar_filtro_panel_envios_api(estado_solicitado)
             estado = _estado_envio_filtro_api(estado_solicitado)
-            if estado_solicitado == "TODAS_PAGADAS" and "estado" in notas_cols:
+            if filtro_panel in {"PENDIENTES_GUIA", "LISTAS_ENVIAR"} and "estado" in notas_cols:
+                filtros.append("UPPER(COALESCE(n.estado, ''))='COMPLETA'")
+            elif filtro_panel == "ENVIADAS" and "estado" in notas_cols:
+                filtros.append("UPPER(COALESCE(n.estado, ''))='ENVIADO'")
+            elif filtro_panel == "TODAS" and "estado" in notas_cols:
+                filtros.append("UPPER(COALESCE(n.estado, '')) IN ('COMPLETA','ENVIADO')")
+            elif estado_solicitado == "TODAS_PAGADAS" and "estado" in notas_cols:
                 filtros.append(
                     "UPPER(COALESCE(n.estado, '')) IN "
                     "('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"
                 )
-            elif estado and "estado" in notas_cols:
+            elif estado in {"PAGADA", "EN_PROCESO", "INCOMPLETA", "COMPLETA"} and "estado" in notas_cols:
                 filtros.append("n.estado=%s")
                 valores.append(estado)
+            elif "estado" in notas_cols:
+                filtros.append(
+                    "UPPER(COALESCE(n.estado, '')) IN "
+                    "('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"
+                )
             pedido_id = str(request.args.get("pedido_id") or "").strip()
             if pedido_id and "pedido" in notas_cols:
                 filtros.append("CAST(n.pedido AS TEXT)=%s")
@@ -5407,11 +5500,8 @@ def api_envios_notas_listar():
             where_sql = f"WHERE {' AND '.join(filtros)}" if filtros else ""
             limit = _api_limite(request.args.get("limit"), default=200, maximo=500)
             offset = _api_offset(request.args.get("offset"))
-            total = conn.execute(
-                f"SELECT COUNT(*) AS total FROM notas n {join} {where_sql}",
-                tuple(valores),
-            ).fetchone()
             order_col = "fecha" if "fecha" in notas_cols else "id"
+            limite_candidatos = min(max(limit + offset, 500), 5000)
             rows = conn.execute(
                 f"""
                 SELECT {selects}
@@ -5419,12 +5509,16 @@ def api_envios_notas_listar():
                 {join}
                 {where_sql}
                 ORDER BY n.{order_col} DESC NULLS LAST
-                LIMIT %s OFFSET %s
+                LIMIT %s
                 """,
-                tuple(valores + [limit, offset]),
+                tuple(valores + [limite_candidatos]),
             ).fetchall()
         envios = [_normalizar_envio_nota_api(row) for row in rows]
-        return jsonify({"ok": True, "envios": envios, "total": int((total or {}).get("total") or 0)})
+        if filtro_panel in {"PENDIENTES_GUIA", "LISTAS_ENVIAR", "ENVIADAS", "TODAS"}:
+            envios = [envio for envio in envios if _envio_coincide_filtro_api(envio, filtro_panel)]
+        total = len(envios)
+        envios = envios[offset:offset + limit]
+        return jsonify({"ok": True, "envios": envios, "total": total, "filtro": filtro_panel})
     except Exception:
         app.logger.exception("Error al consultar notas de envios")
         return jsonify({"ok": False, "error": "No se pudieron consultar los envios."}), 500
@@ -5500,7 +5594,10 @@ def _marcar_nota_enviada_api_conn(conn, nota_id):
         return nota_id_real, nota, True, "fecha_envio" in _columnas_tabla_api(conn, "notas")
     if estado_actual != "COMPLETA":
         raise NotaPagoNoPermitido("Solo una nota COMPLETA puede marcarse como enviada.", 409)
-    if not str(nota.get("guia") or "").strip():
+    nota_regla = dict(nota)
+    nota_regla["envio"] = _json_field(nota_regla.get("envio"), {})
+    guia = str(nota.get("guia") or _guia_nota_notificaciones(nota_regla) or "").strip()
+    if _requiere_guia_notificaciones(nota_regla) and not guia:
         raise NotaPagoNoPermitido("Guarda la guia antes de marcar el envio.", 409)
 
     notas_cols = _columnas_tabla_api(conn, "notas")
@@ -5548,6 +5645,109 @@ def api_envios_nota_marcar_enviado(nota_id):
         })
     except Exception as exc:
         return _respuesta_error_nota_api(exc, accion="marcar como enviada")
+
+
+def _procesar_envios_lote_api_conn(conn, nota_ids, auth):
+    resultados = []
+    procesados = 0
+    for indice, nota_id in enumerate(nota_ids):
+        savepoint = f"envio_lote_{indice}"
+        conn.execute(f"SAVEPOINT {savepoint}")
+        try:
+            nota_id_real, nota, idempotente, fecha_disponible = _marcar_nota_enviada_api_conn(
+                conn,
+                nota_id,
+            )
+            if idempotente:
+                resultados.append({
+                    "nota_id": nota_id_real,
+                    "ok": False,
+                    "estado": "ENVIADO",
+                    "error": "La nota ya estaba enviada.",
+                    "idempotente": True,
+                })
+            else:
+                _registrar_auditoria_general_api(
+                    conn,
+                    auth,
+                    "ENVIO_MARCADO_ENVIADO",
+                    "envios",
+                    entidad_tipo="nota",
+                    entidad_id=nota_id_real,
+                    descripcion="Paquete marcado como entregado a paqueteria por lote.",
+                    datos_anteriores={"estado": "COMPLETA"},
+                    datos_nuevos={
+                        "estado": "ENVIADO",
+                        "fecha_envio_guardada": fecha_disponible,
+                    },
+                )
+                procesados += 1
+                resultados.append({
+                    "nota_id": nota_id_real,
+                    "ok": True,
+                    "estado": "ENVIADO",
+                    "fecha_envio": nota.get("fecha_envio"),
+                    "fecha_envio_guardada": fecha_disponible,
+                    "guia": nota.get("guia"),
+                    "paqueteria": nota.get("paqueteria"),
+                })
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except (NotaPagoNoPermitido, LookupError, ValueError) as exc:
+            conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            resultados.append({
+                "nota_id": nota_id,
+                "ok": False,
+                "error": str(exc),
+            })
+        except Exception:
+            conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            app.logger.exception("Error al marcar envio individual dentro de lote")
+            resultados.append({
+                "nota_id": nota_id,
+                "ok": False,
+                "error": "No se pudo actualizar esta nota.",
+            })
+    return {
+        "ok": True,
+        "procesados": procesados,
+        "omitidos": len(resultados) - procesados,
+        "resultados": resultados,
+    }
+
+
+@app.route("/api/envios/notas/marcar-enviadas", methods=["POST"])
+def api_envios_notas_marcar_enviadas():
+    auth, error = _require_license_api()
+    if error:
+        return error
+    data = _body_json()
+    nota_ids = data.get("nota_ids")
+    if not isinstance(nota_ids, list) or not nota_ids:
+        return jsonify({"ok": False, "error": "Selecciona al menos una nota."}), 400
+    if len(nota_ids) > 100:
+        return jsonify({"ok": False, "error": "Solo se permiten 100 notas por lote."}), 400
+
+    ids_limpios = []
+    vistos = set()
+    for nota_id in nota_ids:
+        if isinstance(nota_id, (dict, list)) or nota_id is None:
+            return jsonify({"ok": False, "error": "La lista contiene un identificador invalido."}), 400
+        clave = str(nota_id).strip()
+        if not clave:
+            return jsonify({"ok": False, "error": "La lista contiene un identificador vacio."}), 400
+        if clave not in vistos:
+            vistos.add(clave)
+            ids_limpios.append(clave)
+
+    try:
+        with get_conn() as conn:
+            resultado = _procesar_envios_lote_api_conn(conn, ids_limpios, auth)
+        return jsonify(resultado)
+    except Exception:
+        app.logger.exception("Error al marcar envios por lote")
+        return jsonify({"ok": False, "error": "No se pudieron procesar los envios."}), 500
 
 
 def _tabla_existe_api(conn, tabla):

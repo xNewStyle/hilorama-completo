@@ -329,6 +329,13 @@ class RenderApiClient:
         nota_url = quote(str(nota_id or ""), safe="")
         return self.post(f"/api/envios/notas/{nota_url}/marcar-enviado", {}, token=token)
 
+    def marcar_envios_notas(self, nota_ids, token=None):
+        return self.post(
+            "/api/envios/notas/marcar-enviadas",
+            {"nota_ids": list(nota_ids or [])},
+            token=token,
+        )
+
     def reporte_dashboard_empacadores(self, params=None, token=None):
         return self.get("/api/reportes/dashboard-empacadores", params=params, token=token)
 

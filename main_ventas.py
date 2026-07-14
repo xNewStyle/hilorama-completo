@@ -30,6 +30,7 @@ except Exception:
 import customtkinter as ctk
 from PIL import Image
 import os
+import threading
 from pedidos import crear_pedido, listar_pedidos
 import calendar
 from datetime import datetime
@@ -1047,7 +1048,7 @@ def abrir_panel_asignacion():
     auto_refresh()
 
   
-def abrir_panel_envios():
+def _abrir_panel_envios_local():
 
     if not pedir_password():
         return
@@ -1415,6 +1416,508 @@ def abrir_panel_envios():
 # 🔵 FILTRAR SOLO CLIENTES COMPLETOS
 # =====================================================
 
+
+
+def _abrir_panel_envios_api():
+    if not pedir_password():
+        return
+
+    from hilorama_desktop.services.envios_api_service import (
+        actualizar_envio_nota,
+        listar_envios,
+        marcar_envios_lote,
+    )
+    from hilorama_desktop.services.envios_presentacion import (
+        FILTROS_ENVIO,
+        buscar_envios,
+        clasificar_seleccion_envios,
+        filtro_api_envios,
+        formatear_fecha_envio,
+        guia_envio,
+        normalizar_estado_envio,
+        resumir_seleccion_envios,
+        texto_cantidad,
+        texto_envio,
+    )
+
+    win = ctk.CTkToplevel(root)
+    win.title("Gestión de Envíos")
+    win.geometry("1380x820")
+    win.minsize(1120, 680)
+    win.grab_set()
+
+    estado_filtro = tk.StringVar(value="LISTAS PARA ENVIAR")
+    filtro_tipo = tk.StringVar(value="nota")
+    filtro_texto = tk.StringVar()
+    detalle_titulo = tk.StringVar(value="Selecciona un pedido")
+    datos_cargados = []
+    notas_por_iid = {}
+    procesando = {"activo": False}
+
+    encabezado = ctk.CTkFrame(win, fg_color="transparent")
+    encabezado.pack(fill="x", padx=20, pady=(12, 6))
+    ctk.CTkLabel(
+        encabezado,
+        text="Gestión de Envíos",
+        font=("Segoe UI", 24, "bold"),
+        text_color="#111827",
+    ).pack(side="left")
+    ctk.CTkLabel(
+        encabezado,
+        text="Usa Ctrl o Shift para seleccionar varios pedidos",
+        font=("Segoe UI", 12),
+        text_color="#64748B",
+    ).pack(side="right", padx=(12, 0))
+
+    filtros = ctk.CTkFrame(win, corner_radius=6)
+    filtros.pack(fill="x", padx=20, pady=(0, 8))
+    ctk.CTkLabel(filtros, text="Buscar por", font=("Segoe UI", 12, "bold")).pack(
+        side="left", padx=(12, 6), pady=8
+    )
+    combo_filtro = ctk.CTkComboBox(
+        filtros,
+        values=["nota", "cliente", "telefono", "pedido"],
+        variable=filtro_tipo,
+        width=130,
+        state="readonly",
+    )
+    combo_filtro.pack(side="left", padx=(0, 8), pady=8)
+    entry_buscar = ctk.CTkEntry(
+        filtros,
+        textvariable=filtro_texto,
+        placeholder_text="Buscar pedido, clienta o teléfono",
+        width=330,
+    )
+    entry_buscar.pack(side="left", fill="x", expand=True, padx=(0, 12), pady=8)
+    ctk.CTkLabel(filtros, text="Vista", font=("Segoe UI", 12, "bold")).pack(
+        side="left", padx=(0, 6), pady=8
+    )
+    combo_estado = ctk.CTkComboBox(
+        filtros,
+        values=list(FILTROS_ENVIO),
+        variable=estado_filtro,
+        width=205,
+        state="readonly",
+    )
+    combo_estado.pack(side="left", padx=(0, 12), pady=8)
+
+    tabla_frame = ctk.CTkFrame(win, corner_radius=4)
+    tabla_frame.pack(fill="both", expand=True, padx=20, pady=(0, 8))
+    tabla_frame.grid_rowconfigure(0, weight=1)
+    tabla_frame.grid_columnconfigure(0, weight=1)
+
+    estilo = ttk.Style(win)
+    estilo.configure(
+        "Envios.Treeview",
+        rowheight=30,
+        background="#FFFFFF",
+        fieldbackground="#FFFFFF",
+        foreground="#111827",
+        borderwidth=0,
+    )
+    estilo.configure("Envios.Treeview.Heading", font=("Segoe UI", 10, "bold"))
+    estilo.map(
+        "Envios.Treeview",
+        background=[("selected", "#1D4ED8")],
+        foreground=[("selected", "#FFFFFF")],
+    )
+
+    columnas = ("ID", "Cliente", "Pedido", "Telefono", "Paqueteria", "Guia", "Estado", "FechaEnvio")
+    encabezados = {
+        "ID": "ID",
+        "Cliente": "Cliente",
+        "Pedido": "Pedido",
+        "Telefono": "Teléfono",
+        "Paqueteria": "Paquetería",
+        "Guia": "Guía",
+        "Estado": "Estado",
+        "FechaEnvio": "Fecha de envío",
+    }
+    anchos = {
+        "ID": 115,
+        "Cliente": 210,
+        "Pedido": 100,
+        "Telefono": 125,
+        "Paqueteria": 130,
+        "Guia": 190,
+        "Estado": 105,
+        "FechaEnvio": 145,
+    }
+    tabla = ttk.Treeview(
+        tabla_frame,
+        columns=columnas,
+        show="headings",
+        selectmode="extended",
+        style="Envios.Treeview",
+    )
+    for columna in columnas:
+        tabla.heading(columna, text=encabezados[columna])
+        tabla.column(
+            columna,
+            anchor="w" if columna in {"Cliente", "Guia"} else "center",
+            width=anchos[columna],
+            minwidth=80,
+            stretch=columna in {"Cliente", "Guia"},
+        )
+    scroll_y = ttk.Scrollbar(tabla_frame, orient="vertical", command=tabla.yview)
+    scroll_x = ttk.Scrollbar(tabla_frame, orient="horizontal", command=tabla.xview)
+    tabla.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+    tabla.grid(row=0, column=0, sticky="nsew")
+    scroll_y.grid(row=0, column=1, sticky="ns")
+    scroll_x.grid(row=1, column=0, sticky="ew")
+
+    tabla.tag_configure("SIN_GUIA", background="#FEF3C7", foreground="#78350F")
+    tabla.tag_configure("LISTA", background="#DBEAFE", foreground="#1E3A8A")
+    tabla.tag_configure("ENVIADO", background="#DCFCE7", foreground="#166534")
+
+    detalle_frame = ctk.CTkFrame(win, corner_radius=6)
+    detalle_frame.pack(fill="x", padx=20, pady=(0, 10))
+    ctk.CTkLabel(
+        detalle_frame,
+        textvariable=detalle_titulo,
+        font=("Segoe UI", 14, "bold"),
+        anchor="w",
+    ).pack(fill="x", padx=12, pady=(8, 2))
+    detalle_texto = ctk.CTkTextbox(
+        detalle_frame,
+        height=84,
+        wrap="word",
+        font=("Segoe UI", 11),
+        fg_color="#FFFFFF",
+        text_color="#111827",
+        activate_scrollbars=True,
+    )
+    detalle_texto.pack(fill="x", padx=12, pady=(0, 8))
+    detalle_texto.configure(state="disabled")
+
+    acciones = ctk.CTkFrame(win, fg_color="transparent")
+    acciones.pack(fill="x", padx=20, pady=(0, 10))
+    for columna in range(4):
+        acciones.grid_columnconfigure(columna, weight=1)
+
+    def escribir_detalle(texto):
+        detalle_texto.configure(state="normal")
+        detalle_texto.delete("1.0", "end")
+        detalle_texto.insert("1.0", texto)
+        detalle_texto.configure(state="disabled")
+
+    def cargar_datos(etiqueta_filtro):
+        return listar_envios({
+            "estado": filtro_api_envios(etiqueta_filtro),
+            "limit": 500,
+        })
+
+    def obtener_seleccion():
+        return [
+            notas_por_iid[iid]
+            for iid in tabla.selection()
+            if iid in notas_por_iid
+        ]
+
+    def cargar_tabla(notas):
+        tabla.delete(*tabla.get_children())
+        notas_por_iid.clear()
+        for indice, nota in enumerate(notas):
+            estado = normalizar_estado_envio(nota.get("estado"))
+            tiene_guia = bool(guia_envio(nota))
+            requiere_guia = bool(nota.get("requiere_guia", True))
+            if estado == "ENVIADO":
+                tag = "ENVIADO"
+            elif requiere_guia and not tiene_guia:
+                tag = "SIN_GUIA"
+            else:
+                tag = "LISTA"
+            iid = f"envio-{indice}"
+            notas_por_iid[iid] = nota
+            tabla.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    texto_envio(nota.get("id") or nota.get("nota_id")),
+                    texto_envio(nota.get("cliente_nombre") or nota.get("cliente")),
+                    texto_envio(nota.get("pedido")),
+                    texto_envio(nota.get("telefono")),
+                    texto_envio(nota.get("paqueteria")),
+                    guia_envio(nota) or "Sin guía",
+                    estado or "SIN ESTADO",
+                    formatear_fecha_envio(nota.get("fecha_envio")),
+                ),
+                tags=(tag,),
+            )
+
+    def aplicar_filtro(*_args):
+        visibles = buscar_envios(datos_cargados, filtro_texto.get(), filtro_tipo.get())
+        cargar_tabla(visibles)
+        actualizar_detalle_seleccion()
+
+    def recargar_datos():
+        try:
+            nuevas = cargar_datos(estado_filtro.get())
+        except Exception as exc:
+            messagebox.showerror(
+                "Gestión de Envíos",
+                f"No se pudieron cargar los envíos:\n{exc}",
+                parent=win,
+            )
+            return False
+        datos_cargados.clear()
+        datos_cargados.extend(nuevas)
+        aplicar_filtro()
+        return True
+
+    def actualizar_detalle_seleccion(_event=None):
+        seleccion = obtener_seleccion()
+        if not seleccion:
+            detalle_titulo.set("Selecciona un pedido")
+            escribir_detalle("La selección no modifica estados ni datos del envío.")
+        elif len(seleccion) > 1:
+            resumen = resumir_seleccion_envios(seleccion)
+            detalle_titulo.set(f"{resumen['seleccionados']} pedidos seleccionados")
+            escribir_detalle(
+                f"Con guía: {resumen['con_guia']}    "
+                f"Sin guía: {resumen['sin_guia']}    "
+                f"Ya enviados: {resumen['ya_enviados']}    "
+                f"Listos para enviar: {resumen['listos']}"
+            )
+        else:
+            nota = seleccion[0]
+            estado = normalizar_estado_envio(nota.get("estado")) or "SIN ESTADO"
+            detalle_titulo.set(
+                f"Envío {texto_envio(nota.get('folio') or nota.get('id') or nota.get('nota_id'))}"
+            )
+            escribir_detalle(
+                "\n".join((
+                    f"Cliente: {texto_envio(nota.get('cliente_nombre') or nota.get('cliente'))}",
+                    f"Estado: {estado}    Paquetería: {texto_envio(nota.get('paqueteria'))}    "
+                    f"Guía: {guia_envio(nota) or 'Sin guía'}",
+                    f"Fecha de guía: {formatear_fecha_envio(nota.get('fecha_guia'))}    "
+                    f"Fecha de envío: {formatear_fecha_envio(nota.get('fecha_envio'))}",
+                    f"Tipo de entrega: {texto_envio(nota.get('tipo_entrega'))}    "
+                    f"Empacador: {texto_envio(nota.get('empacador'))}    "
+                    f"Artículos: {texto_cantidad(nota.get('articulos'))}    "
+                    f"Piezas: {texto_cantidad(nota.get('piezas'))}",
+                    f"Observaciones: {texto_envio(nota.get('observaciones'))}",
+                ))
+            )
+        actualizar_estado_botones()
+
+    def actualizar_estado_botones():
+        seleccion = obtener_seleccion()
+        clasificacion = clasificar_seleccion_envios(seleccion)
+        bloqueado = procesando["activo"]
+        btn_asignar.configure(
+            state="normal" if seleccion and not bloqueado else "disabled"
+        )
+        btn_enviar.configure(
+            state="normal" if clasificacion["validos"] and not bloqueado else "disabled"
+        )
+        btn_imprimir.configure(state="normal" if seleccion and not bloqueado else "disabled")
+        btn_actualizar.configure(state="disabled" if bloqueado else "normal")
+
+    def asignar_guia():
+        seleccion = obtener_seleccion()
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona una nota.", parent=win)
+            return
+        if len(seleccion) != 1:
+            messagebox.showinfo(
+                "Asignar guía",
+                "Selecciona una sola nota para asignar la guía.",
+                parent=win,
+            )
+            return
+        nota = seleccion[0]
+        if normalizar_estado_envio(nota.get("estado")) != "COMPLETA":
+            messagebox.showinfo(
+                "Asignar guía",
+                "Solo una nota COMPLETA puede recibir una guía.",
+                parent=win,
+            )
+            return
+        nota_id = nota.get("id") or nota.get("nota_id")
+        guia = simpledialog.askstring("Asignar guía", "Número de guía:", parent=win)
+        if not str(guia or "").strip():
+            return
+        paqueteria = simpledialog.askstring(
+            "Paquetería",
+            "Paquetería (opcional):",
+            initialvalue=str(nota.get("paqueteria") or ""),
+            parent=win,
+        )
+        datos = {"guia": str(guia).strip()}
+        if str(paqueteria or "").strip():
+            datos["paqueteria"] = str(paqueteria).strip()
+        try:
+            actualizar_envio_nota(nota_id, datos)
+        except Exception as exc:
+            messagebox.showerror(
+                "Gestión de Envíos",
+                f"No se pudo guardar la guía:\n{exc}",
+                parent=win,
+            )
+            return
+        recargar_datos()
+        messagebox.showinfo("Guía guardada", "La guía se guardó correctamente.", parent=win)
+
+    def imprimir_seleccion():
+        seleccion = obtener_seleccion()
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona una nota.", parent=win)
+            return
+        if len(seleccion) > 1:
+            messagebox.showinfo(
+                "Imprimir etiquetas",
+                "El flujo actual de impresión trabaja con una nota a la vez.",
+                parent=win,
+            )
+            return
+        nota_id = seleccion[0].get("id") or seleccion[0].get("nota_id")
+        nota = obtener_cotizacion(nota_id)
+        abrir_opciones_impresion(nota)
+
+    def finalizar_envio_lote(trabajo):
+        procesando["activo"] = False
+        if trabajo.get("error"):
+            actualizar_estado_botones()
+            messagebox.showerror(
+                "Gestión de Envíos",
+                f"No se pudieron procesar los envíos:\n{trabajo['error']}",
+                parent=win,
+            )
+            return
+        datos_cargados.clear()
+        datos_cargados.extend(trabajo.get("envios") or [])
+        aplicar_filtro()
+        resultado = trabajo.get("resultado") or {}
+        procesados = int(resultado.get("procesados") or 0)
+        omitidos = int(resultado.get("omitidos") or 0)
+        fallos = [item for item in resultado.get("resultados") or [] if not item.get("ok")]
+        mensaje = f"{procesados} pedidos marcados como enviados."
+        if omitidos:
+            detalles = "\n".join(
+                f"{item.get('nota_id')}: {item.get('error') or 'Omitido'}"
+                for item in fallos[:8]
+            )
+            mensaje += f"\n\n{omitidos} pedidos fueron omitidos."
+            if detalles:
+                mensaje += f"\n\nDetalles:\n{detalles}"
+            messagebox.showwarning("Resultado de envíos", mensaje, parent=win)
+        else:
+            messagebox.showinfo("Resultado de envíos", mensaje, parent=win)
+
+    def marcar_como_enviado():
+        seleccion = obtener_seleccion()
+        if not seleccion:
+            messagebox.showinfo("Selecciona", "Selecciona una o varias notas.", parent=win)
+            return
+        clasificacion = clasificar_seleccion_envios(seleccion)
+        validos = clasificacion["validos"]
+        if not validos:
+            messagebox.showinfo(
+                "Marcar como enviado",
+                "No hay pedidos pendientes válidos en la selección.",
+                parent=win,
+            )
+            return
+        motivos = clasificacion["motivos"]
+        lineas = [f"Se marcarán {len(validos)} pedidos como enviados."]
+        if motivos.get("YA_ENVIADO"):
+            lineas.append(f"{motivos['YA_ENVIADO']} ya estaban enviados.")
+        if motivos.get("SIN_GUIA"):
+            lineas.append(f"{motivos['SIN_GUIA']} no tienen guía y serán omitidos.")
+        otros = sum(
+            cantidad
+            for motivo, cantidad in motivos.items()
+            if motivo not in {"YA_ENVIADO", "SIN_GUIA"}
+        )
+        if otros:
+            lineas.append(f"{otros} tienen un estado no permitido y serán omitidos.")
+        lineas.append("\nSí: continuar con los válidos.  No: cancelar.")
+        if not messagebox.askyesno("Confirmar envíos", "\n".join(lineas), parent=win):
+            return
+
+        ids = [nota.get("id") or nota.get("nota_id") for nota in seleccion]
+        filtro_capturado = estado_filtro.get()
+        trabajo = {"terminado": False}
+        procesando["activo"] = True
+        actualizar_estado_botones()
+
+        def ejecutar_lote():
+            try:
+                trabajo["resultado"] = marcar_envios_lote(ids)
+                trabajo["envios"] = cargar_datos(filtro_capturado)
+            except Exception as exc:
+                trabajo["error"] = str(exc)
+            finally:
+                trabajo["terminado"] = True
+
+        def esperar_lote():
+            if not win.winfo_exists():
+                return
+            if trabajo["terminado"]:
+                finalizar_envio_lote(trabajo)
+            else:
+                win.after(80, esperar_lote)
+
+        threading.Thread(target=ejecutar_lote, daemon=True).start()
+        win.after(80, esperar_lote)
+
+    btn_asignar = ctk.CTkButton(
+        acciones,
+        text="Asignar guía",
+        height=42,
+        corner_radius=6,
+        fg_color="#0F766E",
+        hover_color="#115E59",
+        command=asignar_guia,
+    )
+    btn_asignar.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+    btn_enviar = ctk.CTkButton(
+        acciones,
+        text="Marcar como enviado",
+        height=42,
+        corner_radius=6,
+        fg_color="#2563EB",
+        hover_color="#1D4ED8",
+        command=marcar_como_enviado,
+    )
+    btn_enviar.grid(row=0, column=1, padx=6, sticky="ew")
+    btn_imprimir = ctk.CTkButton(
+        acciones,
+        text="Imprimir etiquetas",
+        height=42,
+        corner_radius=6,
+        fg_color="#334155",
+        hover_color="#1E293B",
+        command=imprimir_seleccion,
+    )
+    btn_imprimir.grid(row=0, column=2, padx=6, sticky="ew")
+    btn_actualizar = ctk.CTkButton(
+        acciones,
+        text="Actualizar",
+        height=42,
+        corner_radius=6,
+        fg_color="#475569",
+        hover_color="#334155",
+        command=recargar_datos,
+    )
+    btn_actualizar.grid(row=0, column=3, padx=(6, 0), sticky="ew")
+
+    tabla.bind("<<TreeviewSelect>>", actualizar_detalle_seleccion)
+    filtro_texto.trace_add("write", aplicar_filtro)
+    combo_filtro.configure(command=lambda _valor: aplicar_filtro())
+    combo_estado.configure(command=lambda _valor: recargar_datos())
+    actualizar_detalle_seleccion()
+    if not recargar_datos():
+        win.destroy()
+
+
+def abrir_panel_envios():
+    # Compatibilidad local: ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')
+    if _modo_api():
+        return _abrir_panel_envios_api()
+    return _abrir_panel_envios_local()
 
 
 def clientes_completos(clientes):
