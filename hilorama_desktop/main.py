@@ -9,23 +9,17 @@ import sys
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
-for path in (PROJECT_ROOT, APP_DIR):
-    path_str = str(path)
-    if path_str not in sys.path:
-        sys.path.insert(0, path_str)
+if __package__ in (None, ""):
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+    __package__ = "hilorama_desktop"
 
-try:
-    from .config import is_api_mode
-    from .ui.main_window import run_app
-    from .ui.login_window import solicitar_login
-    from .services.auth_service import AuthService
-    from .utils.logger import log_error, log_info
-except ImportError:  # Permite ejecutar: python hilorama_desktop/main.py
-    from config import is_api_mode
-    from ui.main_window import run_app
-    from ui.login_window import solicitar_login
-    from services.auth_service import AuthService
-    from utils.logger import log_error, log_info
+from .config import is_api_mode
+from .ui.main_window import run_app
+from .ui.login_window import solicitar_login
+from .services.auth_service import AuthService
+from .utils.logger import log_error, log_info
 
 
 def _preparar_entorno_cliente_api():
