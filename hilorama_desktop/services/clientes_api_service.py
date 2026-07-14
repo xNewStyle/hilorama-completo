@@ -61,6 +61,7 @@ def crear_cliente(nombre, telefono="", direccion=None):
         "/api/clientes",
         lambda api, token: api.crear_cliente(payload, token=token),
     )
+    _emitir_cambio_notificaciones()
     return data.get("cliente")
 
 
@@ -75,6 +76,7 @@ def actualizar_cliente(cliente_id, cliente):
         f"/api/clientes/{cliente_id}",
         lambda api, token: api.actualizar_cliente(cliente_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones()
     return data.get("cliente")
 
 
@@ -90,3 +92,17 @@ def buscar_clientes(params=None):
 def buscar_cliente_por_telefono(telefono):
     clientes = buscar_clientes({"telefono": telefono, "limit": 1})
     return clientes[0] if clientes else None
+
+
+def _emitir_cambio_notificaciones():
+    try:
+        from .notificaciones_service import emitir_actualizacion_notificaciones
+    except ImportError:
+        try:
+            from notificaciones_service import emitir_actualizacion_notificaciones
+        except ImportError:
+            return
+    try:
+        emitir_actualizacion_notificaciones(incluir_oportunidades=True)
+    except Exception:
+        return

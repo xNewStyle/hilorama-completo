@@ -22,9 +22,18 @@ SEGMENTOS_CRM = (
     "SIN_COMPRAS",
 )
 
-# Coincide con los estados de venta final que ya reconoce Hilorama. Esta capa
-# vuelve a validar el dato aunque el SQL del endpoint ya lo filtre.
-ESTADOS_VENTAS_FINALES = frozenset({"PAGADA", "COMPLETA", "VENTA_PAGADA", "ENVIADO"})
+# Coincide con los estados que Hilorama reconoce como una venta cuyo pago ya
+# ocurrio. ARCHIVADA requiere evidencia adicional de pago para no convertir
+# cotizaciones historicas en compras.
+ESTADOS_VENTAS_PAGADAS = frozenset({
+    "PAGADA",
+    "EN_PROCESO",
+    "INCOMPLETA",
+    "COMPLETA",
+    "ENVIADO",
+    "VENTA_PAGADA",
+})
+ESTADOS_VENTAS_FINALES = frozenset(set(ESTADOS_VENTAS_PAGADAS) | {"ARCHIVADA"})
 
 
 def normalizar_segmento(valor: Any) -> str:
@@ -40,6 +49,42 @@ def normalizar_segmento(valor: Any) -> str:
 
 def normalizar_estado(valor: Any) -> str:
     return str(valor or "").strip().upper().replace("\u00d3", "O")
+
+
+def _valor_verdadero(valor: Any) -> bool:
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, (int, float)):
+        return valor > 0
+    return str(valor or "").strip().lower() in {"1", "true", "si", "yes", "pagada", "pagado"}
+
+
+def tiene_evidencia_pago(venta: dict[str, Any]) -> bool:
+    """Reconoce evidencia ya guardada; no infiere pagos por el total o estado."""
+    pagos = venta.get("pagos")
+    return bool(
+        venta.get("fecha_pago")
+        or venta.get("pago_id")
+        or (isinstance(pagos, (list, tuple, set, dict)) and len(pagos) > 0)
+        or _valor_verdadero(venta.get("pagado"))
+    )
+
+
+def es_venta_comercial(
+    venta: dict[str, Any],
+    estados_finales: Iterable[str] | None = None,
+) -> bool:
+    """Valida si una nota cuenta como compra sin duplicar la logica del CRM."""
+    permitidos = {
+        normalizar_estado(estado)
+        for estado in (estados_finales or ESTADOS_VENTAS_FINALES)
+    }
+    estado = normalizar_estado(venta.get("estado"))
+    if estado not in permitidos:
+        return False
+    if estado == "ARCHIVADA":
+        return tiene_evidencia_pago(venta)
+    return True
 
 
 def parsear_fecha(valor: Any) -> datetime | None:
@@ -427,18 +472,24 @@ def construir_analitica_clientas(
 
     ventas_por_cliente: dict[str, list[dict[str, Any]]] = defaultdict(list)
     ventas_filtradas: list[dict[str, Any]] = []
-    for venta_original in ventas:
+    ventas_vistas: set[str] = set()
+    for indice_venta, venta_original in enumerate(ventas):
         venta = dict(venta_original)
         cliente_id = str(venta.get("cliente_id") or "")
         fecha = _fecha_venta(venta)
         if not cliente_id or cliente_id not in clientes_por_id or not fecha:
             continue
-        if normalizar_estado(venta.get("estado")) not in estados_finales:
+        if not es_venta_comercial(venta, estados_finales):
             continue
         if desde and fecha.date() < desde.date():
             continue
         if hasta and fecha.date() > hasta.date():
             continue
+        nota_id = str(venta.get("id") or venta.get("nota_id") or "").strip()
+        clave_venta = f"nota:{nota_id}" if nota_id else f"sin_id:{indice_venta}"
+        if clave_venta in ventas_vistas:
+            continue
+        ventas_vistas.add(clave_venta)
         venta["fecha_comercial"] = _fecha_iso(fecha)
         ventas_por_cliente[cliente_id].append(venta)
         ventas_filtradas.append(venta)

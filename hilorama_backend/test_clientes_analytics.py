@@ -104,6 +104,54 @@ class ClientesAnalyticsTests(unittest.TestCase):
         self.assertNotIn("historial_resumido", filas[3])
         self.assertEqual(data["graficas"], {})
 
+    def test_estados_posteriores_al_pago_cuentan_como_compras(self):
+        ventas = [
+            _venta("PROC-1", 2, AHORA - timedelta(days=12), 100, estado="EN_PROCESO"),
+            _venta("INC-1", 2, AHORA - timedelta(days=8), 200, estado="INCOMPLETA"),
+            _venta("ENV-1", 2, AHORA - timedelta(days=3), 300, estado="ENVIADO"),
+        ]
+        data = construir_analitica_clientas(self.clientes, ventas, [], ahora=AHORA)
+        fila = next(item for item in data["clientes"] if item["cliente_id"] == 2)
+        self.assertEqual(fila["numero_compras"], 3)
+        self.assertEqual(fila["total_comprado"], 600)
+
+    def test_archivada_solo_cuenta_con_evidencia_de_pago(self):
+        pagada = _venta("ARCH-P", 2, AHORA - timedelta(days=20), 250, estado="ARCHIVADA")
+        pagada["fecha_pago"] = (AHORA - timedelta(days=20)).isoformat()
+        sin_pago = _venta("ARCH-C", 2, AHORA - timedelta(days=10), 900, estado="ARCHIVADA")
+        data = construir_analitica_clientas(self.clientes, [pagada, sin_pago], [], ahora=AHORA)
+        fila = next(item for item in data["clientes"] if item["cliente_id"] == 2)
+        self.assertEqual(fila["numero_compras"], 1)
+        self.assertEqual(fila["total_comprado"], 250)
+
+    def test_anulada_y_venta_pendiente_no_cuentan_como_compra(self):
+        ventas = [
+            _venta("ANU-1", 2, AHORA - timedelta(days=5), 800, estado="ANULADA"),
+            _venta("PEN-1", 2, AHORA - timedelta(days=4), 600, estado="VENTA_PENDIENTE"),
+        ]
+        data = construir_analitica_clientas(self.clientes, ventas, [], ahora=AHORA)
+        fila = next(item for item in data["clientes"] if item["cliente_id"] == 2)
+        self.assertEqual(fila["numero_compras"], 0)
+        self.assertEqual(fila["total_comprado"], 0)
+
+    def test_venta_duplicada_por_id_solo_cuenta_una_vez(self):
+        venta = _venta("DUP-1", 2, AHORA - timedelta(days=5), 400)
+        data = construir_analitica_clientas(self.clientes, [venta, dict(venta)], [], ahora=AHORA)
+        fila = next(item for item in data["clientes"] if item["cliente_id"] == 2)
+        self.assertEqual(fila["numero_compras"], 1)
+        self.assertEqual(fila["total_comprado"], 400)
+
+    def test_compras_distintas_el_mismo_dia_se_conservan(self):
+        ventas = [
+            _venta("MISMO-1", 2, AHORA - timedelta(days=5), 120),
+            _venta("MISMO-2", 2, AHORA - timedelta(days=5), 180),
+        ]
+        data = construir_analitica_clientas(self.clientes, ventas, [], ahora=AHORA)
+        fila = next(item for item in data["clientes"] if item["cliente_id"] == 2)
+        self.assertEqual(fila["numero_compras"], 2)
+        self.assertEqual(fila["total_comprado"], 300)
+        self.assertIsNone(fila["frecuencia_promedio_dias"])
+
 
 if __name__ == "__main__":
     unittest.main()

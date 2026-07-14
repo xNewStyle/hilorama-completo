@@ -10,6 +10,20 @@ except ImportError:
     from productos_api_service import _call_api
 
 
+def _emitir_cambio_notificaciones(incluir_oportunidades=False):
+    try:
+        from .notificaciones_service import emitir_actualizacion_notificaciones
+    except ImportError:
+        try:
+            from notificaciones_service import emitir_actualizacion_notificaciones
+        except ImportError:
+            return
+    try:
+        emitir_actualizacion_notificaciones(incluir_oportunidades=incluir_oportunidades)
+    except Exception:
+        return
+
+
 def listar_notas(params=None):
     params_base = dict(params or {})
     if "limit" in params_base:
@@ -105,6 +119,7 @@ def registrar_pago(nota_id, comprobante=None):
         "/api/pagos",
         lambda api, token: api.registrar_pago(payload, token=token),
     )
+    _emitir_cambio_notificaciones(incluir_oportunidades=True)
     return data.get("pago")
 
 
@@ -126,6 +141,7 @@ def _marcar_nota_pagada_payload(nota_id, payload):
         f"/api/notas/{nota_id}/pago",
         lambda api, token: api.marcar_nota_pagada(nota_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones(incluir_oportunidades=True)
     return data.get("nota")
 
 
@@ -166,6 +182,7 @@ def anular_nota(nota_id, autorizacion_stock=None):
         if mensaje.lower().startswith("no se pudo anular"):
             raise
         raise RuntimeError(f"No se pudo anular: {mensaje}") from exc
+    _emitir_cambio_notificaciones(incluir_oportunidades=True)
     return data
 
 
@@ -188,6 +205,7 @@ def crear_cotizacion(cliente, items, envio=None, pedido=None):
         "/api/notas",
         lambda api, token: api.crear_nota(payload, token=token),
     )
+    _emitir_cambio_notificaciones()
     return data.get("nota")
 
 
@@ -204,6 +222,7 @@ def convertir_a_venta(nota_id, items, cliente, envio=None, autorizacion_stock=No
         f"/api/notas/{nota_id}/convertir-a-venta",
         lambda api, token: api.convertir_nota_a_venta(nota_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones()
     return data.get("nota")
 
 
@@ -227,6 +246,7 @@ def actualizar_nota(nota):
         f"/api/notas/{nota_id}",
         lambda api, token: api.actualizar_nota(nota_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones()
     return data.get("nota")
 
 
@@ -249,6 +269,7 @@ def actualizar_nota_admin(nota_id, nota, clave_autorizacion=None):
         f"/api/notas/{nota_id}/admin",
         lambda api, token: api.actualizar_nota_admin(nota_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones()
     return data.get("nota")
 
 
@@ -279,6 +300,7 @@ def ajustar_items_nota_pagada_admin(
         f"/api/notas/{nota_id}/admin-ajustar-items",
         lambda api, token: api.ajustar_items_nota_pagada_admin(nota_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones(incluir_oportunidades=True)
     return data
 
 
@@ -289,6 +311,7 @@ def actualizar_items_nota(nota_id, items):
         f"/api/notas/{nota_id}/items",
         lambda api, token: api.actualizar_items_nota(nota_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones()
     return data.get("nota")
 
 
@@ -301,4 +324,5 @@ def cambiar_cliente_nota(nota_id, cliente):
         f"/api/notas/{nota_id}",
         lambda api, token: api.actualizar_nota(nota_id, payload, token=token),
     )
+    _emitir_cambio_notificaciones(incluir_oportunidades=True)
     return data.get("nota")

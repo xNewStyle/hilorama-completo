@@ -62,6 +62,11 @@ def _cache_visual_set(nombre, params, valor):
 
 def limpiar_cache_visual():
     _cache_visual.clear()
+    try:
+        from .notificaciones_service import emitir_actualizacion_notificaciones
+        emitir_actualizacion_notificaciones()
+    except Exception:
+        pass
 
 
 def listar_productos(params=None):

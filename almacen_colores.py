@@ -3247,6 +3247,44 @@ def buscar_diferido(event=None):
     buscar_job = root.after(250, lambda: refrescar_tabla())
 
 
+def enfocar_producto(producto_id=None, codigo=None):
+    """Filtra y selecciona un producto existente sin alterar sus datos."""
+    global filtro_modo_actual
+    if entry_buscar is None or tabla is None:
+        return False
+    producto_id = str(producto_id or "").strip()
+    codigo = str(codigo or "").strip()
+    criterio = codigo
+    if not criterio and producto_id:
+        for producto in obtener_productos():
+            if str(producto.get("id") or "").strip() == producto_id:
+                criterio = str(producto.get("codigo") or producto.get("codigo_barras") or "").strip()
+                break
+    filtro_modo_actual = "TODOS"
+    entry_buscar.delete(0, tk.END)
+    entry_buscar.insert(0, criterio)
+    refrescar_tabla(filtro=criterio, modo="TODOS")
+    for item_id, producto in _productos_tabla.items():
+        coincide_id = producto_id and str(producto.get("id") or "").strip() == producto_id
+        coincide_codigo = criterio and criterio in {
+            str(producto.get("codigo") or "").strip(),
+            str(producto.get("codigo_barras") or "").strip(),
+        }
+        if not (coincide_id or coincide_codigo):
+            continue
+        padre = tabla.parent(item_id)
+        if padre:
+            tabla.item(padre, open=True)
+            abuelo = tabla.parent(padre)
+            if abuelo:
+                tabla.item(abuelo, open=True)
+        tabla.selection_set(item_id)
+        tabla.focus(item_id)
+        tabla.see(item_id)
+        return True
+    return False
+
+
 def construir_interfaz(parent=None):
     global root, tabla, combo_marca, entry_hilo, entry_color, entry_codigo, entry_barras
     global entry_stock, entry_vol, entry_buscar, lbl_ganancia, lbl_estado

@@ -213,6 +213,20 @@ class RenderApiClient:
         params = _params_clientes_analytics(desde=desde, hasta=hasta, q=q, segmento=segmento)
         return self.get("/api/clientes/analytics/graficas", params=params or None, token=token)
 
+    def obtener_resumen_notificaciones(self, incluir_oportunidades=True, token=None):
+        params = {
+            "incluir_oportunidades": "true" if incluir_oportunidades else "false",
+        }
+        return self.get("/api/notificaciones/resumen", params=params, token=token)
+
+    def controlar_oportunidad_notificacion(self, cliente_id, data, token=None):
+        cliente_url = quote(str(cliente_id or ""), safe="")
+        return self.post(
+            f"/api/notificaciones/oportunidades/{cliente_url}/control",
+            data,
+            token=token,
+        )
+
     def listar_notas(self, params=None, token=None):
         return self.get("/api/notas", params=params, token=token)
 

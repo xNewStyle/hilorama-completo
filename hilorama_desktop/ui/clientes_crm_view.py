@@ -67,6 +67,9 @@ class ClientesCRMView(ctk.CTkFrame):
     def mostrar_cliente_inicial(self, cliente):
         self._controller.mostrar_cliente_inicial(cliente)
 
+    def seleccionar_cliente(self, cliente_id, abrir_historial=False):
+        self._controller.seleccionar_cliente(cliente_id, abrir_historial=abrir_historial)
+
 
 class ClientesCrmWindow:
     def __init__(self, parent, editar_cliente_callback=None, embedded=False, host=None):
@@ -90,6 +93,7 @@ class ClientesCrmWindow:
         self._ventanas_historial_pendientes = {}
         self._ventanas_graficas_pendientes = {}
         self._busqueda_pendiente = None
+        self._historial_automatico_cliente_id = None
 
         if host is not None:
             self.win = host
@@ -126,6 +130,18 @@ class ClientesCrmWindow:
     def mostrar_cliente_inicial(self, cliente):
         if isinstance(cliente, dict) and cliente.get("id") is not None:
             self.cliente_inicial_id = str(cliente.get("id"))
+
+    def seleccionar_cliente(self, cliente_id, abrir_historial=False):
+        cliente_id = str(cliente_id or "").strip()
+        if not cliente_id:
+            return
+        self.cliente_inicial_id = cliente_id
+        if abrir_historial:
+            self._historial_automatico_cliente_id = cliente_id
+        if cliente_id in self.ranking_por_id:
+            self._seleccionar_por_id(cliente_id)
+        else:
+            self._cargar_detalle(cliente_id, forzar=True)
 
     def _construir(self):
         raiz = ctk.CTkFrame(self.win, fg_color="transparent")
@@ -476,9 +492,13 @@ class ClientesCrmWindow:
         analitica = resultado.get("resultado") or {}
         self._detalles_cache[cliente_id] = analitica
         log_info("hilorama_desktop", f"CRM ficha: {segundos:.3f}s")
-        if self._cliente_seleccionado_id() == cliente_id:
+        if self._cliente_seleccionado_id() == cliente_id or self.cliente_inicial_id == cliente_id:
             self.analitica_actual = analitica
             self._mostrar_detalle(analitica)
+            self.cliente_inicial_id = None
+            if self._historial_automatico_cliente_id == cliente_id:
+                self._historial_automatico_cliente_id = None
+                self.win.after(20, self.mostrar_historial)
 
     def _aplicar_historial(self, resultado, segundos):
         cliente_id = str(resultado.get("cliente_id"))

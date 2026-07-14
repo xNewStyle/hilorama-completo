@@ -1,4 +1,5 @@
 import tkinter as tk
+import queue
 import time
 import threading
 from tkinter import messagebox, ttk
@@ -15,6 +16,7 @@ try:
     from ..utils.logger import log_error, log_info
     from .admin_view import crear_vista_admin
     from .almacen_view import crear_vista_almacen
+    from .notificaciones_view import NotificationBellController
     from .ventas_view import crear_vista_ventas
 except ImportError:  # Permite compilar/ejecutar main.py como script.
     from config import APP_NAME, APP_VERSION
@@ -22,6 +24,7 @@ except ImportError:  # Permite compilar/ejecutar main.py como script.
     from utils.logger import log_error, log_info
     from ui.admin_view import crear_vista_admin
     from ui.almacen_view import crear_vista_almacen
+    from ui.notificaciones_view import NotificationBellController
     from ui.ventas_view import crear_vista_ventas
 
 
@@ -35,6 +38,7 @@ class HiloramaDesktopApp(BaseTk):
         self.views_cache = {}
         self.current_view = None
         self.current_module = None
+        self.notification_controller = None
         self._startup_at = time.perf_counter()
         self.report_callback_exception = self._manejar_error_tkinter
 
@@ -44,9 +48,12 @@ class HiloramaDesktopApp(BaseTk):
 
         self._build_shell()
         self.mostrar_inicio()
+        if self.notification_controller:
+            self.notification_controller.start()
         self._iniciar_heartbeat()
         self._log_tiempo("arranque Desktop", self._startup_at)
         self.after(1500, self._iniciar_revision_actualizaciones)
+        self.protocol("WM_DELETE_WINDOW", self._cerrar_aplicacion)
 
     def _configurar_tamano_inicial(self):
         screen_width = self.winfo_screenwidth()
@@ -131,8 +138,35 @@ class HiloramaDesktopApp(BaseTk):
         )
         btn_logout.pack(fill="x", padx=10, pady=(8, 16))
 
-        self.content = ttk.Frame(self, padding=2)
-        self.content.grid(row=0, column=1, sticky="nsew")
+        workspace = tk.Frame(self, bg="#F4F5F7")
+        workspace.grid(row=0, column=1, sticky="nsew")
+        workspace.columnconfigure(0, weight=1)
+        workspace.rowconfigure(1, weight=1)
+
+        topbar = tk.Frame(workspace, bg="white", height=56, bd=0, highlightthickness=1, highlightbackground="#E2E8F0")
+        topbar.grid(row=0, column=0, sticky="ew")
+        topbar.grid_propagate(False)
+        topbar.columnconfigure(0, weight=1)
+        self.module_title_var = tk.StringVar(value="Inicio")
+        tk.Label(
+            topbar,
+            textvariable=self.module_title_var,
+            bg="white",
+            fg="#1F2937",
+            font=("Segoe UI", 14, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="nsew", padx=(18, 10))
+        topbar_actions = tk.Frame(topbar, bg="white")
+        topbar_actions.grid(row=0, column=1, sticky="e", padx=(4, 12), pady=5)
+        self.notification_controller = NotificationBellController(
+            self,
+            topbar_actions,
+            self._navegar_notificacion,
+        )
+        self.notification_controller.bell.pack(side="right")
+
+        self.content = ttk.Frame(workspace, padding=2)
+        self.content.grid(row=1, column=0, sticky="nsew")
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
 
@@ -245,8 +279,141 @@ class HiloramaDesktopApp(BaseTk):
         log_info("hilorama_desktop", f"{etiqueta}: {duracion:.2f}s")
 
     def _set_modulo_actual(self, modulo):
+        titulos = {
+            "inicio": "Inicio",
+            "almacen": "Almacén",
+            "ventas": "Ventas",
+            "clientes": "Clientes",
+            "reportes": "Reportes",
+            "configuracion": "Configuración",
+            "administracion": "Administración",
+        }
+        if hasattr(self, "module_title_var"):
+            self.module_title_var.set(titulos.get(modulo, str(modulo or "").title()))
         if self.heartbeat:
             self.heartbeat.set_module(modulo)
+
+    def _navegar_notificacion(self, aviso, accion):
+        accion = str(accion or "").strip().upper()
+        if accion in {"ABRIR_CLIENTE", "VER_PRODUCTOS_FRECUENTES", "VER_HISTORIAL_CLIENTE"}:
+            self._abrir_cliente_notificacion(
+                aviso.get("cliente_id") or aviso.get("destino_id"),
+                abrir_historial=accion == "VER_HISTORIAL_CLIENTE",
+            )
+            return
+        if accion in {"ABRIR_PRODUCTO", "ABRIR_ALMACEN"}:
+            self._abrir_producto_notificacion(aviso)
+            return
+        if accion == "ABRIR_ENVIOS":
+            self._abrir_panel_ventas_notificacion("abrir_panel_envios")
+            return
+        if accion in {"ABRIR_ASIGNACION", "ABRIR_PEDIDO"}:
+            self._abrir_panel_ventas_notificacion("abrir_panel_asignacion")
+            return
+        if accion == "ABRIR_REPORTE_ESCANEO":
+            self._abrir_panel_ventas_notificacion("abrir_panel_errores")
+            return
+        if accion == "ABRIR_IMPRESION":
+            self._abrir_venta_notificacion(aviso.get("nota_id"), imprimir=True)
+            return
+        if accion == "ABRIR_VENTA":
+            self._abrir_venta_notificacion(aviso.get("nota_id") or aviso.get("destino_id"))
+            return
+        log_info("hilorama_desktop", f"Accion de notificacion sin navegador: {accion or 'vacia'}")
+
+    def _abrir_cliente_notificacion(self, cliente_id, abrir_historial=False):
+        if cliente_id in (None, ""):
+            return
+        self.mostrar_clientes()
+
+        def seleccionar():
+            view = self.views_cache.get("clientes")
+            if view is not None and hasattr(view, "seleccionar_cliente"):
+                view.seleccionar_cliente(cliente_id, abrir_historial=abrir_historial)
+
+        self.after(60, seleccionar)
+
+    def _abrir_producto_notificacion(self, aviso):
+        self.mostrar_almacen()
+        metadata = aviso.get("metadata") if isinstance(aviso.get("metadata"), dict) else {}
+        producto_id = aviso.get("producto_id") or aviso.get("destino_id")
+        codigo = metadata.get("codigo")
+
+        def enfocar():
+            try:
+                import almacen_colores
+                almacen_colores.enfocar_producto(producto_id=producto_id, codigo=codigo)
+            except Exception as exc:
+                log_error("almacen", "No se pudo enfocar el producto de la notificacion", exc)
+
+        self.after(100, enfocar)
+
+    def _abrir_panel_ventas_notificacion(self, nombre_funcion):
+        self.mostrar_ventas()
+
+        def abrir():
+            try:
+                import main_ventas
+                funcion = getattr(main_ventas, nombre_funcion)
+                funcion()
+            except Exception as exc:
+                log_error("ventas", f"No se pudo abrir {nombre_funcion} desde la campana", exc)
+                messagebox.showerror(
+                    "Notificaciones",
+                    "No se pudo abrir la pantalla solicitada. Revisa los logs.",
+                    parent=self,
+                )
+
+        self.after(100, abrir)
+
+    def _abrir_venta_notificacion(self, nota_id, imprimir=False):
+        if nota_id in (None, ""):
+            return
+        self.mostrar_ventas()
+        resultados = queue.Queue()
+
+        def worker():
+            try:
+                from ..services.notas_api_service import obtener_detalle_completo_nota
+            except ImportError:
+                from services.notas_api_service import obtener_detalle_completo_nota
+            try:
+                resultados.put((obtener_detalle_completo_nota(nota_id), None))
+            except Exception as exc:
+                resultados.put((None, exc))
+
+        def procesar():
+            try:
+                nota, error = resultados.get_nowait()
+            except queue.Empty:
+                if self.winfo_exists():
+                    self.after(50, procesar)
+                return
+            if error:
+                log_error("ventas", f"No se pudo abrir la venta {nota_id} desde la campana", error)
+                messagebox.showerror(
+                    "Notificaciones",
+                    "No se pudo cargar la venta seleccionada.",
+                    parent=self,
+                )
+                return
+            try:
+                if imprimir:
+                    import main_ventas
+                    main_ventas.abrir_opciones_impresion(nota)
+                else:
+                    from ver_cotizaciones import mostrar_detalle_nota
+                    mostrar_detalle_nota(nota, self)
+            except Exception as exc:
+                log_error("ventas", f"No se pudo mostrar la venta {nota_id}", exc)
+                messagebox.showerror(
+                    "Notificaciones",
+                    "No se pudo abrir el detalle solicitado.",
+                    parent=self,
+                )
+
+        threading.Thread(target=worker, daemon=True, name=f"notificacion-nota-{nota_id}").start()
+        self.after(50, procesar)
 
     def _es_super_admin(self):
         usuario = (self.session or {}).get("usuario") or {}
@@ -265,6 +432,8 @@ class HiloramaDesktopApp(BaseTk):
         if self.heartbeat:
             self.heartbeat.stop()
             self.heartbeat = None
+        if self.notification_controller:
+            self.notification_controller.shutdown()
 
         try:
             if self.auth_service:
@@ -292,6 +461,14 @@ class HiloramaDesktopApp(BaseTk):
         )
         self.destroy()
 
+    def _cerrar_aplicacion(self):
+        if self.heartbeat:
+            self.heartbeat.stop()
+            self.heartbeat = None
+        if self.notification_controller:
+            self.notification_controller.shutdown()
+        self.destroy()
+
     def manejar_sesion_expirada(self, mensaje="La sesion expiro. Inicia sesion nuevamente."):
         """Cierra la aplicacion de forma controlada cuando una lectura recibe HTTP 401."""
         if self._session_expiration_in_progress:
@@ -301,6 +478,8 @@ class HiloramaDesktopApp(BaseTk):
         if self.heartbeat:
             self.heartbeat.stop()
             self.heartbeat = None
+        if self.notification_controller:
+            self.notification_controller.shutdown()
         try:
             self._borrar_sesion_local()
         except Exception as exc:
@@ -339,6 +518,8 @@ class HiloramaDesktopApp(BaseTk):
         log_error("hilorama_desktop", f"Acceso bloqueado por licencia: {mensaje}")
         if self.heartbeat:
             self.heartbeat.stop()
+        if self.notification_controller:
+            self.notification_controller.shutdown()
         messagebox.showerror("Acceso bloqueado", mensaje, parent=self)
         self.destroy()
 

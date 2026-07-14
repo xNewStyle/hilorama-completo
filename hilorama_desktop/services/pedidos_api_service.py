@@ -90,17 +90,35 @@ def asignar_notas_empacador(nota_ids, empacador_id):
         "nota_ids": list(nota_ids or []),
         "empacador_id": empacador_id,
     }
-    return _call_api(
+    data = _call_api(
         "asignar empacador",
         "/api/notas/asignar-empacador",
         lambda api, token: api.asignar_notas_empacador(payload, token=token),
     )
+    _emitir_cambio_notificaciones()
+    return data
 
 
 def desasignar_notas_empacador(nota_ids):
     payload = {"nota_ids": list(nota_ids or [])}
-    return _call_api(
+    data = _call_api(
         "desasignar empacador",
         "/api/notas/desasignar-empacador",
         lambda api, token: api.desasignar_notas_empacador(payload, token=token),
     )
+    _emitir_cambio_notificaciones()
+    return data
+
+
+def _emitir_cambio_notificaciones():
+    try:
+        from .notificaciones_service import emitir_actualizacion_notificaciones
+    except ImportError:
+        try:
+            from notificaciones_service import emitir_actualizacion_notificaciones
+        except ImportError:
+            return
+    try:
+        emitir_actualizacion_notificaciones()
+    except Exception:
+        return

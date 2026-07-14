@@ -12,7 +12,7 @@ import json
 import os
 import time
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 SECRET = "MI_CLAVE_INTERNA_ULTRA_SECRETA"
@@ -146,14 +146,29 @@ except ImportError:
 try:
     from hilorama_backend.services.clientes_analytics_service import (
         construir_analitica_clientas,
+        es_venta_comercial as _es_venta_comercial_crm,
         normalizar_estado as _normalizar_estado_crm,
         parsear_fecha as _parsear_fecha_crm,
     )
 except ImportError:
     from services.clientes_analytics_service import (
         construir_analitica_clientas,
+        es_venta_comercial as _es_venta_comercial_crm,
         normalizar_estado as _normalizar_estado_crm,
         parsear_fecha as _parsear_fecha_crm,
+    )
+
+try:
+    from hilorama_backend.services.notificaciones_service import (
+        construir_notificaciones_operacion,
+        construir_oportunidades_venta,
+        construir_resumen_notificaciones,
+    )
+except ImportError:
+    from services.notificaciones_service import (
+        construir_notificaciones_operacion,
+        construir_oportunidades_venta,
+        construir_resumen_notificaciones,
     )
 
 def registrar_error(nota_id, codigo, empacador_id, motivo):
@@ -3549,7 +3564,7 @@ def _respuesta_error_nota_api(exc, accion="guardar"):
 # Solo se cuentan estados que el backend ya trata como ventas finales. No se
 # incluyen COTIZACION, VENTA ni VENTA_PENDIENTE, porque aun no son ventas reales.
 ESTADOS_VENTA_COMERCIAL_ANALYTICS = frozenset(
-    set(ESTADOS_NOTA_PAGADA_API) | {"ENVIADO"}
+    set(ESTADOS_NOTA_PAGADA_API) | {"ENVIADO", "ARCHIVADA"}
 )
 ORDENES_RANKING_CLIENTAS = {
     "total_comprado",
@@ -3604,8 +3619,16 @@ def _consultar_ventas_crm_api(conn, cliente_id=None):
     if cliente_id is not None:
         cliente_where = "\n          AND n.cliente_id = %s"
         valores = tuple(valores) + (cliente_id,)
+    pagos_cols = (
+        _columnas_tabla_api(conn, "pagos")
+        if _tabla_existe_api(conn, "pagos")
+        else set()
+    )
+    evidencia_pago = "FALSE"
+    if "nota_id" in pagos_cols:
+        evidencia_pago = "EXISTS (SELECT 1 FROM pagos pg WHERE pg.nota_id = n.id)"
     rows = conn.execute(f"""
-        SELECT n.*, it.subtotal_productos
+        SELECT n.*, it.subtotal_productos, {evidencia_pago} AS pagado
         FROM notas n
         {_join_subtotal_items_nota_api()}
         WHERE n.cliente_id IS NOT NULL
@@ -3618,7 +3641,7 @@ def _consultar_ventas_crm_api(conn, cliente_id=None):
         nota = _normalizar_nota_api(row)
         if not nota:
             continue
-        if _normalizar_estado_crm(nota.get("estado")) not in ESTADOS_VENTA_COMERCIAL_ANALYTICS:
+        if not _es_venta_comercial_crm(nota, ESTADOS_VENTA_COMERCIAL_ANALYTICS):
             continue
         nota["fecha_comercial"] = nota.get("fecha_pago") or nota.get("fecha")
         if _parsear_fecha_crm(nota.get("fecha_comercial")):
@@ -3692,21 +3715,21 @@ def _consultar_items_ventas_crm_api(conn, cliente_id=None):
     return [_normalizar_item_nota_api(row) for row in rows]
 
 
-def _analitica_clientas_api(
+def _analitica_clientas_conn_api(
+    conn,
     filtros=None,
     cliente_id=None,
     incluir_historial=False,
     incluir_favoritos=False,
     incluir_graficas=False,
 ):
-    with get_conn() as conn:
-        clientes = _consultar_clientes_crm_api(conn, cliente_id=cliente_id)
-        ventas = _consultar_ventas_crm_api(conn, cliente_id=cliente_id)
-        items = (
-            _consultar_items_ventas_crm_api(conn, cliente_id=cliente_id)
-            if incluir_historial or incluir_favoritos
-            else []
-        )
+    clientes = _consultar_clientes_crm_api(conn, cliente_id=cliente_id)
+    ventas = _consultar_ventas_crm_api(conn, cliente_id=cliente_id)
+    items = (
+        _consultar_items_ventas_crm_api(conn, cliente_id=cliente_id)
+        if incluir_historial or incluir_favoritos
+        else []
+    )
     return construir_analitica_clientas(
         clientes,
         ventas,
@@ -3715,7 +3738,26 @@ def _analitica_clientas_api(
         incluir_historial=incluir_historial,
         incluir_favoritos=incluir_favoritos,
         incluir_graficas=incluir_graficas,
+        estados_finales=ESTADOS_VENTA_COMERCIAL_ANALYTICS,
     )
+
+
+def _analitica_clientas_api(
+    filtros=None,
+    cliente_id=None,
+    incluir_historial=False,
+    incluir_favoritos=False,
+    incluir_graficas=False,
+):
+    with get_conn() as conn:
+        return _analitica_clientas_conn_api(
+            conn,
+            filtros=filtros,
+            cliente_id=cliente_id,
+            incluir_historial=incluir_historial,
+            incluir_favoritos=incluir_favoritos,
+            incluir_graficas=incluir_graficas,
+        )
 
 
 def _ranking_clientas_api(metricas, orden):
@@ -3872,6 +3914,344 @@ def api_cliente_historial_compras(cliente_id):
         })
     except Exception as exc:
         return _respuesta_error_analytics_clientas_api(exc, "consultar el historial de compras")
+
+
+# ================= CAMPANA DE NOTIFICACIONES =================
+ESTADOS_NOTIFICACIONES_NOTAS = (
+    "COTIZACION",
+    "COTIZACION_PENDIENTE",
+    "VENTA",
+    "VENTA_PENDIENTE",
+    "PAGADA",
+    "EN_PROCESO",
+    "INCOMPLETA",
+    "COMPLETA",
+    "ENVIADO",
+    "ANULADA",
+    "CANCELADA",
+    "ELIMINADA",
+    "ARCHIVADA",
+)
+CATEGORIAS_OPORTUNIDAD_NOTIFICACION = {
+    "PROXIMA_COMPRA",
+    "ATRASADA",
+    "DORMIDA",
+    "VIP_RECUPERAR",
+    "RECURRENTE_ATRASADA",
+}
+ACCIONES_CONTROL_OPORTUNIDAD = {
+    "RECORDAR_3": (3, False),
+    "RECORDAR_7": (7, False),
+    "OCULTAR_30": (30, True),
+}
+
+
+def _columna_select_notificaciones(alias, columna, columnas, nombre=None, default="NULL"):
+    nombre = nombre or columna
+    if columna not in columnas:
+        return f"{default} AS {nombre}"
+    return f"{alias}.{columna} AS {nombre}"
+
+
+def _consultar_notas_notificaciones_api(conn):
+    if not _tabla_existe_api(conn, "notas"):
+        return []
+    notas_cols = _columnas_tabla_api(conn, "notas")
+    if not {"id", "estado"}.issubset(notas_cols):
+        return []
+
+    joins = []
+    selects = ["n.*"]
+    items_cols = _columnas_tabla_api(conn, "items") if _tabla_existe_api(conn, "items") else set()
+    if {"nota_id", "cantidad"}.issubset(items_cols):
+        empacadas_expr = "COALESCE(empacadas, 0)" if "empacadas" in items_cols else "0"
+        joins.append(f"""
+            LEFT JOIN (
+                SELECT
+                    nota_id,
+                    COALESCE(SUM(COALESCE(cantidad, 0)), 0) AS piezas_totales,
+                    COALESCE(SUM({empacadas_expr}), 0) AS piezas_empacadas
+                FROM items
+                GROUP BY nota_id
+            ) ni ON ni.nota_id = n.id
+        """)
+        selects.extend((
+            "COALESCE(ni.piezas_totales, 0) AS piezas_totales",
+            "COALESCE(ni.piezas_empacadas, 0) AS piezas_empacadas",
+        ))
+    else:
+        selects.extend(("0 AS piezas_totales", "0 AS piezas_empacadas"))
+
+    empacadores_cols = (
+        _columnas_tabla_api(conn, "empacadores")
+        if _tabla_existe_api(conn, "empacadores")
+        else set()
+    )
+    if "empacador_id" in notas_cols and {"id", "nombre"}.issubset(empacadores_cols):
+        joins.append("LEFT JOIN empacadores ne ON ne.id = n.empacador_id")
+        selects.append("ne.nombre AS empacador_nombre")
+    else:
+        selects.append("NULL AS empacador_nombre")
+
+    clientes_cols = (
+        _columnas_tabla_api(conn, "clientes")
+        if _tabla_existe_api(conn, "clientes")
+        else set()
+    )
+    if "cliente_id" in notas_cols and {"id", "nombre"}.issubset(clientes_cols):
+        joins.append("LEFT JOIN clientes nc ON nc.id = n.cliente_id")
+        selects.append("nc.nombre AS cliente_tabla_nombre")
+        selects.append(_columna_select_notificaciones("nc", "telefono", clientes_cols, "telefono_cliente"))
+    else:
+        selects.extend(("NULL AS cliente_tabla_nombre", "NULL AS telefono_cliente"))
+
+    placeholders = ", ".join(["%s"] * len(ESTADOS_NOTIFICACIONES_NOTAS))
+    orden = "n.fecha DESC NULLS LAST, n.id DESC" if "fecha" in notas_cols else "n.id DESC"
+    rows = conn.execute(
+        f"""
+        SELECT {', '.join(selects)}
+        FROM notas n
+        {' '.join(joins)}
+        WHERE UPPER(COALESCE(CAST(n.estado AS TEXT), '')) IN ({placeholders})
+        ORDER BY {orden}
+        """,
+        ESTADOS_NOTIFICACIONES_NOTAS,
+    ).fetchall()
+    notas = []
+    for row in rows:
+        nota = _normalizar_nota_api(row)
+        if not nota:
+            continue
+        if not nota.get("cliente_nombre"):
+            nota["cliente_nombre"] = nota.get("cliente_tabla_nombre") or nota.get("cliente")
+        notas.append(nota)
+    return notas
+
+
+def _consultar_impresiones_notificaciones_api(conn):
+    if not _tabla_existe_api(conn, "cola_impresion") or not _tabla_existe_api(conn, "notas"):
+        return []
+    cola_cols = _columnas_tabla_api(conn, "cola_impresion")
+    notas_cols = _columnas_tabla_api(conn, "notas")
+    if not {"nota_id", "estado"}.issubset(cola_cols) or "id" not in notas_cols:
+        return []
+
+    selects = [
+        "ci.*",
+        _columna_select_notificaciones("n", "estado", notas_cols, "estado_nota"),
+        _columna_select_notificaciones("n", "cliente_id", notas_cols, "cliente_id"),
+        _columna_select_notificaciones("n", "cliente_nombre", notas_cols, "cliente_nombre"),
+    ]
+    rows = conn.execute(f"""
+        SELECT {', '.join(selects)}
+        FROM cola_impresion ci
+        LEFT JOIN notas n ON n.id = ci.nota_id
+        WHERE UPPER(COALESCE(CAST(ci.estado AS TEXT), '')) IN ('PENDIENTE', 'FALLIDA')
+        ORDER BY {_columna_orden_notificaciones(cola_cols, ('actualizado_en', 'creado_en', 'fecha', 'id'), 'ci')} DESC NULLS LAST
+        LIMIT 200
+    """).fetchall()
+    return [_row_dict(row) for row in rows]
+
+
+def _columna_orden_notificaciones(columnas, candidatas, alias):
+    for columna in candidatas:
+        if columna in columnas:
+            return f"{alias}.{columna}"
+    return "1"
+
+
+def _consultar_errores_scan_notificaciones_api(conn):
+    if not _tabla_existe_api(conn, "errores_scan"):
+        return []
+    errores_cols = _columnas_tabla_api(conn, "errores_scan")
+    if "nota_id" not in errores_cols:
+        return []
+    notas_cols = _columnas_tabla_api(conn, "notas") if _tabla_existe_api(conn, "notas") else set()
+    emp_cols = _columnas_tabla_api(conn, "empacadores") if _tabla_existe_api(conn, "empacadores") else set()
+    joins = []
+    selects = ["er.*"]
+    where = []
+    if "id" in notas_cols:
+        joins.append("LEFT JOIN notas en ON en.id = er.nota_id")
+        selects.append(_columna_select_notificaciones("en", "estado", notas_cols, "estado_nota"))
+        if "estado" in notas_cols:
+            where.append("UPPER(COALESCE(CAST(en.estado AS TEXT), '')) IN ('PAGADA','EN_PROCESO','INCOMPLETA')")
+    else:
+        selects.append("NULL AS estado_nota")
+    if "empacador_id" in errores_cols and {"id", "nombre"}.issubset(emp_cols):
+        joins.append("LEFT JOIN empacadores ee ON ee.id = er.empacador_id")
+        selects.append("ee.nombre AS empacador")
+    else:
+        selects.append("NULL AS empacador")
+    if "resuelto" in errores_cols:
+        where.append("COALESCE(er.resuelto, FALSE)=FALSE")
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    orden = _columna_orden_notificaciones(errores_cols, ("fecha", "id"), "er")
+    rows = conn.execute(f"""
+        SELECT {', '.join(selects)}
+        FROM errores_scan er
+        {' '.join(joins)}
+        {where_sql}
+        ORDER BY {orden} DESC NULLS LAST
+        LIMIT 100
+    """).fetchall()
+    return [_row_dict(row) for row in rows]
+
+
+def _consultar_productos_notificaciones_api(conn):
+    if not _tabla_existe_api(conn, "productos"):
+        return []
+    columnas = _columnas_tabla_api(conn, "productos")
+    if not {"id", "estado"}.issubset(columnas):
+        return []
+    inventariable = _producto_inventariable_where_api(columnas, "p")
+    rows = conn.execute(f"""
+        SELECT p.*
+        FROM productos p
+        WHERE UPPER(COALESCE(CAST(p.estado AS TEXT), '')) IN ('RESURTIR','SIN STOCK','STOCK BAJO')
+          AND {inventariable}
+        ORDER BY UPPER(COALESCE(CAST(p.estado AS TEXT), '')), p.id
+        LIMIT 500
+    """).fetchall()
+    return [_row_dict(row) for row in rows]
+
+
+def _consultar_controles_notificaciones_api(conn):
+    if not _tabla_existe_api(conn, "notificaciones_oportunidades_control"):
+        return []
+    columnas = _columnas_tabla_api(conn, "notificaciones_oportunidades_control")
+    requeridas = {"cliente_id", "categoria", "pospuesto_hasta", "oculto_hasta"}
+    if not requeridas.issubset(columnas):
+        return []
+    rows = conn.execute("""
+        SELECT cliente_id, categoria, pospuesto_hasta, oculto_hasta, fecha_accion, usuario
+        FROM notificaciones_oportunidades_control
+        WHERE pospuesto_hasta > NOW() OR oculto_hasta > NOW()
+    """).fetchall()
+    return [_row_dict(row) for row in rows]
+
+
+def _cliente_ids_con_pendiente_notificaciones(notas):
+    estados = {"COTIZACION", "COTIZACION_PENDIENTE", "VENTA", "VENTA_PENDIENTE"}
+    return {
+        nota.get("cliente_id")
+        for nota in notas
+        if nota.get("cliente_id") is not None
+        and _normalizar_estado_pago_api(nota.get("estado")) in estados
+    }
+
+
+def _construir_resumen_notificaciones_api(incluir_oportunidades=True):
+    with get_conn() as conn:
+        notas = _consultar_notas_notificaciones_api(conn)
+        operacion = construir_notificaciones_operacion(
+            notas,
+            impresiones=_consultar_impresiones_notificaciones_api(conn),
+            errores_scan=_consultar_errores_scan_notificaciones_api(conn),
+            productos=_consultar_productos_notificaciones_api(conn),
+        )
+        oportunidades = []
+        if incluir_oportunidades:
+            clientes = _consultar_clientes_crm_api(conn)
+            analitica = _analitica_clientas_conn_api(
+                conn,
+                incluir_historial=False,
+                incluir_favoritos=True,
+                incluir_graficas=False,
+            )
+            oportunidades = construir_oportunidades_venta(
+                analitica.get("clientes", []),
+                clientes=clientes,
+                cliente_ids_con_pendiente=_cliente_ids_con_pendiente_notificaciones(notas),
+                controles=_consultar_controles_notificaciones_api(conn),
+            )
+    return construir_resumen_notificaciones(
+        operacion,
+        oportunidades,
+        oportunidades_actualizadas=incluir_oportunidades,
+    )
+
+
+def _bool_notificaciones(valor, default=True):
+    if valor in (None, ""):
+        return default
+    return str(valor).strip().lower() not in {"0", "false", "no"}
+
+
+@app.route("/api/notificaciones/resumen", methods=["GET"])
+def api_notificaciones_resumen():
+    _, error = _require_license_api()
+    if error:
+        return error
+    try:
+        incluir_oportunidades = _bool_notificaciones(request.args.get("incluir_oportunidades"), True)
+        return jsonify(_construir_resumen_notificaciones_api(incluir_oportunidades))
+    except Exception:
+        app.logger.exception("Error al consultar la campana de notificaciones")
+        return jsonify({
+            "ok": False,
+            "error": "No se pudieron actualizar las notificaciones.",
+        }), 500
+
+
+@app.route("/api/notificaciones/oportunidades/<int:cliente_id>/control", methods=["POST"])
+def api_notificaciones_oportunidad_control(cliente_id):
+    auth, error = _require_license_api()
+    if error:
+        return error
+    try:
+        data = _body_json()
+        categoria = _normalizar_estado_pago_api(data.get("categoria"))
+        accion = _normalizar_estado_pago_api(data.get("accion"))
+        if categoria not in CATEGORIAS_OPORTUNIDAD_NOTIFICACION:
+            raise ValueError("Tipo de oportunidad no válido.")
+        if accion not in ACCIONES_CONTROL_OPORTUNIDAD:
+            raise ValueError("Acción de oportunidad no válida.")
+        dias, ocultar = ACCIONES_CONTROL_OPORTUNIDAD[accion]
+        ahora = datetime.now(timezone.utc)
+        vigencia = ahora + timedelta(days=dias)
+        pospuesto_hasta = None if ocultar else vigencia
+        oculto_hasta = vigencia if ocultar else None
+        usuario = _usuario_auth_api(auth)
+
+        with get_conn() as conn:
+            if not _tabla_existe_api(conn, "notificaciones_oportunidades_control"):
+                return jsonify({
+                    "ok": False,
+                    "error": "Falta aplicar la migración de control de oportunidades.",
+                }), 409
+            cliente = conn.execute("SELECT id FROM clientes WHERE id=%s", (cliente_id,)).fetchone()
+            if not cliente:
+                raise LookupError("Cliente no encontrado.")
+            row = conn.execute("""
+                INSERT INTO notificaciones_oportunidades_control (
+                    cliente_id,
+                    categoria,
+                    pospuesto_hasta,
+                    oculto_hasta,
+                    fecha_accion,
+                    usuario
+                )
+                VALUES (%s, %s, %s, %s, NOW(), %s)
+                ON CONFLICT (cliente_id, categoria)
+                DO UPDATE SET
+                    pospuesto_hasta=EXCLUDED.pospuesto_hasta,
+                    oculto_hasta=EXCLUDED.oculto_hasta,
+                    fecha_accion=NOW(),
+                    usuario=EXCLUDED.usuario
+                RETURNING cliente_id, categoria, pospuesto_hasta, oculto_hasta, fecha_accion
+            """, (cliente_id, categoria, pospuesto_hasta, oculto_hasta, usuario)).fetchone()
+        return jsonify({"ok": True, "control": _row_dict(row)})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except LookupError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception:
+        app.logger.exception("Error al guardar control de oportunidad")
+        return jsonify({
+            "ok": False,
+            "error": "No se pudo guardar el recordatorio de la oportunidad.",
+        }), 500
 
 
 @app.route("/api/clientes", methods=["GET"])
