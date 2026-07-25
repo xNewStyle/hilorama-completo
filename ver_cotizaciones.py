@@ -8,7 +8,7 @@ from pathlib import Path
 from tkinter import ttk, simpledialog, messagebox, filedialog
 from notas import listar_cotizaciones, obtener_cotizacion, cambiar_cliente_nota, calcular_totales_nota
 from notas import ajustar_items_nota_pagada_admin, actualizar_cotizacion, actualizar_nota_admin, convertir_cotizacion_a_venta, eliminar_cotizacion, eliminar_nota, guardar_nota_actualizada
-from core.almacen_api import STOCK_MINIMO, descontar_stock, obtener_producto_por_codigo
+from core.almacen_api import STOCK_MINIMO, descontar_stock, obtener_producto_por_id
 from clientes import cliente_completo, obtener_cliente_por_id, listar_clientes
 from PIL import Image, ImageTk   
 from visor_imagen import visor_imagen
@@ -144,18 +144,95 @@ def _validar_nota_pagable_ui(nota, parent=None):
     return True
 
 
-def _stock_afectado_items_ui(items):
-    afectados = []
-    for item in items or []:
-        codigo = str(item.get("codigo") or "").strip()
-        producto = obtener_producto_por_codigo(codigo) if codigo else None
-        if producto and producto.get("es_item_cotizacion"):
+class InventarioNoComprobadoError(RuntimeError):
+    pass
+
+
+_CAMPOS_STOCK_API = (
+    "stock",
+    "existencia",
+    "existencias",
+    "stock_actual",
+    "stock_disponible",
+    "disponible",
+)
+
+
+def _producto_id_linea_venta(item):
+    valor = (item or {}).get("producto_id")
+    if valor in (None, ""):
+        raise InventarioNoComprobadoError(
+            "La linea de venta no tiene producto_id. No se uso una busqueda por nombre o codigo."
+        )
+    try:
+        producto_id = int(valor)
+    except (TypeError, ValueError) as exc:
+        raise InventarioNoComprobadoError("La linea de venta tiene un producto_id invalido.") from exc
+    if producto_id <= 0:
+        raise InventarioNoComprobadoError("La linea de venta tiene un producto_id invalido.")
+    return producto_id
+
+
+def _stock_comprobado_producto(producto):
+    if not isinstance(producto, dict):
+        raise InventarioNoComprobadoError("El producto no fue devuelto por el servicio de inventario.")
+    for campo in _CAMPOS_STOCK_API:
+        if campo not in producto or producto.get(campo) is None:
             continue
-        cantidad = int(float(item.get("cantidad") or 0))
-        stock_actual = int((producto or {}).get("stock_real", (producto or {}).get("stock", 0)) or 0)
+        try:
+            return int(float(producto[campo]))
+        except (TypeError, ValueError) as exc:
+            raise InventarioNoComprobadoError(
+                f"El inventario del producto {producto.get('id') or ''} no es numerico."
+            ) from exc
+    raise InventarioNoComprobadoError(
+        f"El servicio no devolvio la existencia del producto {producto.get('id') or ''}."
+    )
+
+
+def _stock_afectado_items_ui(items):
+    grupos = {}
+    for item in items or []:
+        producto_id = _producto_id_linea_venta(item)
+        try:
+            cantidad = int(float(item.get("cantidad") or 0))
+        except (TypeError, ValueError) as exc:
+            raise InventarioNoComprobadoError(
+                f"La cantidad solicitada para el producto {producto_id} no es valida."
+            ) from exc
+        grupo = grupos.setdefault(producto_id, {"cantidad": 0, "item": dict(item)})
+        grupo["cantidad"] += cantidad
+
+    afectados = []
+    for producto_id, grupo in grupos.items():
+        try:
+            producto = obtener_producto_por_id(producto_id)
+        except Exception as exc:
+            raise InventarioNoComprobadoError(
+                f"No fue posible consultar el inventario del producto {producto_id}."
+            ) from exc
+        if not producto:
+            raise InventarioNoComprobadoError(
+                f"No se encontro el producto {producto_id} en el inventario."
+            )
+        try:
+            producto_id_respuesta = int(producto.get("id"))
+        except (TypeError, ValueError) as exc:
+            raise InventarioNoComprobadoError(
+                f"El servicio devolvio una identidad invalida para el producto {producto_id}."
+            ) from exc
+        if producto_id_respuesta != producto_id:
+            raise InventarioNoComprobadoError(
+                f"La identidad del producto {producto_id} no coincide con la respuesta del inventario."
+            )
+        if producto.get("es_item_cotizacion") or producto.get("es_inventariable") is False:
+            continue
+
+        cantidad = grupo["cantidad"]
+        stock_actual = _stock_comprobado_producto(producto)
         faltante = max(cantidad - stock_actual, 0)
         estado = None
-        if not producto or stock_actual <= 0:
+        if stock_actual <= 0:
             estado = "STOCK NULO"
             faltante = cantidad
         elif stock_actual < cantidad:
@@ -165,11 +242,14 @@ def _stock_afectado_items_ui(items):
             faltante = 0
 
         if estado:
+            item = grupo["item"]
             afectados.append({
-                "codigo": codigo,
-                "marca": item.get("marca") or (producto or {}).get("marca") or "",
-                "hilo": item.get("hilo") or (producto or {}).get("hilo") or "",
-                "color": item.get("color") or (producto or {}).get("color") or "",
+                "producto_id": producto_id,
+                "codigo": producto.get("codigo") or item.get("codigo") or "",
+                "codigo_barras": producto.get("codigo_barras") or item.get("codigo_barras") or "",
+                "marca": producto.get("marca") or item.get("marca") or "",
+                "hilo": producto.get("hilo") or item.get("hilo") or "",
+                "color": producto.get("color") or item.get("color") or "",
                 "cantidad_solicitada": cantidad,
                 "stock_actual": stock_actual,
                 "faltante": faltante,
@@ -193,7 +273,19 @@ def _texto_alerta_stock(afectados):
 
 
 def _pedir_autorizacion_stock_si_necesaria(parent, items):
-    afectados = _stock_afectado_items_ui(items)
+    while True:
+        try:
+            afectados = _stock_afectado_items_ui(items)
+            break
+        except InventarioNoComprobadoError as exc:
+            reintentar = messagebox.askretrycancel(
+                "No fue posible comprobar el inventario",
+                f"{exc}\n\nNo se registro la venta ni se desconto stock. Puedes reintentar la consulta.",
+                parent=parent,
+            )
+            if reintentar:
+                continue
+            return False, None, []
     if not afectados:
         return True, None, []
 

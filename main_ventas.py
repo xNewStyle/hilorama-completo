@@ -4224,21 +4224,30 @@ def agregar_al_carrito(pedido):
     for p in productos:
         if p["codigo"] == codigo:
             precio = float(p["precio"])
+            producto_id = p.get("id")
 
             for c in carrito:
-                if (
-                    c["codigo"] == codigo
-                    and c["marca"] == p["marca"]
-                    and c["hilo"] == p["hilo"]
-                ):
+                mismo_producto = (
+                    producto_id not in (None, "")
+                    and c.get("producto_id") == producto_id
+                )
+                compatibilidad_local = (
+                    producto_id in (None, "")
+                    and c.get("codigo") == codigo
+                    and c.get("marca") == p["marca"]
+                    and c.get("hilo") == p["hilo"]
+                )
+                if mismo_producto or compatibilidad_local:
                     c["cantidad"] += cantidad
                     return
 
             carrito.append({
+                "producto_id": producto_id,
                 "marca": p["marca"],  # se mantiene interno
                 "hilo": p["hilo"],
                 "color": p["color"],  # 🔥 agregar
                 "codigo": codigo,
+                "codigo_barras": p.get("codigo_barras"),
                 "cantidad": cantidad,
                 "precio": float(precio),
                 "stock": p["stock"]

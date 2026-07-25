@@ -468,6 +468,26 @@ def aplicar_venta(items):
     return True
 
 
+def obtener_producto_por_id(producto_id):
+    if producto_id in (None, ""):
+        return None
+    if _usar_api_lectura():
+        try:
+            producto = _api_productos().obtener_producto(producto_id)
+            return _producto_para_venta(producto) if producto else None
+        except Exception as exc:
+            _error_api_lectura("obtener producto por id", exc)
+
+    ensure_almacen_schema()
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT * FROM productos WHERE id=%s LIMIT 1",
+        (producto_id,),
+    ).fetchone()
+    conn.close()
+    return _producto_para_venta(_dict(row)) if row else None
+
+
 def obtener_producto_por_codigo(codigo):
     if _usar_api_lectura():
         try:

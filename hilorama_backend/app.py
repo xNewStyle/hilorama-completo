@@ -2398,19 +2398,37 @@ def _join_producto_para_item(items_cols, productos_cols):
         return "", False
 
     condiciones = []
+    prioridades = []
     if "producto_id" in items_cols and "id" in productos_cols:
-        condiciones.append("p.id = i.producto_id")
-    if "codigo" in items_cols and "codigo" in productos_cols:
-        condiciones.append("CAST(p.codigo AS TEXT) = CAST(i.codigo AS TEXT)")
-    if "codigo" in items_cols and "codigo_barras" in productos_cols:
-        condiciones.append("CAST(p.codigo_barras AS TEXT) = CAST(i.codigo AS TEXT)")
-    if "codigo_barras" in items_cols and "codigo_barras" in productos_cols:
-        condiciones.append("CAST(p.codigo_barras AS TEXT) = CAST(i.codigo_barras AS TEXT)")
-    if "codigo_barras" in items_cols and "codigo" in productos_cols:
-        condiciones.append("CAST(p.codigo AS TEXT) = CAST(i.codigo_barras AS TEXT)")
+        condiciones.append("(i.producto_id IS NOT NULL AND p.id = i.producto_id)")
+        prioridades.append("WHEN i.producto_id IS NOT NULL AND p.id = i.producto_id THEN 0")
 
-    where = " OR ".join(condiciones) if condiciones else "FALSE"
-    order = "p.id" if "id" in productos_cols else ("p.codigo" if "codigo" in productos_cols else "1")
+    puede_resolver_legacy = (
+        {"codigo", "marca", "hilo"}.issubset(items_cols)
+        and {"marca", "hilo"}.issubset(productos_cols)
+        and ("codigo" in productos_cols or "codigo_barras" in productos_cols)
+    )
+    if puede_resolver_legacy:
+        codigos = []
+        if "codigo" in productos_cols:
+            codigos.append("CAST(p.codigo AS TEXT) = CAST(i.codigo AS TEXT)")
+        if "codigo_barras" in productos_cols:
+            codigos.append("CAST(p.codigo_barras AS TEXT) = CAST(i.codigo AS TEXT)")
+        sin_producto_id = "i.producto_id IS NULL AND " if "producto_id" in items_cols else ""
+        coincidencia_legacy = (
+            f"({sin_producto_id}({' OR '.join(codigos)}) "
+            "AND UPPER(CAST(p.marca AS TEXT)) = UPPER(CAST(i.marca AS TEXT)) "
+            "AND UPPER(CAST(p.hilo AS TEXT)) = UPPER(CAST(i.hilo AS TEXT)))"
+        )
+        condiciones.append(coincidencia_legacy)
+        prioridades.append(f"WHEN {coincidencia_legacy} THEN 1")
+
+    if not condiciones:
+        return "", False
+
+    where = " OR ".join(condiciones)
+    desempate = "p.id" if "id" in productos_cols else ("p.codigo" if "codigo" in productos_cols else "1")
+    order = f"CASE {' '.join(prioridades)} ELSE 9 END, {desempate}"
     return f"""
         LEFT JOIN LATERAL (
             SELECT *
@@ -2468,9 +2486,15 @@ def _items_nota_api_conn(conn, nota_id_real):
     ]))
     cantidad_expr = _sql_num_col("i", "cantidad", items_cols)
     precio_expr = _sql_num_col("i", "precio", items_cols)
+    producto_id_expr = "NULL"
+    if "producto_id" in items_cols:
+        producto_id_expr = "i.producto_id"
+    if tiene_join_producto and "id" in productos_cols:
+        producto_id_expr = f"COALESCE({producto_id_expr}, p.id)"
 
     rows = conn.execute(f"""
         SELECT
+            {producto_id_expr} AS producto_id,
             {codigo_expr} AS codigo,
             {marca_expr} AS marca,
             {hilo_expr} AS hilo,
@@ -2628,7 +2652,17 @@ def _normalizar_item_payload_api(item):
         raise ValueError(f"Cantidad invalida para el codigo {codigo}.")
     if precio < 0:
         raise ValueError(f"Precio invalido para el codigo {codigo}.")
+    producto_id = item.get("producto_id")
+    if producto_id not in (None, ""):
+        try:
+            producto_id = int(producto_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"producto_id invalido para el codigo {codigo}.") from exc
+        if producto_id <= 0:
+            raise ValueError(f"producto_id invalido para el codigo {codigo}.")
+
     return {
+        "producto_id": producto_id,
         "codigo": codigo,
         "marca": item.get("marca") or "",
         "hilo": item.get("hilo") or "",
@@ -2650,19 +2684,33 @@ def _subtotal_items_payload_api(items):
 
 
 def _insertar_items_nota_api(conn, nota_id, items):
+    items_cols = _columnas_tabla_api(conn, "items")
     for item in items:
-        conn.execute("""
-            INSERT INTO items(nota_id, codigo, marca, hilo, color, cantidad, precio)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
-        """, (
-            nota_id,
-            item["codigo"],
-            item["marca"],
-            item["hilo"],
-            item.get("color"),
-            item["cantidad"],
-            item["precio"],
-        ))
+        item_guardado = dict(item)
+        if "producto_id" in items_cols:
+            producto = _buscar_producto_item_api(conn, item_guardado, bloquear=False)
+            item_guardado["producto_id"] = (_row_dict(producto) or {}).get("id")
+        if "producto_id" in items_cols and item_guardado.get("producto_id") in (None, ""):
+            raise InventarioNoComprobadoError(
+                f"No fue posible identificar el producto del codigo {item_guardado.get('codigo') or ''}."
+            )
+
+        valores = {
+            "nota_id": nota_id,
+            "producto_id": item_guardado.get("producto_id"),
+            "codigo": item_guardado["codigo"],
+            "marca": item_guardado["marca"],
+            "hilo": item_guardado["hilo"],
+            "color": item_guardado.get("color"),
+            "cantidad": item_guardado["cantidad"],
+            "precio": item_guardado["precio"],
+        }
+        campos = [campo for campo in valores if campo in items_cols]
+        placeholders = ",".join(["%s"] * len(campos))
+        conn.execute(
+            f"INSERT INTO items({','.join(campos)}) VALUES ({placeholders})",
+            tuple(valores[campo] for campo in campos),
+        )
 
 
 def _resolver_nota_api(conn, nota_ref, bloquear=False):
@@ -2740,6 +2788,11 @@ class StockAutorizacionRequerida(Exception):
     def __init__(self, productos):
         super().__init__("Algunos productos no tienen stock suficiente. Revisa la lista antes de continuar.")
         self.productos = productos
+
+
+class InventarioNoComprobadoError(Exception):
+    def __init__(self, mensaje="No fue posible comprobar el inventario."):
+        super().__init__(mensaje)
 
 
 def _normalizar_estado_pago_api(estado):
@@ -2972,41 +3025,85 @@ def _cantidad_item_stock_api(item):
 def _buscar_producto_item_api(conn, item, bloquear=False):
     productos_cols = _columnas_tabla_api(conn, "productos")
     if not productos_cols:
-        return None
+        raise InventarioNoComprobadoError("No fue posible comprobar el inventario de productos.")
 
     bloqueo = " FOR UPDATE" if bloquear else ""
-    condiciones = []
-    valores = []
+    producto_id = item.get("producto_id")
     codigo = str(item.get("codigo") or "").strip()
     marca = str(item.get("marca") or "").strip()
     hilo = str(item.get("hilo") or "").strip()
 
-    if codigo and marca and hilo and {"codigo", "marca", "hilo"}.issubset(productos_cols):
-        exacto = conn.execute(
-            f"SELECT * FROM productos WHERE marca=%s AND hilo=%s AND codigo=%s LIMIT 1{bloqueo}",
-            (marca, hilo, codigo),
+    if producto_id not in (None, ""):
+        try:
+            producto_id = int(producto_id)
+        except (TypeError, ValueError) as exc:
+            raise InventarioNoComprobadoError("La linea tiene un producto_id invalido.") from exc
+        if "id" not in productos_cols:
+            raise InventarioNoComprobadoError("La tabla de productos no permite validar producto_id.")
+        producto = conn.execute(
+            f"SELECT * FROM productos WHERE id=%s LIMIT 1{bloqueo}",
+            (producto_id,),
         ).fetchone()
-        if exacto:
-            return exacto
-    if codigo and "codigo" in productos_cols:
-        condiciones.append("CAST(codigo AS TEXT)=%s")
-        valores.append(codigo)
-    if codigo and "codigo_barras" in productos_cols:
-        condiciones.append("CAST(codigo_barras AS TEXT)=%s")
-        valores.append(codigo)
-    if not condiciones:
-        return None
+        producto_data = _row_dict(producto) or {}
+        if not producto_data:
+            raise InventarioNoComprobadoError(f"No se encontro el producto {producto_id}.")
 
-    return conn.execute(
-        f"SELECT * FROM productos WHERE {' OR '.join(condiciones)} LIMIT 1{bloqueo}",
+        codigo_producto = str(producto_data.get("codigo") or "").strip()
+        barras_producto = str(producto_data.get("codigo_barras") or "").strip()
+        if codigo and codigo not in {codigo_producto, barras_producto}:
+            raise InventarioNoComprobadoError(
+                f"El codigo de la linea no coincide con el producto {producto_id}."
+            )
+        for campo, esperado in (("marca", marca), ("hilo", hilo)):
+            real = str(producto_data.get(campo) or "").strip()
+            if esperado and real.upper() != esperado.upper():
+                raise InventarioNoComprobadoError(
+                    f"La identidad de la linea no coincide con el producto {producto_id}."
+                )
+        return producto
+
+    requeridas = {"marca", "hilo"}
+    if not codigo or not marca or not hilo or not requeridas.issubset(productos_cols):
+        raise InventarioNoComprobadoError(
+            "La linea historica no tiene producto_id ni identidad suficiente para comprobar inventario."
+        )
+
+    condiciones_codigo = []
+    valores = [marca, hilo]
+    if "codigo" in productos_cols:
+        condiciones_codigo.append("CAST(codigo AS TEXT)=%s")
+        valores.append(codigo)
+    if "codigo_barras" in productos_cols:
+        condiciones_codigo.append("CAST(codigo_barras AS TEXT)=%s")
+        valores.append(codigo)
+    if not condiciones_codigo:
+        raise InventarioNoComprobadoError("No fue posible comprobar el codigo del producto.")
+
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM productos
+        WHERE UPPER(CAST(marca AS TEXT))=UPPER(%s)
+          AND UPPER(CAST(hilo AS TEXT))=UPPER(%s)
+          AND ({' OR '.join(condiciones_codigo)})
+        ORDER BY id
+        LIMIT 2{bloqueo}
+        """,
         tuple(valores),
-    ).fetchone()
+    ).fetchall()
+    if len(rows) != 1:
+        raise InventarioNoComprobadoError(
+            "La linea historica no identifica un unico producto. Edita y vuelve a guardar la linea."
+        )
+    return rows[0]
 
 
 def _items_stock_nota_api(conn, nota_id, bloquear=False):
     nota_id_real, _ = _resolver_nota_api(conn, nota_id)
-    rows = conn.execute("""
-        SELECT codigo, marca, hilo, color, cantidad, precio
+    items_cols = _columnas_tabla_api(conn, "items")
+    producto_id_select = "producto_id" if "producto_id" in items_cols else "NULL AS producto_id"
+    rows = conn.execute(f"""
+        SELECT {producto_id_select}, codigo, marca, hilo, color, cantidad, precio
         FROM items
         WHERE nota_id=%s
     """, (nota_id_real,)).fetchall()
@@ -3037,7 +3134,16 @@ def _items_stock_nota_api(conn, nota_id, bloquear=False):
             lineas_validadas.append((item, producto_data, None))
             continue
 
-        stock_actual = int((producto_data or {}).get("stock") or 0)
+        if "stock" not in producto_data or producto_data.get("stock") is None:
+            raise InventarioNoComprobadoError(
+                f"El inventario del producto {producto_data.get('id') or ''} no esta disponible."
+            )
+        try:
+            stock_actual = int(float(producto_data["stock"]))
+        except (TypeError, ValueError) as exc:
+            raise InventarioNoComprobadoError(
+                f"El inventario del producto {producto_data.get('id') or ''} no es numerico."
+            ) from exc
         faltante = max(cantidad - stock_actual, 0)
         estado_stock = None
         if not producto_data or stock_actual <= 0:
@@ -3052,7 +3158,9 @@ def _items_stock_nota_api(conn, nota_id, bloquear=False):
         afectado = None
         if estado_stock:
             afectado = {
+                "producto_id": producto_data.get("id"),
                 "codigo": item.get("codigo") or producto_data.get("codigo") or "",
+                "codigo_barras": producto_data.get("codigo_barras") or "",
                 "marca": item.get("marca") or producto_data.get("marca") or "",
                 "hilo": item.get("hilo") or producto_data.get("hilo") or "",
                 "color": item.get("color") or producto_data.get("color") or "",
@@ -3246,8 +3354,10 @@ def _devolver_stock_nota_api(conn, nota_id, auth):
 def _items_actuales_nota_api(conn, nota_id, bloquear=False):
     bloqueo = " FOR UPDATE" if bloquear else ""
     nota_id_real, _ = _resolver_nota_api(conn, nota_id)
+    items_cols = _columnas_tabla_api(conn, "items")
+    producto_id_select = "producto_id" if "producto_id" in items_cols else "NULL AS producto_id"
     rows = conn.execute(f"""
-        SELECT codigo, marca, hilo, color, cantidad, precio
+        SELECT {producto_id_select}, codigo, marca, hilo, color, cantidad, precio
         FROM items
         WHERE nota_id=%s{bloqueo}
     """, (nota_id_real,)).fetchall()
@@ -3547,6 +3657,14 @@ def _validar_no_escritura_restringida_nota_api(conn, nota_id, data):
 
 
 def _respuesta_error_nota_api(exc, accion="guardar"):
+    if isinstance(exc, InventarioNoComprobadoError):
+        return jsonify({
+            "ok": False,
+            "error": "No fue posible comprobar el inventario.",
+            "detalle": str(exc),
+            "inventario_no_comprobado": True,
+            "puede_reintentar": True,
+        }), 409
     if isinstance(exc, StockAutorizacionRequerida):
         return _respuesta_stock_requiere_autorizacion(exc)
     if isinstance(exc, NotaPagoNoPermitido):

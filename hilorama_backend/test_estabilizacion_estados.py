@@ -199,6 +199,9 @@ class EstabilizacionEstadosTests(unittest.TestCase):
             "_items_stock_nota_api",
             {
                 "_resolver_nota_api": lambda _conn, nota_id: (nota_id, {}),
+                "_columnas_tabla_api": lambda _conn, tabla: {
+                    "codigo", "marca", "hilo", "color", "cantidad", "precio"
+                } if tabla == "items" else set(),
                 "_row_dict": lambda row: dict(row) if row else {},
                 "_buscar_producto_item_api": lambda *_args, **_kwargs: {
                     "id": 1,

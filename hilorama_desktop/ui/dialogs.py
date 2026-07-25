@@ -321,10 +321,10 @@ def pedir_autorizacion_stock(parent, productos, titulo="Autorizacion por stock",
     ).pack(anchor="w", padx=18, pady=(0, 6))
 
     columnas = [
-        ("codigo", "Codigo", 80),
-        ("marca", "Marca", 110),
-        ("hilo", "Hilo", 120),
-        ("color", "Color", 120),
+        ("hilo", "Producto / linea", 130),
+        ("marca", "Marca", 100),
+        ("color", "Tono", 100),
+        ("codigo", "Codigo", 70),
         ("cantidad_solicitada", "Solicitado", 80),
         ("stock_actual", "Stock", 70),
         ("faltante", "Faltante", 80),
