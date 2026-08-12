@@ -99,6 +99,11 @@ class NotificacionesViewTests(unittest.TestCase):
         self.assertIn('text="Reintentar"', contenido)
         self.assertIn('bind("<Escape>"', panel)
         self.assertIn("self.panel.close()", toggle)
+        self.assertIn("self.refresh(incluir_oportunidades=False)", toggle)
+
+    def test_vista_completa_refresca_estados_al_abrir(self):
+        abrir = inspect.getsource(NotificationBellController.open_full_view)
+        self.assertIn("self.refresh(incluir_oportunidades=False)", abrir)
 
     def test_refresco_es_asincrono_y_serializado(self):
         refresh = inspect.getsource(NotificationBellController.refresh)

@@ -260,12 +260,77 @@ def cargar_contexto():
 
 from clientes import listar_clientes
 
+_impresion_lock = threading.Lock()
+
+
+def _enviar_etiqueta_segura(data, descripcion):
+    from impresion_etiquetas import ImpresionError, enviar_a_impresora
+
+    if not _impresion_lock.acquire(blocking=False):
+        try:
+            from hilorama_desktop.utils.logger import log_info
+            log_info("ventas", f"Impresion duplicada bloqueada: {descripcion}")
+        except Exception:
+            pass
+        messagebox.showwarning(
+            "Impresion en proceso",
+            "Ya hay una impresion en proceso. Espera a que termine antes de reintentar.",
+            parent=root,
+        )
+        return False
+
+    try:
+        resultado = enviar_a_impresora(data)
+        try:
+            from hilorama_desktop.utils.logger import log_info
+            log_info(
+                "ventas",
+                (
+                    f"Impresion enviada: {descripcion} "
+                    f"bytes={resultado.bytes_enviados} "
+                    f"conexion_ms={resultado.tiempo_conexion_ms} "
+                    f"envio_ms={resultado.tiempo_envio_ms}"
+                ),
+            )
+        except Exception:
+            pass
+        return True
+    except ImpresionError as exc:
+        try:
+            from hilorama_desktop.utils.logger import log_error
+            log_error(
+                "ventas",
+                f"Fallo al imprimir {descripcion}: etapa={exc.etapa} tipo={exc.tipo} mensaje={exc}",
+                exc,
+            )
+        except Exception:
+            pass
+        messagebox.showerror("Impresion", str(exc), parent=root)
+        return False
+    except Exception as exc:
+        try:
+            from hilorama_desktop.utils.logger import log_error
+            log_error(
+                "ventas",
+                f"Fallo inesperado al imprimir {descripcion}: tipo={type(exc).__name__}",
+                exc,
+            )
+        except Exception:
+            pass
+        messagebox.showerror(
+            "Impresion",
+            "No fue posible enviar la impresion. Revisa el registro de errores antes de reintentar.",
+            parent=root,
+        )
+        return False
+    finally:
+        _impresion_lock.release()
+
 
 
 def imprimir_destinatario(nota):
 
     from clientes import obtener_cliente_por_id
-    from impresion_etiquetas import enviar_a_impresora
 
     cliente_id = nota.get("cliente_id")
 
@@ -285,7 +350,7 @@ def imprimir_destinatario(nota):
         envio=nota.get("envio")
     )
 
-    enviar_a_impresora(data)
+    return _enviar_etiqueta_segura(data, "etiqueta de destinatario")
 
 
 def obtener_mis_datos():
@@ -308,8 +373,6 @@ def obtener_mis_datos():
 
 def imprimir_remitente(nota):
 
-    from impresion_etiquetas import enviar_a_impresora
-
     mis_datos = obtener_mis_datos()
 
     data = etiqueta_remitente(
@@ -317,14 +380,13 @@ def imprimir_remitente(nota):
         mis_datos
     )
 
-    enviar_a_impresora(data)
+    return _enviar_etiqueta_segura(data, "etiqueta de remitente")
 
 import time
 
 def imprimir_ambas(nota):
 
     from clientes import obtener_cliente_por_id
-    from impresion_etiquetas import enviar_a_impresora
     import time
 
     cliente_id = nota.get("cliente_id")
@@ -351,7 +413,7 @@ def imprimir_ambas(nota):
     # 🔥 unir ambos trabajos en un solo envío
     data_total = data_rem + data_dest
 
-    enviar_a_impresora(data_total)
+    return _enviar_etiqueta_segura(data_total, "ambas etiquetas")
 
 
 def abrir_opciones_impresion(nota):
@@ -1049,367 +1111,640 @@ def abrir_panel_asignacion():
 
   
 def _abrir_panel_envios_local():
-
     if not pedir_password():
         return
 
-    modo_api = _modo_api()
-    if modo_api:
-        from hilorama_desktop.services.envios_api_service import (
-            actualizar_envio_nota,
-            listar_envios,
-            marcar_envio_nota,
-        )
-    else:
-        pass
-
-    estado_filtro = tk.StringVar(value="COMPLETAS")
+    from hilorama_desktop.services.envios_presentacion import (
+        buscar_envios,
+        estado_operativo_envio,
+        filtrar_envios,
+        formatear_fecha_envio,
+        guia_envio,
+        normalizar_estado_envio,
+        resumir_panel_envios,
+        resumir_seleccion_envios,
+        texto_envio,
+    )
 
     win = ctk.CTkToplevel(root)
     win.title("Gestión de Envíos")
-    win.geometry("1200x750")
+    win.configure(fg_color="#F4F7FB")
+    ancho = max(1080, min(1440, win.winfo_screenwidth() - 40))
+    alto = max(680, min(900, win.winfo_screenheight() - 80))
+    win.geometry(f"{ancho}x{alto}")
+    win.minsize(min(1080, ancho), min(680, alto))
     win.grab_set()
 
+    estado_filtro = tk.StringVar(value="TODAS")
+    filtro_tipo = tk.StringVar(value="nota")
+    filtro_texto = tk.StringVar()
+    resultado_var = tk.StringVar(value="0 envíos visibles")
+    detalle_titulo = tk.StringVar(value="Selecciona un envío")
+    detalle_contenido = tk.StringVar(
+        value="Consulta el estado, la guía y la paquetería sin modificar el pedido."
+    )
+    resumen_vars = {
+        "visibles": tk.StringVar(value="0"),
+        "pendientes_guia": tk.StringVar(value="0"),
+        "listas_enviar": tk.StringVar(value="0"),
+        "enviadas": tk.StringVar(value="0"),
+    }
+    datos_cargados = []
+    notas_por_iid = {}
+
+    def normalizar_fila(fila):
+        nota = dict(fila)
+        nota["telefono"] = nota.get("telefono") or nota.get("telefono_cliente") or ""
+        nota.setdefault("requiere_guia", True)
+        return nota
 
     def cargar_datos():
-        estado = estado_filtro.get()
-        if modo_api:
-            return listar_envios({"estado": estado, "limit": 500})
-
         conn = _get_conn_local("panel envios")
-        where_extra = ""
+        try:
+            filas = conn.execute("""
+                SELECT
+                    n.*,
+                    c.telefono AS telefono_cliente
+                FROM notas n
+                LEFT JOIN clientes c ON c.id = n.cliente_id
+                WHERE n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA','ENVIADO')
+                ORDER BY n.fecha DESC
+            """).fetchall()
+            return [normalizar_fila(fila) for fila in filas]
+        finally:
+            conn.close()
 
-        if estado == "COMPLETAS":
-            where_extra = "WHERE n.estado = 'COMPLETA'"
-        elif estado == "EN_PROCESO":
-            where_extra = "WHERE n.estado = 'EN_PROCESO'"
-        elif estado == "INCOMPLETAS":
-            where_extra = "WHERE n.estado = 'INCOMPLETA'"
-        elif estado == "TODAS_PAGADAS":
-            where_extra = "WHERE n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"
-        else:
-            where_extra = "WHERE n.estado IN ('PAGADA','EN_PROCESO','INCOMPLETA','COMPLETA')"
+    encabezado = ctk.CTkFrame(win, height=86, corner_radius=0, fg_color="#17375E")
+    encabezado.pack(fill="x")
+    encabezado.pack_propagate(False)
+    titulo_wrap = ctk.CTkFrame(encabezado, fg_color="transparent")
+    titulo_wrap.pack(side="left", fill="y", padx=22, pady=13)
+    ctk.CTkLabel(
+        titulo_wrap,
+        text="Gestión de Envíos",
+        font=("Segoe UI", 25, "bold"),
+        text_color="#FFFFFF",
+        anchor="w",
+    ).pack(anchor="w")
+    ctk.CTkLabel(
+        titulo_wrap,
+        text="Consulta el avance, asigna guías y confirma la entrega a paquetería.",
+        font=("Segoe UI", 12),
+        text_color="#D7E5F5",
+        anchor="w",
+    ).pack(anchor="w", pady=(2, 0))
+    ctk.CTkLabel(
+        encabezado,
+        text="Ctrl o Shift para selección múltiple",
+        font=("Segoe UI", 12),
+        text_color="#D7E5F5",
+    ).pack(side="right", padx=22)
 
-        notas_db = conn.execute(f"""
-            SELECT 
-                n.id,
-                n.cliente_nombre,
-                n.pedido,
-                n.estado,
-                n.paqueteria,
-                n.guia,
-                n.fecha,
-                c.telefono
-            FROM notas n
-            LEFT JOIN clientes c ON c.id = n.cliente_id
-            {where_extra}
-            ORDER BY n.fecha DESC
-        """).fetchall()
+    resumen_frame = ctk.CTkFrame(win, fg_color="transparent")
+    resumen_frame.configure(height=74)
+    resumen_frame.grid_propagate(False)
+    resumen_frame.grid_rowconfigure(0, weight=1)
+    resumen_frame.pack(fill="x", padx=18, pady=(12, 8))
+    tarjetas = (
+        ("visibles", "En vista", "#2563EB"),
+        ("pendientes_guia", "Pendientes de guía", "#D97706"),
+        ("listas_enviar", "Listos para enviar", "#0F766E"),
+        ("enviadas", "Enviados", "#16A34A"),
+    )
+    for indice, (clave, etiqueta, color) in enumerate(tarjetas):
+        resumen_frame.grid_columnconfigure(indice, weight=1, uniform="envios-resumen")
+        tarjeta = ctk.CTkFrame(
+            resumen_frame,
+            height=70,
+            corner_radius=6,
+            fg_color="#FFFFFF",
+            border_width=1,
+            border_color="#D8E1EC",
+        )
+        tarjeta.grid(row=0, column=indice, padx=4, sticky="nsew")
+        tarjeta.grid_propagate(False)
+        ctk.CTkFrame(tarjeta, width=5, corner_radius=0, fg_color=color).pack(
+            side="left", fill="y"
+        )
+        contenido = ctk.CTkFrame(tarjeta, fg_color="transparent")
+        contenido.pack(side="left", fill="both", expand=True, padx=12, pady=8)
+        ctk.CTkLabel(
+            contenido,
+            text=etiqueta,
+            font=("Segoe UI", 11),
+            text_color="#526173",
+            anchor="w",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            contenido,
+            textvariable=resumen_vars[clave],
+            font=("Segoe UI", 20, "bold"),
+            text_color="#102A43",
+            anchor="w",
+        ).pack(anchor="w", pady=(1, 0))
 
-        conn.close()
-
-        return notas_db
-
-    # ================= FILTROS =================
-    frame_filtro = ctk.CTkFrame(win)
-    frame_filtro.pack(fill="x", padx=20, pady=15)
-
-    filtro_tipo = tk.StringVar(value="nota")
-
+    frame_filtro = ctk.CTkFrame(
+        win,
+        corner_radius=6,
+        fg_color="#FFFFFF",
+        border_width=1,
+        border_color="#D8E1EC",
+    )
+    frame_filtro.pack(fill="x", padx=22, pady=(0, 8))
+    ctk.CTkLabel(
+        frame_filtro,
+        text="Buscar por",
+        font=("Segoe UI", 11, "bold"),
+        text_color="#334155",
+    ).pack(side="left", padx=(12, 6), pady=9)
     combo_filtro = ctk.CTkComboBox(
         frame_filtro,
         values=["nota", "cliente", "telefono", "pedido"],
         variable=filtro_tipo,
-        width=150
+        width=125,
+        state="readonly",
     )
-    combo_filtro.pack(side="left", padx=5)
-    combo_estado = ctk.CTkComboBox(
-        win,
-        values=["COMPLETAS"],
-        variable=estado_filtro,
-        width=180
-    )
-    combo_estado.pack(pady=5)
-    def desbloquear_avanzado():
-        if not pedir_password():
-            return
-    
-        combo_estado.configure(
-            values=["COMPLETAS", "EN_PROCESO", "INCOMPLETAS", "TODAS_PAGADAS"]
-        )
-
-    ctk.CTkButton(
-        win,
-        text="🔐 Ver estados avanzados",
-        command=desbloquear_avanzado
-    ).pack(pady=5)
-    def cambiar_estado(_=None):
-        try:
-            nuevas = cargar_datos()
-        except Exception as exc:
-            messagebox.showerror("Envios", f"No se pudieron cargar los envios:\n{exc}")
-            return
-        cargar_tabla(nuevas)
-
-    combo_estado.configure(command=cambiar_estado)
-
-
-    filtro_texto = tk.StringVar()
-
+    combo_filtro.pack(side="left", padx=(0, 8), pady=9)
     entry_buscar = ctk.CTkEntry(
         frame_filtro,
         textvariable=filtro_texto,
-        placeholder_text="Buscar..."
+        placeholder_text="Buscar folio, clienta, teléfono o pedido",
+        height=34,
+        border_color="#B9C8DA",
     )
-    entry_buscar.pack(side="left", fill="x", expand=True, padx=5)
+    entry_buscar.pack(side="left", fill="x", expand=True, padx=(0, 12), pady=9)
+    ctk.CTkLabel(
+        frame_filtro,
+        text="Estado",
+        font=("Segoe UI", 11, "bold"),
+        text_color="#334155",
+    ).pack(side="left", padx=(0, 6), pady=9)
+    combo_estado = ctk.CTkComboBox(
+        frame_filtro,
+        values=[
+            "TODAS",
+            "PENDIENTES DE GUÍA",
+            "LISTAS PARA ENVIAR",
+            "ENVIADAS",
+            "PAGADAS",
+            "EN PROCESO",
+            "INCOMPLETAS",
+        ],
+        variable=estado_filtro,
+        width=205,
+        state="readonly",
+    )
+    combo_estado.pack(side="left", padx=(0, 10), pady=9)
+    ctk.CTkLabel(
+        frame_filtro,
+        textvariable=resultado_var,
+        font=("Segoe UI", 11, "bold"),
+        text_color="#2563EB",
+        width=112,
+    ).pack(side="right", padx=(0, 12), pady=9)
 
-    # ================= TABLA =================
-    cols = (
+    tabla_frame = ctk.CTkFrame(
+        win,
+        corner_radius=6,
+        fg_color="#FFFFFF",
+        border_width=1,
+        border_color="#D8E1EC",
+    )
+    tabla_frame.pack(fill="both", expand=True, padx=22, pady=(0, 8))
+    tabla_frame.grid_rowconfigure(0, weight=1)
+    tabla_frame.grid_columnconfigure(0, weight=1)
+
+    estilo = ttk.Style(win)
+    estilo.configure(
+        "EnviosLocal.Treeview",
+        rowheight=33,
+        background="#FFFFFF",
+        fieldbackground="#FFFFFF",
+        foreground="#132238",
+        borderwidth=0,
+        font=("Segoe UI", 10),
+    )
+    estilo.configure(
+        "EnviosLocal.Treeview.Heading",
+        font=("Segoe UI", 10, "bold"),
+        foreground="#243B53",
+        padding=(6, 8),
+    )
+    estilo.map(
+        "EnviosLocal.Treeview",
+        background=[("selected", "#1D4ED8")],
+        foreground=[("selected", "#FFFFFF")],
+    )
+
+    columnas = (
         "ID",
         "Cliente",
         "Pedido",
-        "Teléfono",
-        "Paquetería",
-        "Guía"
+        "Telefono",
+        "Paqueteria",
+        "Guia",
+        "Estado",
+        "Situacion",
+        "FechaEnvio",
     )
-
+    encabezados = {
+        "ID": "Folio",
+        "Cliente": "Cliente",
+        "Pedido": "Pedido",
+        "Telefono": "Teléfono",
+        "Paqueteria": "Paquetería",
+        "Guia": "Guía",
+        "Estado": "Estado actual",
+        "Situacion": "Situación de envío",
+        "FechaEnvio": "Fecha de envío",
+    }
+    anchos = {
+        "ID": 105,
+        "Cliente": 205,
+        "Pedido": 80,
+        "Telefono": 115,
+        "Paqueteria": 125,
+        "Guia": 175,
+        "Estado": 110,
+        "Situacion": 155,
+        "FechaEnvio": 140,
+    }
     tabla = ttk.Treeview(
-        win,
-        columns=cols,
+        tabla_frame,
+        columns=columnas,
         show="headings",
-        selectmode="extended"
+        selectmode="extended",
+        style="EnviosLocal.Treeview",
     )
+    for columna in columnas:
+        tabla.heading(columna, text=encabezados[columna])
+        tabla.column(
+            columna,
+            anchor="w" if columna in {"Cliente", "Guia", "Situacion"} else "center",
+            width=anchos[columna],
+            minwidth=75,
+            stretch=columna in {"Cliente", "Guia", "Situacion"},
+        )
+    scroll_y = ttk.Scrollbar(tabla_frame, orient="vertical", command=tabla.yview)
+    scroll_x = ttk.Scrollbar(tabla_frame, orient="horizontal", command=tabla.xview)
+    tabla.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+    tabla.grid(row=0, column=0, sticky="nsew")
+    scroll_y.grid(row=0, column=1, sticky="ns")
+    scroll_x.grid(row=1, column=0, sticky="ew")
 
-    for c in cols:
-        tabla.heading(c, text=c)
-        tabla.column(c, anchor="center")
+    tabla.tag_configure("PENDIENTE", background="#FFF7E6", foreground="#854D0E")
+    tabla.tag_configure("LISTA", background="#EAF2FF", foreground="#1E3A8A")
+    tabla.tag_configure("ENVIADO", background="#E8F7ED", foreground="#166534")
+    tabla.tag_configure("OTRO", background="#F8FAFC", foreground="#475569")
 
-    tabla.pack(fill="both", expand=True, padx=20, pady=15)
+    detalle_frame = ctk.CTkFrame(
+        win,
+        height=78,
+        corner_radius=6,
+        fg_color="#FFFFFF",
+        border_width=1,
+        border_color="#D8E1EC",
+    )
+    detalle_frame.pack(fill="x", padx=22, pady=(0, 8))
+    detalle_frame.pack_propagate(False)
+    ctk.CTkLabel(
+        detalle_frame,
+        textvariable=detalle_titulo,
+        font=("Segoe UI", 13, "bold"),
+        text_color="#102A43",
+        anchor="w",
+    ).pack(fill="x", padx=12, pady=(8, 1))
+    ctk.CTkLabel(
+        detalle_frame,
+        textvariable=detalle_contenido,
+        font=("Segoe UI", 11),
+        text_color="#526173",
+        anchor="w",
+        justify="left",
+        wraplength=max(800, ancho - 80),
+    ).pack(fill="x", padx=12, pady=(0, 8))
 
-    tabla.tag_configure("SIN_GUIA", background="#F3F4F6")
-    tabla.tag_configure("CON_GUIA", background="#DBEAFE")
+    acciones = ctk.CTkFrame(win, fg_color="transparent")
+    acciones.pack(fill="x", padx=22, pady=(0, 12))
+    ctk.CTkLabel(
+        acciones,
+        text="Selecciona un registro para habilitar sus acciones.",
+        font=("Segoe UI", 11),
+        text_color="#64748B",
+    ).pack(side="left")
+
+    def filtrar_por_estado(notas):
+        vista = estado_filtro.get().strip().upper()
+        if vista == "TODAS":
+            return list(notas)
+        if vista in {"PENDIENTES DE GUÍA", "LISTAS PARA ENVIAR", "ENVIADAS"}:
+            return filtrar_envios(notas, vista)
+        estado = {
+            "PAGADAS": "PAGADA",
+            "EN PROCESO": "EN_PROCESO",
+            "INCOMPLETAS": "INCOMPLETA",
+        }.get(vista)
+        return [
+            nota for nota in notas
+            if normalizar_estado_envio(nota.get("estado")) == estado
+        ]
+
+    def obtener_seleccion():
+        return [
+            notas_por_iid[iid]
+            for iid in tabla.selection()
+            if iid in notas_por_iid
+        ]
 
     def cargar_tabla(data):
         tabla.delete(*tabla.get_children())
-
-        for n in data:
-            tag = "CON_GUIA" if n["guia"] else "SIN_GUIA"
-
+        notas_por_iid.clear()
+        for indice, nota in enumerate(data):
+            situacion = estado_operativo_envio(nota)
+            if situacion == "ENVIADO":
+                tag = "ENVIADO"
+            elif situacion == "PENDIENTE DE GUÍA":
+                tag = "PENDIENTE"
+            elif situacion == "LISTO PARA ENVIAR":
+                tag = "LISTA"
+            else:
+                tag = "OTRO"
+            iid = f"envio-local-{indice}"
+            notas_por_iid[iid] = nota
             tabla.insert(
                 "",
                 "end",
+                iid=iid,
                 values=(
-                    n["id"],
-                    n["cliente_nombre"],
-                    n["pedido"],
-                    n["telefono"],
-                    n["paqueteria"] or "No definida",
-                    n["guia"] or "Sin guía"
+                    texto_envio(nota.get("id") or nota.get("nota_id")),
+                    texto_envio(nota.get("cliente_nombre") or nota.get("cliente")),
+                    texto_envio(nota.get("pedido")),
+                    texto_envio(nota.get("telefono")),
+                    texto_envio(nota.get("paqueteria")),
+                    guia_envio(nota) or "Sin guía",
+                    normalizar_estado_envio(nota.get("estado")) or "SIN ESTADO",
+                    situacion,
+                    formatear_fecha_envio(nota.get("fecha_envio")),
                 ),
-                tags=(tag,)
+                tags=(tag,),
             )
-
-    try:
-        notas = cargar_datos()
-    except Exception as exc:
-        messagebox.showerror("Envios", f"No se pudieron cargar los envios:\n{exc}")
-        win.destroy()
-        return
-    cargar_tabla(notas)
+        cantidad = len(data)
+        resultado_var.set(f"{cantidad} envío" if cantidad == 1 else f"{cantidad} envíos")
 
     def imprimir_seleccion():
-
-        seleccion = tabla.selection()
-
+        seleccion = obtener_seleccion()
         if not seleccion:
-            messagebox.showinfo("Selecciona", "Selecciona una nota")
+            messagebox.showinfo("Selecciona", "Selecciona una nota.", parent=win)
             return
-
-        item = tabla.item(seleccion[0])["values"]
-        nota_id = item[0]
-
+        if len(seleccion) != 1:
+            messagebox.showinfo(
+                "Imprimir etiquetas",
+                "Selecciona una sola nota para imprimir.",
+                parent=win,
+            )
+            return
+        nota_id = seleccion[0].get("id") or seleccion[0].get("nota_id")
         from notas import obtener_cotizacion
         nota = obtener_cotizacion(nota_id)
-
         abrir_opciones_impresion(nota)
 
-     # ================= FILTRO DINÁMICO =================
-    def aplicar_filtro(*args):
-        texto = filtro_texto.get().lower()
-        tipo = filtro_tipo.get()
-
-        try:
-            datos_actuales = cargar_datos()
-        except Exception as exc:
-            messagebox.showerror("Envios", f"No se pudieron cargar los envios:\n{exc}")
-            return
-        resultado = datos_actuales
-
-        if texto:
-            if tipo == "cliente":
-                resultado = [n for n in resultado if texto in (n["cliente_nombre"] or "").lower()]
-            elif tipo == "nota":
-                resultado = [n for n in resultado if texto in str(n["id"]).lower()]
-            elif tipo == "pedido":
-                resultado = [n for n in resultado if texto in str(n["pedido"]).lower()]
-            elif tipo == "telefono":
-                resultado = [n for n in resultado if texto in str(n["telefono"] or "").lower()]
-
+    def aplicar_filtro(*_args):
+        resultado = filtrar_por_estado(datos_cargados)
+        resultado = buscar_envios(resultado, filtro_texto.get(), filtro_tipo.get())
         cargar_tabla(resultado)
+        actualizar_detalle_seleccion()
 
-    filtro_texto.trace_add("write", aplicar_filtro)
-    combo_filtro.configure(command=lambda _: aplicar_filtro())
+    def recargar_datos():
+        try:
+            nuevas = cargar_datos()
+        except Exception as exc:
+            messagebox.showerror(
+                "Gestión de Envíos",
+                f"No se pudieron cargar los envíos:\n{exc}",
+                parent=win,
+            )
+            return False
+        datos_cargados.clear()
+        datos_cargados.extend(nuevas)
+        resumen = resumir_panel_envios(datos_cargados)
+        for clave, variable in resumen_vars.items():
+            variable.set(str(resumen[clave]))
+        aplicar_filtro()
+        return True
 
-
-    # ================= ASIGNAR GUÍA =================
-    def asignar_guia():
-        seleccion = tabla.selection()
-
+    def actualizar_detalle_seleccion(_event=None):
+        seleccion = obtener_seleccion()
         if not seleccion:
-            messagebox.showinfo("Selecciona", "Selecciona una nota")
+            detalle_titulo.set("Selecciona un envío")
+            detalle_contenido.set(
+                "Consulta el estado, la guía y la paquetería sin modificar el pedido."
+            )
+        elif len(seleccion) > 1:
+            resumen = resumir_seleccion_envios(seleccion)
+            detalle_titulo.set(f"{resumen['seleccionados']} envíos seleccionados")
+            detalle_contenido.set(
+                f"Con guía: {resumen['con_guia']}   |   "
+                f"Sin guía: {resumen['sin_guia']}   |   "
+                f"Listos: {resumen['listos']}   |   "
+                f"Ya enviados: {resumen['ya_enviados']}"
+            )
+        else:
+            nota = seleccion[0]
+            estado = normalizar_estado_envio(nota.get("estado")) or "SIN ESTADO"
+            situacion = estado_operativo_envio(nota)
+            detalle_titulo.set(
+                f"Envío {texto_envio(nota.get('id') or nota.get('nota_id'))} · {situacion}"
+            )
+            detalle_contenido.set(
+                f"Cliente: {texto_envio(nota.get('cliente_nombre') or nota.get('cliente'))}   |   "
+                f"Estado actual: {estado}   |   "
+                f"Paquetería: {texto_envio(nota.get('paqueteria'))}   |   "
+                f"Guía: {guia_envio(nota) or 'Sin guía'}   |   "
+                f"Fecha de envío: {formatear_fecha_envio(nota.get('fecha_envio'))}"
+            )
+        actualizar_estado_botones()
+
+    def actualizar_estado_botones():
+        seleccion = obtener_seleccion()
+        unica = len(seleccion) == 1
+        estado = normalizar_estado_envio(seleccion[0].get("estado")) if unica else ""
+        btn_asignar.configure(state="normal" if unica and estado == "COMPLETA" else "disabled")
+        btn_enviar.configure(
+            state=(
+                "normal"
+                if unica and estado_operativo_envio(seleccion[0]) == "LISTO PARA ENVIAR"
+                else "disabled"
+            )
+        )
+        btn_imprimir.configure(state="normal" if unica else "disabled")
+
+    def asignar_guia():
+        seleccion = obtener_seleccion()
+        if len(seleccion) != 1:
+            messagebox.showinfo("Selecciona", "Selecciona una sola nota.", parent=win)
             return
-
-        item = tabla.item(seleccion[0])["values"]
-        nota_id = item[0]
-        paqueteria_actual = item[4] if len(item) > 4 and item[4] != "No definida" else ""
-
+        nota_actual = seleccion[0]
+        nota_id = nota_actual.get("id") or nota_actual.get("nota_id")
         guia = simpledialog.askstring(
             "Asignar guía",
-            "Número de guía:"
+            "Número de guía:",
+            parent=win,
         )
-
         if not guia:
             return
-
         paqueteria = simpledialog.askstring(
-            "Paqueteria",
-            "Paqueteria (opcional):",
-            initialvalue=paqueteria_actual
+            "Paquetería",
+            "Paquetería (opcional):",
+            initialvalue=str(nota_actual.get("paqueteria") or ""),
+            parent=win,
         )
-
         try:
-            if modo_api:
-                datos = {"guia": guia}
-                if paqueteria:
-                    datos["paqueteria"] = paqueteria
-                actualizar_envio_nota(nota_id, datos)
-            else:
-                conn = _get_conn_local("panel envios")
-                nota = conn.execute(
-                    "SELECT estado FROM notas WHERE id=%s",
-                    (nota_id,),
-                ).fetchone()
-                estado = str((nota or {}).get("estado") or "").strip().upper()
-                if estado != "COMPLETA":
-                    conn.close()
-                    raise ValueError("Solo una nota COMPLETA puede recibir una guia.")
-                if paqueteria:
-                    conn.execute("""
-                        UPDATE notas
-                        SET guia=%s,
-                            paqueteria=%s
-                        WHERE id=%s
-                    """, (guia, paqueteria, nota_id))
-                else:
-                    conn.execute("""
-                        UPDATE notas
-                        SET guia=%s
-                        WHERE id=%s
-                    """, (guia, nota_id))
-
-                conn.commit()
+            conn = _get_conn_local("panel envios")
+            nota = conn.execute(
+                "SELECT estado FROM notas WHERE id=%s",
+                (nota_id,),
+            ).fetchone()
+            estado = str((nota or {}).get("estado") or "").strip().upper()
+            if estado != "COMPLETA":
                 conn.close()
+                raise ValueError("Solo una nota COMPLETA puede recibir una guía.")
+            if paqueteria:
+                conn.execute("""
+                    UPDATE notas
+                    SET guia=%s,
+                        paqueteria=%s
+                    WHERE id=%s
+                """, (guia, paqueteria, nota_id))
+            else:
+                conn.execute("UPDATE notas SET guia=%s WHERE id=%s", (guia, nota_id))
+            conn.commit()
+            conn.close()
         except Exception as exc:
-            messagebox.showerror("Envios", f"No se pudo guardar la guia:\n{exc}")
+            messagebox.showerror(
+                "Gestión de Envíos",
+                f"No se pudo guardar la guía:\n{exc}",
+                parent=win,
+            )
             return
-
-        messagebox.showinfo("OK", "Guía asignada")
-
-        win.destroy()
-        abrir_panel_envios()
+        recargar_datos()
+        messagebox.showinfo("Guía guardada", "La guía se guardó correctamente.", parent=win)
 
     def marcar_como_enviado():
-        seleccion = tabla.selection()
-        if not seleccion:
-            messagebox.showinfo("Selecciona", "Selecciona una nota")
+        seleccion = obtener_seleccion()
+        if len(seleccion) != 1:
+            messagebox.showinfo("Selecciona", "Selecciona una sola nota.", parent=win)
             return
-
-        nota_id = tabla.item(seleccion[0])["values"][0]
+        nota_id = seleccion[0].get("id") or seleccion[0].get("nota_id")
         if not messagebox.askyesno(
             "Marcar como enviado",
-            "Confirma que el paquete ya fue entregado a la paqueteria.",
+            "Confirma que el paquete ya fue entregado a la paquetería.",
             parent=win,
         ):
             return
-
         try:
-            if modo_api:
-                resultado = marcar_envio_nota(nota_id)
-                fecha_guardada = bool(resultado.get("fecha_envio_guardada"))
-            else:
-                conn = _get_conn_local("panel envios")
-                nota = conn.execute("SELECT * FROM notas WHERE id=%s", (nota_id,)).fetchone()
-                if not nota:
-                    conn.close()
-                    raise ValueError("Nota no encontrada.")
-                estado = str(nota.get("estado") or "").strip().upper()
-                if estado != "COMPLETA":
-                    conn.close()
-                    raise ValueError("Solo una nota COMPLETA puede marcarse como enviada.")
-                if not str(nota.get("guia") or "").strip():
-                    conn.close()
-                    raise ValueError("Guarda la guia antes de marcar el envio.")
-                campos = ["estado='ENVIADO'"]
-                if "estado_envio" in nota:
-                    campos.append("estado_envio='ENVIADO'")
-                fecha_guardada = "fecha_envio" in nota
-                if fecha_guardada:
-                    campos.append("fecha_envio=COALESCE(fecha_envio, NOW())")
-                conn.execute(
-                    f"UPDATE notas SET {', '.join(campos)} WHERE id=%s",
-                    (nota_id,),
-                )
-                conn.commit()
+            conn = _get_conn_local("panel envios")
+            nota = conn.execute("SELECT * FROM notas WHERE id=%s", (nota_id,)).fetchone()
+            if not nota:
                 conn.close()
+                raise ValueError("Nota no encontrada.")
+            estado = str(nota.get("estado") or "").strip().upper()
+            if estado != "COMPLETA":
+                conn.close()
+                raise ValueError("Solo una nota COMPLETA puede marcarse como enviada.")
+            if not str(nota.get("guia") or "").strip():
+                conn.close()
+                raise ValueError("Guarda la guía antes de marcar el envío.")
+            campos = ["estado='ENVIADO'"]
+            if "estado_envio" in nota:
+                campos.append("estado_envio='ENVIADO'")
+            fecha_guardada = "fecha_envio" in nota
+            if fecha_guardada:
+                campos.append("fecha_envio=COALESCE(fecha_envio, NOW())")
+            conn.execute(
+                f"UPDATE notas SET {', '.join(campos)} WHERE id=%s",
+                (nota_id,),
+            )
+            conn.commit()
+            conn.close()
         except Exception as exc:
-            messagebox.showerror("Envios", f"No se pudo marcar el envio:\n{exc}", parent=win)
+            messagebox.showerror(
+                "Gestión de Envíos",
+                f"No se pudo marcar el envío:\n{exc}",
+                parent=win,
+            )
             return
-
-        aviso_fecha = "" if fecha_guardada else "\n\nLa base actual no tiene fecha_envio; se guardo solo el estado."
+        recargar_datos()
+        aviso_fecha = "" if fecha_guardada else "\n\nLa base actual no tiene fecha_envio; se guardó solo el estado."
         messagebox.showinfo(
-            "Envio actualizado",
-            f"La nota quedo marcada como ENVIADO.{aviso_fecha}",
+            "Envío actualizado",
+            f"La nota quedó marcada como ENVIADO.{aviso_fecha}",
             parent=win,
         )
-        win.destroy()
-        abrir_panel_envios()
 
-    ctk.CTkButton(
-        win,
-        text="➕ Asignar guía",
-        height=45,
-        fg_color="#16A34A",
-        hover_color="#15803D",
-        font=("Segoe UI", 14, "bold"),
-        command=asignar_guia
-    ).pack(pady=15)
-    ctk.CTkButton(
-        win,
+    btn_cerrar = ctk.CTkButton(
+        acciones,
+        text="Cerrar",
+        width=88,
+        height=40,
+        corner_radius=6,
+        fg_color="#E8EEF5",
+        hover_color="#D8E1EC",
+        text_color="#243B53",
+        command=win.destroy,
+    )
+    btn_cerrar.pack(side="right", padx=(6, 0))
+    btn_actualizar = ctk.CTkButton(
+        acciones,
+        text="Actualizar",
+        width=108,
+        height=40,
+        corner_radius=6,
+        fg_color="#475569",
+        hover_color="#334155",
+        command=recargar_datos,
+    )
+    btn_actualizar.pack(side="right", padx=6)
+    btn_imprimir = ctk.CTkButton(
+        acciones,
+        text="Imprimir etiqueta",
+        width=136,
+        height=40,
+        corner_radius=6,
+        fg_color="#334155",
+        hover_color="#1E293B",
+        command=imprimir_seleccion,
+    )
+    btn_imprimir.pack(side="right", padx=6)
+    btn_enviar = ctk.CTkButton(
+        acciones,
         text="Marcar como enviado",
-        height=45,
+        width=168,
+        height=40,
+        corner_radius=6,
         fg_color="#2563EB",
         hover_color="#1D4ED8",
-        font=("Segoe UI", 14, "bold"),
         command=marcar_como_enviado,
-    ).pack(pady=5)
-    ctk.CTkButton(
-        win,
-        text="🖨 Imprimir etiquetas",
-        height=45,
-        fg_color="#16A34A",
-        font=("Segoe UI", 14, "bold"),
-        command=imprimir_seleccion
-    ).pack(pady=10)
+    )
+    btn_enviar.pack(side="right", padx=6)
+    btn_asignar = ctk.CTkButton(
+        acciones,
+        text="Asignar guía",
+        width=132,
+        height=40,
+        corner_radius=6,
+        fg_color="#0F766E",
+        hover_color="#115E59",
+        command=asignar_guia,
+    )
+    btn_asignar.pack(side="right", padx=6)
+
+    tabla.bind("<<TreeviewSelect>>", actualizar_detalle_seleccion)
+    filtro_texto.trace_add("write", aplicar_filtro)
+    combo_filtro.configure(command=lambda _valor: aplicar_filtro())
+    combo_estado.configure(command=lambda _valor: aplicar_filtro())
+    actualizar_detalle_seleccion()
+    if not recargar_datos():
+        win.destroy()
 
 
 # =====================================================
@@ -1431,10 +1766,12 @@ def _abrir_panel_envios_api():
         FILTROS_ENVIO,
         buscar_envios,
         clasificar_seleccion_envios,
+        estado_operativo_envio,
         filtro_api_envios,
         formatear_fecha_envio,
         guia_envio,
         normalizar_estado_envio,
+        resumir_panel_envios,
         resumir_seleccion_envios,
         texto_cantidad,
         texto_envio,
@@ -1442,37 +1779,112 @@ def _abrir_panel_envios_api():
 
     win = ctk.CTkToplevel(root)
     win.title("Gestión de Envíos")
-    win.geometry("1380x820")
-    win.minsize(1120, 680)
+    win.configure(fg_color="#F4F7FB")
+    ancho = max(1080, min(1440, win.winfo_screenwidth() - 40))
+    alto = max(680, min(900, win.winfo_screenheight() - 80))
+    win.geometry(f"{ancho}x{alto}")
+    win.minsize(min(1080, ancho), min(680, alto))
     win.grab_set()
 
-    estado_filtro = tk.StringVar(value="LISTAS PARA ENVIAR")
+    estado_filtro = tk.StringVar(value="TODAS")
     filtro_tipo = tk.StringVar(value="nota")
     filtro_texto = tk.StringVar()
+    resultado_var = tk.StringVar(value="0 envíos visibles")
     detalle_titulo = tk.StringVar(value="Selecciona un pedido")
+    resumen_vars = {
+        "visibles": tk.StringVar(value="0"),
+        "pendientes_guia": tk.StringVar(value="0"),
+        "listas_enviar": tk.StringVar(value="0"),
+        "enviadas": tk.StringVar(value="0"),
+    }
     datos_cargados = []
     notas_por_iid = {}
     procesando = {"activo": False}
 
-    encabezado = ctk.CTkFrame(win, fg_color="transparent")
-    encabezado.pack(fill="x", padx=20, pady=(12, 6))
+    encabezado = ctk.CTkFrame(win, height=86, corner_radius=0, fg_color="#17375E")
+    encabezado.pack(fill="x")
+    encabezado.pack_propagate(False)
+    titulo_wrap = ctk.CTkFrame(encabezado, fg_color="transparent")
+    titulo_wrap.pack(side="left", fill="y", padx=22, pady=13)
     ctk.CTkLabel(
-        encabezado,
+        titulo_wrap,
         text="Gestión de Envíos",
-        font=("Segoe UI", 24, "bold"),
-        text_color="#111827",
-    ).pack(side="left")
+        font=("Segoe UI", 25, "bold"),
+        text_color="#FFFFFF",
+        anchor="w",
+    ).pack(anchor="w")
+    ctk.CTkLabel(
+        titulo_wrap,
+        text="Consulta el avance, asigna guías y confirma la entrega a paquetería.",
+        font=("Segoe UI", 12),
+        text_color="#D7E5F5",
+        anchor="w",
+    ).pack(anchor="w", pady=(2, 0))
     ctk.CTkLabel(
         encabezado,
-        text="Usa Ctrl o Shift para seleccionar varios pedidos",
+        text="Ctrl o Shift para selección múltiple",
         font=("Segoe UI", 12),
-        text_color="#64748B",
-    ).pack(side="right", padx=(12, 0))
+        text_color="#D7E5F5",
+    ).pack(side="right", padx=22)
 
-    filtros = ctk.CTkFrame(win, corner_radius=6)
-    filtros.pack(fill="x", padx=20, pady=(0, 8))
-    ctk.CTkLabel(filtros, text="Buscar por", font=("Segoe UI", 12, "bold")).pack(
-        side="left", padx=(12, 6), pady=8
+    resumen_frame = ctk.CTkFrame(win, fg_color="transparent")
+    resumen_frame.configure(height=74)
+    resumen_frame.grid_propagate(False)
+    resumen_frame.grid_rowconfigure(0, weight=1)
+    resumen_frame.pack(fill="x", padx=18, pady=(12, 8))
+    tarjetas = (
+        ("visibles", "En vista", "#2563EB"),
+        ("pendientes_guia", "Pendientes de guía", "#D97706"),
+        ("listas_enviar", "Listos para enviar", "#0F766E"),
+        ("enviadas", "Enviados", "#16A34A"),
+    )
+    for indice, (clave, etiqueta, color) in enumerate(tarjetas):
+        resumen_frame.grid_columnconfigure(indice, weight=1, uniform="envios-api-resumen")
+        tarjeta = ctk.CTkFrame(
+            resumen_frame,
+            height=70,
+            corner_radius=6,
+            fg_color="#FFFFFF",
+            border_width=1,
+            border_color="#D8E1EC",
+        )
+        tarjeta.grid(row=0, column=indice, padx=4, sticky="nsew")
+        tarjeta.grid_propagate(False)
+        ctk.CTkFrame(tarjeta, width=5, corner_radius=0, fg_color=color).pack(
+            side="left", fill="y"
+        )
+        contenido = ctk.CTkFrame(tarjeta, fg_color="transparent")
+        contenido.pack(side="left", fill="both", expand=True, padx=12, pady=8)
+        ctk.CTkLabel(
+            contenido,
+            text=etiqueta,
+            font=("Segoe UI", 11),
+            text_color="#526173",
+            anchor="w",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            contenido,
+            textvariable=resumen_vars[clave],
+            font=("Segoe UI", 20, "bold"),
+            text_color="#102A43",
+            anchor="w",
+        ).pack(anchor="w", pady=(1, 0))
+
+    filtros = ctk.CTkFrame(
+        win,
+        corner_radius=6,
+        fg_color="#FFFFFF",
+        border_width=1,
+        border_color="#D8E1EC",
+    )
+    filtros.pack(fill="x", padx=22, pady=(0, 8))
+    ctk.CTkLabel(
+        filtros,
+        text="Buscar por",
+        font=("Segoe UI", 11, "bold"),
+        text_color="#334155",
+    ).pack(
+        side="left", padx=(12, 6), pady=9
     )
     combo_filtro = ctk.CTkComboBox(
         filtros,
@@ -1481,16 +1893,23 @@ def _abrir_panel_envios_api():
         width=130,
         state="readonly",
     )
-    combo_filtro.pack(side="left", padx=(0, 8), pady=8)
+    combo_filtro.pack(side="left", padx=(0, 8), pady=9)
     entry_buscar = ctk.CTkEntry(
         filtros,
         textvariable=filtro_texto,
         placeholder_text="Buscar pedido, clienta o teléfono",
         width=330,
+        height=34,
+        border_color="#B9C8DA",
     )
-    entry_buscar.pack(side="left", fill="x", expand=True, padx=(0, 12), pady=8)
-    ctk.CTkLabel(filtros, text="Vista", font=("Segoe UI", 12, "bold")).pack(
-        side="left", padx=(0, 6), pady=8
+    entry_buscar.pack(side="left", fill="x", expand=True, padx=(0, 12), pady=9)
+    ctk.CTkLabel(
+        filtros,
+        text="Estado",
+        font=("Segoe UI", 11, "bold"),
+        text_color="#334155",
+    ).pack(
+        side="left", padx=(0, 6), pady=9
     )
     combo_estado = ctk.CTkComboBox(
         filtros,
@@ -1499,30 +1918,59 @@ def _abrir_panel_envios_api():
         width=205,
         state="readonly",
     )
-    combo_estado.pack(side="left", padx=(0, 12), pady=8)
+    combo_estado.pack(side="left", padx=(0, 10), pady=9)
+    ctk.CTkLabel(
+        filtros,
+        textvariable=resultado_var,
+        font=("Segoe UI", 11, "bold"),
+        text_color="#2563EB",
+        width=112,
+    ).pack(side="right", padx=(0, 12), pady=9)
 
-    tabla_frame = ctk.CTkFrame(win, corner_radius=4)
-    tabla_frame.pack(fill="both", expand=True, padx=20, pady=(0, 8))
+    tabla_frame = ctk.CTkFrame(
+        win,
+        corner_radius=6,
+        fg_color="#FFFFFF",
+        border_width=1,
+        border_color="#D8E1EC",
+    )
+    tabla_frame.pack(fill="both", expand=True, padx=22, pady=(0, 8))
     tabla_frame.grid_rowconfigure(0, weight=1)
     tabla_frame.grid_columnconfigure(0, weight=1)
 
     estilo = ttk.Style(win)
     estilo.configure(
         "Envios.Treeview",
-        rowheight=30,
+        rowheight=33,
         background="#FFFFFF",
         fieldbackground="#FFFFFF",
-        foreground="#111827",
+        foreground="#132238",
         borderwidth=0,
+        font=("Segoe UI", 10),
     )
-    estilo.configure("Envios.Treeview.Heading", font=("Segoe UI", 10, "bold"))
+    estilo.configure(
+        "Envios.Treeview.Heading",
+        font=("Segoe UI", 10, "bold"),
+        foreground="#243B53",
+        padding=(6, 8),
+    )
     estilo.map(
         "Envios.Treeview",
         background=[("selected", "#1D4ED8")],
         foreground=[("selected", "#FFFFFF")],
     )
 
-    columnas = ("ID", "Cliente", "Pedido", "Telefono", "Paqueteria", "Guia", "Estado", "FechaEnvio")
+    columnas = (
+        "ID",
+        "Cliente",
+        "Pedido",
+        "Telefono",
+        "Paqueteria",
+        "Guia",
+        "Estado",
+        "Situacion",
+        "FechaEnvio",
+    )
     encabezados = {
         "ID": "ID",
         "Cliente": "Cliente",
@@ -1530,7 +1978,8 @@ def _abrir_panel_envios_api():
         "Telefono": "Teléfono",
         "Paqueteria": "Paquetería",
         "Guia": "Guía",
-        "Estado": "Estado",
+        "Estado": "Estado actual",
+        "Situacion": "Situación de envío",
         "FechaEnvio": "Fecha de envío",
     }
     anchos = {
@@ -1541,6 +1990,7 @@ def _abrir_panel_envios_api():
         "Paqueteria": 130,
         "Guia": 190,
         "Estado": 105,
+        "Situacion": 155,
         "FechaEnvio": 145,
     }
     tabla = ttk.Treeview(
@@ -1554,10 +2004,10 @@ def _abrir_panel_envios_api():
         tabla.heading(columna, text=encabezados[columna])
         tabla.column(
             columna,
-            anchor="w" if columna in {"Cliente", "Guia"} else "center",
+            anchor="w" if columna in {"Cliente", "Guia", "Situacion"} else "center",
             width=anchos[columna],
             minwidth=80,
-            stretch=columna in {"Cliente", "Guia"},
+            stretch=columna in {"Cliente", "Guia", "Situacion"},
         )
     scroll_y = ttk.Scrollbar(tabla_frame, orient="vertical", command=tabla.yview)
     scroll_x = ttk.Scrollbar(tabla_frame, orient="horizontal", command=tabla.xview)
@@ -1566,12 +2016,18 @@ def _abrir_panel_envios_api():
     scroll_y.grid(row=0, column=1, sticky="ns")
     scroll_x.grid(row=1, column=0, sticky="ew")
 
-    tabla.tag_configure("SIN_GUIA", background="#FEF3C7", foreground="#78350F")
-    tabla.tag_configure("LISTA", background="#DBEAFE", foreground="#1E3A8A")
-    tabla.tag_configure("ENVIADO", background="#DCFCE7", foreground="#166534")
+    tabla.tag_configure("SIN_GUIA", background="#FFF7E6", foreground="#854D0E")
+    tabla.tag_configure("LISTA", background="#EAF2FF", foreground="#1E3A8A")
+    tabla.tag_configure("ENVIADO", background="#E8F7ED", foreground="#166534")
 
-    detalle_frame = ctk.CTkFrame(win, corner_radius=6)
-    detalle_frame.pack(fill="x", padx=20, pady=(0, 10))
+    detalle_frame = ctk.CTkFrame(
+        win,
+        corner_radius=6,
+        fg_color="#FFFFFF",
+        border_width=1,
+        border_color="#D8E1EC",
+    )
+    detalle_frame.pack(fill="x", padx=22, pady=(0, 8))
     ctk.CTkLabel(
         detalle_frame,
         textvariable=detalle_titulo,
@@ -1591,8 +2047,8 @@ def _abrir_panel_envios_api():
     detalle_texto.configure(state="disabled")
 
     acciones = ctk.CTkFrame(win, fg_color="transparent")
-    acciones.pack(fill="x", padx=20, pady=(0, 10))
-    for columna in range(4):
+    acciones.pack(fill="x", padx=22, pady=(0, 12))
+    for columna in range(5):
         acciones.grid_columnconfigure(columna, weight=1)
 
     def escribir_detalle(texto):
@@ -1619,6 +2075,7 @@ def _abrir_panel_envios_api():
         notas_por_iid.clear()
         for indice, nota in enumerate(notas):
             estado = normalizar_estado_envio(nota.get("estado"))
+            situacion = estado_operativo_envio(nota)
             tiene_guia = bool(guia_envio(nota))
             requiere_guia = bool(nota.get("requiere_guia", True))
             if estado == "ENVIADO":
@@ -1641,10 +2098,16 @@ def _abrir_panel_envios_api():
                     texto_envio(nota.get("paqueteria")),
                     guia_envio(nota) or "Sin guía",
                     estado or "SIN ESTADO",
+                    situacion,
                     formatear_fecha_envio(nota.get("fecha_envio")),
                 ),
                 tags=(tag,),
             )
+        resumen = resumir_panel_envios(notas)
+        for clave, variable in resumen_vars.items():
+            variable.set(str(resumen[clave]))
+        cantidad = len(notas)
+        resultado_var.set(f"{cantidad} envío" if cantidad == 1 else f"{cantidad} envíos")
 
     def aplicar_filtro(*_args):
         visibles = buscar_envios(datos_cargados, filtro_texto.get(), filtro_tipo.get())
@@ -1683,13 +2146,16 @@ def _abrir_panel_envios_api():
         else:
             nota = seleccion[0]
             estado = normalizar_estado_envio(nota.get("estado")) or "SIN ESTADO"
+            situacion = estado_operativo_envio(nota)
             detalle_titulo.set(
-                f"Envío {texto_envio(nota.get('folio') or nota.get('id') or nota.get('nota_id'))}"
+                f"Envío {texto_envio(nota.get('folio') or nota.get('id') or nota.get('nota_id'))} · "
+                f"{situacion}"
             )
             escribir_detalle(
                 "\n".join((
                     f"Cliente: {texto_envio(nota.get('cliente_nombre') or nota.get('cliente'))}",
-                    f"Estado: {estado}    Paquetería: {texto_envio(nota.get('paqueteria'))}    "
+                    f"Estado actual: {estado}    Situación: {situacion}    "
+                    f"Paquetería: {texto_envio(nota.get('paqueteria'))}    "
                     f"Guía: {guia_envio(nota) or 'Sin guía'}",
                     f"Fecha de guía: {formatear_fecha_envio(nota.get('fecha_guia'))}    "
                     f"Fecha de envío: {formatear_fecha_envio(nota.get('fecha_envio'))}",
@@ -1903,6 +2369,16 @@ def _abrir_panel_envios_api():
         command=recargar_datos,
     )
     btn_actualizar.grid(row=0, column=3, padx=(6, 0), sticky="ew")
+    ctk.CTkButton(
+        acciones,
+        text="Cerrar",
+        height=42,
+        corner_radius=6,
+        fg_color="#E8EEF5",
+        hover_color="#D8E1EC",
+        text_color="#243B53",
+        command=win.destroy,
+    ).grid(row=0, column=4, padx=(6, 0), sticky="ew")
 
     tabla.bind("<<TreeviewSelect>>", actualizar_detalle_seleccion)
     filtro_texto.trace_add("write", aplicar_filtro)
@@ -2555,6 +3031,7 @@ def _construir_contexto_moderno():
     )
 
     lista_sugerencias.place_forget()  # oculto
+    productos_sugeridos = []
 
 
     def actualizar_sugerencias(*args):
@@ -2562,6 +3039,7 @@ def _construir_contexto_moderno():
         texto = buscar_producto_var.get().lower().strip()
 
         if not texto:
+            productos_sugeridos.clear()
             lista_sugerencias.place_forget()
             return
 
@@ -2577,12 +3055,14 @@ def _construir_contexto_moderno():
                 encontrados.append(p)
 
         if not encontrados:
+            productos_sugeridos.clear()
             lista_sugerencias.place_forget()
             return
 
         lista_sugerencias.delete(0, "end")
+        productos_sugeridos[:] = encontrados[:10]
 
-        for p in encontrados[:10]:
+        for p in productos_sugeridos:
             lista_sugerencias.insert(
                 "end",
                 f"{p['marca']} | {p['hilo']} | {p['codigo']}"
@@ -2604,15 +3084,23 @@ def _construir_contexto_moderno():
         if not lista_sugerencias.curselection():
             return
 
-        texto = lista_sugerencias.get(lista_sugerencias.curselection())
-        codigo = texto.split("|")[-1].strip()
+        indice = int(lista_sugerencias.curselection()[0])
+        if indice >= len(productos_sugeridos):
+            return
 
-        agregar_al_carrito({
-            "codigo": codigo,
+        producto = productos_sugeridos[indice]
+
+        agregado = agregar_al_carrito({
+            "producto_id": producto.get("id"),
+            "codigo": producto.get("codigo"),
+            "marca": producto.get("marca"),
+            "hilo": producto.get("hilo"),
+            "color": producto.get("color"),
             "cantidad": 1
         })
 
-        refrescar_carrito()
+        if agregado:
+            refrescar_carrito()
 
         buscar_producto_var.set("")
         lista_sugerencias.place_forget()
@@ -4215,45 +4703,83 @@ def _construir_paneles_ventas():
         command=lambda: abrir_registro_cambios(root)
     ).pack(fill="x", padx=12, pady=(0, 12))
 
+def _buscar_producto_para_carrito(pedido, productos):
+    producto_id = pedido.get("producto_id", pedido.get("id"))
+    if producto_id not in (None, ""):
+        for producto in productos:
+            if str(producto.get("id")) == str(producto_id):
+                return producto
+        return None
+
+    codigo = str(pedido.get("codigo", "")).strip()
+    candidatos = [
+        producto for producto in productos
+        if str(producto.get("codigo", "")).strip() == codigo
+    ]
+    for campo in ("marca", "hilo", "color"):
+        esperado = pedido.get(campo)
+        if esperado not in (None, ""):
+            candidatos = [
+                producto for producto in candidatos
+                if str(producto.get(campo, "")).strip().casefold()
+                == str(esperado).strip().casefold()
+            ]
+    return candidatos[0] if candidatos else None
+
+
+def _precio_producto_para_carrito(producto):
+    for campo in ("precio", "precio_venta", "venta"):
+        valor = producto.get(campo)
+        if valor in (None, ""):
+            continue
+        try:
+            return float(valor)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
 def agregar_al_carrito(pedido):
-    codigo = pedido["codigo"]
     cantidad = pedido["cantidad"]
+    p = _buscar_producto_para_carrito(pedido, productos_cache)
+    if not p:
+        messagebox.showwarning(
+            "Producto no encontrado",
+            "No se encontro el producto seleccionado. Actualiza la lista e intenta de nuevo.",
+        )
+        return False
 
-    productos = productos_cache
+    codigo = p.get("codigo")
+    precio = _precio_producto_para_carrito(p)
+    producto_id = p.get("id")
 
-    for p in productos:
-        if p["codigo"] == codigo:
-            precio = float(p["precio"])
-            producto_id = p.get("id")
+    for c in carrito:
+        mismo_producto = (
+            producto_id not in (None, "")
+            and str(c.get("producto_id")) == str(producto_id)
+        )
+        compatibilidad_local = (
+            producto_id in (None, "")
+            and str(c.get("codigo")) == str(codigo)
+            and c.get("marca") == p.get("marca")
+            and c.get("hilo") == p.get("hilo")
+        )
+        if mismo_producto or compatibilidad_local:
+            c["cantidad"] += cantidad
+            return True
 
-            for c in carrito:
-                mismo_producto = (
-                    producto_id not in (None, "")
-                    and c.get("producto_id") == producto_id
-                )
-                compatibilidad_local = (
-                    producto_id in (None, "")
-                    and c.get("codigo") == codigo
-                    and c.get("marca") == p["marca"]
-                    and c.get("hilo") == p["hilo"]
-                )
-                if mismo_producto or compatibilidad_local:
-                    c["cantidad"] += cantidad
-                    return
-
-            carrito.append({
-                "producto_id": producto_id,
-                "marca": p["marca"],  # se mantiene interno
-                "hilo": p["hilo"],
-                "color": p["color"],  # 🔥 agregar
-                "codigo": codigo,
-                "codigo_barras": p.get("codigo_barras"),
-                "cantidad": cantidad,
-                "precio": float(precio),
-                "stock": p["stock"]
-            })
-
-            return
+    carrito.append({
+        "producto_id": producto_id,
+        "marca": p.get("marca"),
+        "hilo": p.get("hilo"),
+        "color": p.get("color"),
+        "codigo": codigo,
+        "codigo_barras": p.get("codigo_barras"),
+        "cantidad": cantidad,
+        "precio": precio,
+        "stock": p.get("stock", 0),
+    })
+    return True
 
 
 def refrescar_carrito():

@@ -1,5 +1,7 @@
 
 
+import base64
+import io
 import os
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
@@ -13,41 +15,68 @@ class FlowableVacio(Flowable):
         pass
 
 
-def draw_bloque_cliente(canvas, nota, x_cm=2, y_cm=5, ancho_cm=14):
+def draw_bloque_cliente(canvas, nota, x_cm=2, y_cm=20.7, ancho_cm=9.2):
     from reportlab.platypus import Table, TableStyle
     from reportlab.lib.units import cm
     from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph
+    from xml.sax.saxutils import escape
 
     direccion = nota.get("direccion", {})
 
     x = x_cm * cm
-    y = y_cm * cm
+    top = y_cm * cm
     w = ancho_cm * cm
 
-    data = [
-        ["Calle:", direccion.get("calle", "")],
-        ["No. Exterior:", direccion.get("numero_ext", "")],   # 🔥 FIX
-        ["No. Interior:", direccion.get("numero_int", "")],   # 🔥 FIX
-        ["Colonia:", direccion.get("colonia", "")],
-        ["Municipio:", direccion.get("municipio", "")],
-        ["Estado:", direccion.get("estado", "")],
-        ["Código Postal:", direccion.get("codigo_postal", "")],
-        ["Referencia:", direccion.get("referencia", "")]
-    ]
+    label_style = ParagraphStyle(
+        "DireccionLabel",
+        fontName="Helvetica-Bold",
+        fontSize=8.7,
+        leading=10.2,
+        textColor=colors.HexColor("#2E3A3F"),
+    )
+    value_style = ParagraphStyle(
+        "DireccionValue",
+        fontName="Helvetica",
+        fontSize=8.7,
+        leading=10.2,
+        textColor=colors.HexColor("#2E3A3F"),
+        wordWrap="CJK",
+    )
 
-    tabla = Table(data, colWidths=[w * 0.35, w * 0.35])
+    def parrafo(valor, estilo):
+        texto = escape(str(valor or "")).replace("\n", "<br/>")
+        return Paragraph(texto or " ", estilo)
+
+    filas = [
+        ("Calle:", direccion.get("calle", "")),
+        ("No. Exterior:", direccion.get("numero_ext", "")),
+        ("No. Interior:", direccion.get("numero_int", "")),
+        ("Colonia:", direccion.get("colonia", "")),
+        ("Municipio:", direccion.get("municipio", "")),
+        ("Estado:", direccion.get("estado", "")),
+        ("Código Postal:", direccion.get("codigo_postal", "")),
+        ("Referencia:", direccion.get("referencia", "")),
+    ]
+    data = [[parrafo(label, label_style), parrafo(value, value_style)] for label, value in filas]
+
+    label_width = 3.2 * cm
+    tabla = Table(data, colWidths=[label_width, w - label_width], hAlign="LEFT")
 
     tabla.setStyle(TableStyle([
-        ("FONT", (0,0), (-1,-1), "Helvetica", 11),
-        ("FONT", (0,0), (0,-1), "Helvetica-Bold", 11),
         ("TEXTCOLOR", (0,0), (-1,-1), colors.HexColor("#2E3A3F")),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-        ("TOPPADDING", (0,0), (-1,-1), 4),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (0,-1), 8),
+        ("RIGHTPADDING", (1,0), (1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 1.5),
+        ("TOPPADDING", (0,0), (-1,-1), 1.5),
         ("GRID", (0,0), (-1,-1), 0, colors.transparent),
     ]))
 
-    tabla.wrapOn(canvas, w, 1000)
-    tabla.drawOn(canvas, x, y)
+    _, table_height = tabla.wrapOn(canvas, w, 1000)
+    tabla.drawOn(canvas, x, top - table_height)
 
 
 
@@ -148,7 +177,7 @@ def draw_bloque_aclaraciones(
         name="Aclaraciones",
         fontName="Helvetica",
         fontSize=5.5,
-        leading=11,
+        leading=9.5,
         textColor=colors.HexColor("#374151"),
         alignment=4,   # 🔥 JUSTIFICADO REAL
     )
@@ -217,77 +246,176 @@ def draw_bloque_cliente_compacto(
     c.drawString(x + 2.2*cm, y - 0.8*cm, telefono)
 
 from PIL import Image
-import tempfile
 
-from PIL import Image
-import tempfile
+
+def _abrir_imagen_comprobante(nota, rotacion=0):
+    referencia = nota.get("comprobante")
+    if not referencia:
+        return None
+
+    try:
+        if isinstance(referencia, str) and referencia.startswith("data:image"):
+            raw = referencia.split(",", 1)[1] if "," in referencia else referencia
+            imagen = Image.open(io.BytesIO(base64.b64decode(raw))).convert("RGB")
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            candidatos = (
+                referencia,
+                os.path.join(base_dir, str(referencia)),
+                os.path.abspath(str(referencia)),
+            )
+            ruta = next((ruta for ruta in candidatos if ruta and os.path.exists(ruta)), None)
+            if not ruta:
+                return None
+            imagen = Image.open(ruta).convert("RGB")
+        imagen.load()
+    except Exception:
+        return None
+
+    if rotacion:
+        imagen = imagen.rotate(rotacion, expand=True)
+    return imagen
+
+
+def _ajustar_imagen_en_caja(image_width, image_height, box_x, box_y, box_width, box_height):
+    if image_width <= 0 or image_height <= 0 or box_width <= 0 or box_height <= 0:
+        return box_x, box_y, 0, 0
+    scale = min(box_width / image_width, box_height / image_height)
+    width = image_width * scale
+    height = image_height * scale
+    x = box_x + (box_width - width) / 2
+    y = box_y + (box_height - height) / 2
+    return x, y, width, height
 
 def draw_comprobante_pagado(
     c,
     nota,
-    x_cm=2,
-    y_cm=6,
-    w_cm=7,
-    h_cm=9,
-    rotacion=0
+    x_cm=1.7,
+    y_cm=7.8,
+    w_cm=7.5,
+    h_cm=7.6,
+    rotacion=0,
+    destino_zoom=None,
 ):
-    """Dibuja el comprobante dentro de la hoja del PDF premium.
+    """Dibuja una vista previa centrada que nunca sale de su caja."""
+    from reportlab.lib.utils import ImageReader
 
-    Antes el comprobante podía no verse porque la posición Y estaba fuera de la página
-    y porque algunas rutas relativas no se encontraban al generar el PDF.
-    """
-
-    ruta_original = nota.get("comprobante")
-    if not ruta_original:
-        return
-
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    candidatos = [
-        ruta_original,
-        os.path.join(BASE_DIR, ruta_original),
-        os.path.abspath(ruta_original),
-    ]
-
-    ruta = next((r for r in candidatos if r and os.path.exists(r)), None)
-    if not ruta:
-        print("⚠ Comprobante no encontrado:", ruta_original)
-        return
-
-    try:
-        img = Image.open(ruta).convert("RGB")
-    except Exception as e:
-        print("⚠ No se pudo abrir comprobante:", e)
-        return
-
-    if rotacion:
-        img = img.rotate(rotacion, expand=True)
-
-    max_w = int(w_cm * 118)
-    max_h = int(h_cm * 118)
-    img.thumbnail((max_w, max_h), Image.LANCZOS)
-
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    img.save(tmp.name, "PNG")
+    img = _abrir_imagen_comprobante(nota, rotacion=rotacion)
+    if img is None:
+        return False
 
     x = x_cm * cm
     y = y_cm * cm
-    w = img.width / 118 * cm
-    h = img.height / 118 * cm
+    width = w_cm * cm
+    height = h_cm * cm
+    inner_x = x + 0.28 * cm
+    inner_y = y + 0.62 * cm
+    inner_width = width - 0.56 * cm
+    inner_height = height - 1.55 * cm
+    image_x, image_y, image_width, image_height = _ajustar_imagen_en_caja(
+        img.width,
+        img.height,
+        inner_x,
+        inner_y,
+        inner_width,
+        inner_height,
+    )
 
     c.saveState()
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.HexColor("#D9C99F"))
+    c.setLineWidth(0.8)
+    c.roundRect(x, y, width, height, 7, fill=1, stroke=1)
     c.setFillColor(colors.HexColor("#2E3A3F"))
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(x, y + h + 0.25*cm, "Comprobante de pago")
+    c.drawCentredString(x + width / 2, y + height - 0.48 * cm, "Comprobante de pago")
     c.drawImage(
-        tmp.name,
-        x,
-        y,
-        width=w,
-        height=h,
+        ImageReader(img),
+        image_x,
+        image_y,
+        width=image_width,
+        height=image_height,
         preserveAspectRatio=True,
-        mask="auto"
+        mask="auto",
     )
+    c.setFont("Helvetica", 7.5)
+    c.setFillColor(colors.HexColor("#6B7280"))
+    footer = "Haz clic para ampliar" if destino_zoom else "Comprobante centrado"
+    c.drawCentredString(x + width / 2, y + 0.24 * cm, footer)
+    if destino_zoom:
+        c.linkRect(
+            "Abrir comprobante ampliado",
+            destino_zoom,
+            Rect=(x, y, x + width, y + height),
+            relative=0,
+            thickness=0,
+        )
     c.restoreState()
+    return True
+
+
+def draw_comprobante_ampliado(c, nota, destino_regreso="detalle_venta"):
+    """Crea una pagina exclusiva para zoom y desplazamiento en el visor PDF."""
+    from reportlab.lib.utils import ImageReader
+
+    width, height = LETTER
+    c.bookmarkPage("comprobante_full")
+    c.setFillColor(colors.HexColor("#F7F4EC"))
+    c.rect(0, 0, width, height, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor("#2E3A3F"))
+    c.setFont("Helvetica-Bold", 17)
+    c.drawCentredString(width / 2, height - 1.35 * cm, "Comprobante de pago")
+    c.setFont("Helvetica", 9)
+    c.setFillColor(colors.HexColor("#6B7280"))
+    c.drawCentredString(
+        width / 2,
+        height - 1.85 * cm,
+        "Amplia esta pagina con el zoom del visor para revisar los detalles.",
+    )
+
+    box_x = 1.4 * cm
+    box_y = 1.8 * cm
+    box_width = width - 2.8 * cm
+    box_height = height - 4.4 * cm
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.HexColor("#D9C99F"))
+    c.roundRect(box_x, box_y, box_width, box_height, 9, fill=1, stroke=1)
+
+    img = _abrir_imagen_comprobante(nota)
+    if img is not None:
+        image_x, image_y, image_width, image_height = _ajustar_imagen_en_caja(
+            img.width,
+            img.height,
+            box_x + 0.4 * cm,
+            box_y + 0.4 * cm,
+            box_width - 0.8 * cm,
+            box_height - 0.8 * cm,
+        )
+        c.drawImage(
+            ImageReader(img),
+            image_x,
+            image_y,
+            width=image_width,
+            height=image_height,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+    else:
+        c.setFillColor(colors.HexColor("#6B7280"))
+        c.setFont("Helvetica", 11)
+        c.drawCentredString(width / 2, height / 2, "No fue posible cargar el comprobante.")
+
+    c.setFillColor(colors.HexColor("#1E7F5C"))
+    c.setFont("Helvetica-Bold", 9)
+    regreso = "Volver a informacion de entrega"
+    c.drawString(1.4 * cm, 0.9 * cm, regreso)
+    c.linkRect(
+        regreso,
+        destino_regreso,
+        Rect=(1.4 * cm, 0.65 * cm, 7.2 * cm, 1.2 * cm),
+        relative=0,
+        thickness=0,
+    )
 
 
 
@@ -298,6 +426,7 @@ def dibujar_premium(canvas, doc):
     nota = doc.nota
 
     width, height = LETTER
+    canvas.bookmarkPage("detalle_venta")
 
     # 🔥 FONDO PREMIUM (AQUÍ)
     draw_fondo_premium(
@@ -321,16 +450,16 @@ def dibujar_premium(canvas, doc):
     draw_bloque_cliente(
         canvas,
         nota,
-        x_cm=12,     # ← mueve libremente
-        y_cm=15,
-        ancho_cm=10
+        x_cm=11.5,
+        y_cm=20.7,
+        ancho_cm=9.2,
     )
 
     # 🔹 bloque de pago (ejemplo)
     draw_bloque_aclaraciones(
         canvas,
         x_cm=10.8,
-        y_cm=7,
+        y_cm=6.6,
         ancho_cm=10
     )
 
@@ -357,11 +486,12 @@ def dibujar_premium(canvas, doc):
     draw_comprobante_pagado(
         canvas,
         nota,
-        x_cm=2.1,     # ← izquierda / derecha
-        y_cm=6.1,     # ← dentro de la hoja, visible
-        w_cm=7.2,     # ← tamaño máximo ancho
-        h_cm=9.0,     # ← tamaño máximo alto
-        rotacion=0
+        x_cm=1.7,
+        y_cm=7.8,
+        w_cm=7.5,
+        h_cm=7.6,
+        rotacion=0,
+        destino_zoom="comprobante_full" if nota.get("comprobante") else None,
     )
 
 
@@ -953,6 +1083,9 @@ def generar_pdf_venta_premium(
             w_cm=10
         )
         draw_texto_inferior_izquierdo(canvas, "722969020608182169   Jorge Ortiz A.", 3, 4.8, 12)
+
+    def dibujar_comprobante(canvas, doc):
+        draw_comprobante_ampliado(canvas, nota)
     
 
     # ================= DOCUMENTO =================
@@ -984,7 +1117,13 @@ def generar_pdf_venta_premium(
         onPage=dibujar_premium  #
     )
 
-    doc.addPageTemplates([template_cotizacion, template_blanco])
+    template_comprobante = PageTemplate(
+        id="comprobante",
+        frames=[frame_blanco],
+        onPage=dibujar_comprobante,
+    )
+
+    doc.addPageTemplates([template_cotizacion, template_blanco, template_comprobante])
 
     # ================= ELEMENTOS =================
     tabla = Table(
@@ -1012,12 +1151,12 @@ def generar_pdf_venta_premium(
         PageBreak(),
         FlowableVacio(),
     ]
+    if nota.get("comprobante"):
+        elements.extend([
+            NextPageTemplate("comprobante"),
+            PageBreak(),
+            FlowableVacio(),
+        ])
     
 
     doc.build(elements)
-
-
-
-
-
-

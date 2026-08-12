@@ -1166,6 +1166,7 @@ class NotificationBellController:
             return
         self.panel = NotificationPanel(self)
         self.panel.update_data(self.resumen, loading=self._refreshing, error=self.error)
+        self.refresh(incluir_oportunidades=False)
 
     def open_full_view(self):
         if self.panel:
@@ -1176,6 +1177,7 @@ class NotificationBellController:
             return
         self.full_view = NotificationsFullView(self)
         self.full_view.update_data(self.resumen, loading=self._refreshing, error=self.error)
+        self.refresh(incluir_oportunidades=False)
 
     def handle_action(self, aviso, accion):
         accion = str(accion or "").upper()

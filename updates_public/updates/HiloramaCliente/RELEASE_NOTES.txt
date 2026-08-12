@@ -1,0 +1,6 @@
+- • Nueva campana de notificaciones operativas.
+- • Alertas de ventas, empaque, guías, envíos, impresión e inventario.
+- • Nuevas oportunidades de venta basadas en el CRM.
+- • Acceso rápido a ventas, clientes y productos.
+- • Mejoras en el flujo de estados de pedidos.
+- • Correcciones de estabilidad y rendimiento.

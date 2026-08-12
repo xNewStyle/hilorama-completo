@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from hilorama_desktop.services import clientes_crm_service as crm
+from hilorama_desktop.services.productos_api_service import ProductosApiError
 from hilorama_desktop.ui import main_window
 from hilorama_desktop.ui.clientes_crm_view import ClientesCrmWindow
 
@@ -165,6 +166,38 @@ class ClientesCrmNavigationTests(unittest.TestCase):
         controller._procesar_resultados_async()
 
         controller._aplicar_resultado_async.assert_not_called()
+
+    def test_401_del_crm_notifica_sesion_expirada_a_ventana_principal(self):
+        class SessionOwner:
+            master = None
+
+            def __init__(self):
+                self.mensaje = None
+
+            def manejar_sesion_expirada(self, mensaje):
+                self.mensaje = mensaje
+
+        owner = SessionOwner()
+        child = SimpleNamespace(master=owner)
+        controller = object.__new__(ClientesCrmWindow)
+        controller.win = child
+
+        manejado = controller._manejar_sesion_expirada(
+            ProductosApiError("No autorizado", status=401)
+        )
+
+        self.assertTrue(manejado)
+        self.assertIn("sesión expiró", owner.mensaje)
+
+    def test_error_de_red_del_crm_no_cierra_sesion(self):
+        controller = object.__new__(ClientesCrmWindow)
+        controller.win = SimpleNamespace(master=None)
+
+        self.assertFalse(
+            controller._manejar_sesion_expirada(
+                ProductosApiError("Backend no disponible", status=None)
+            )
+        )
 
 
 if __name__ == "__main__":

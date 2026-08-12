@@ -65,6 +65,7 @@ entry_vol = None
 entry_buscar = None
 lbl_ganancia = None
 lbl_estado = None
+lbl_resultados = None
 card_total_tonos = None
 card_stock_total = None
 card_stock_bajo = None
@@ -684,6 +685,7 @@ def refrescar_tabla(filtro=None, modo=None):
 
     productos = obtener_productos()
     productos_filtrados = filtrar_productos(productos, filtro=filtro, modo=modo)
+    busqueda_activa = bool(str(filtro or "").strip())
     datos = {}
 
     for p in productos_filtrados:
@@ -691,12 +693,12 @@ def refrescar_tabla(filtro=None, modo=None):
 
     for marca in sorted(datos):
         marca_id = tabla.insert("", "end", text=marca, tags=("marca",))
-        if marca in abiertos:
+        if busqueda_activa or marca in abiertos:
             tabla.item(marca_id, open=True)
 
         for hilo in sorted(datos[marca]):
             hilo_id = tabla.insert(marca_id, "end", text=hilo, tags=("hilo",))
-            if (marca, hilo) in abiertos:
+            if busqueda_activa or (marca, hilo) in abiertos:
                 tabla.item(hilo_id, open=True)
 
             for idx, p in enumerate(datos[marca][hilo]):
@@ -733,6 +735,11 @@ def refrescar_tabla(filtro=None, modo=None):
                 _productos_tabla[item_producto] = dict(p)
 
     actualizar_dashboard(productos_filtrados, productos)
+    if lbl_resultados is not None:
+        texto_resultados = f"{len(productos_filtrados)} resultado"
+        if len(productos_filtrados) != 1:
+            texto_resultados += "s"
+        lbl_resultados.config(text=texto_resultados)
     set_status(f"Vista actual: {len(productos_filtrados)} tonos mostrados • filtro: {modo}")
     actualizar_estilo_botones_filtro()
 
@@ -3287,7 +3294,7 @@ def enfocar_producto(producto_id=None, codigo=None):
 
 def construir_interfaz(parent=None):
     global root, tabla, combo_marca, entry_hilo, entry_color, entry_codigo, entry_barras
-    global entry_stock, entry_vol, entry_buscar, lbl_ganancia, lbl_estado
+    global entry_stock, entry_vol, entry_buscar, lbl_ganancia, lbl_estado, lbl_resultados
     global card_total_tonos, card_stock_total, card_stock_bajo, card_marcas, card_valor_costo, card_valor_venta, card_ganancia
     global btn_todos, btn_bajo, btn_ok, btn_items, var_es_inventariable, buscar_job
 
@@ -3310,9 +3317,9 @@ def construir_interfaz(parent=None):
     except Exception:
         pass
 
-    style.configure("Treeview", rowheight=34, font=("Segoe UI", 10), background="white", fieldbackground="white", borderwidth=0)
-    style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), background="#DDE7F2", foreground="#23374D")
-    style.map("Treeview", background=[("selected", "#D7E7FF")], foreground=[("selected", "black")])
+    style.configure("Almacen.Treeview", rowheight=30, font=("Segoe UI", 10), background="white", fieldbackground="white", borderwidth=0)
+    style.configure("Almacen.Treeview.Heading", font=("Segoe UI", 10, "bold"), background="#DDE7F2", foreground="#23374D")
+    style.map("Almacen.Treeview", background=[("selected", "#D7E7FF")], foreground=[("selected", "black")])
     style.configure("TCombobox", padding=6)
     style.configure("TButton", font=("Segoe UI", 10))
 
@@ -3325,7 +3332,7 @@ def construir_interfaz(parent=None):
     cont = tk.Frame(base, bg="#EEF3F8")
     cont.pack(fill="both", expand=True, padx=10, pady=8)
     cont.grid_columnconfigure(0, weight=1)
-    cont.grid_rowconfigure(2, weight=4)
+    cont.grid_rowconfigure(2, weight=1, minsize=360)
 
     # Dashboard
     frame_cards_1 = tk.Frame(cont, bg="#EEF3F8")
@@ -3353,6 +3360,8 @@ def construir_interfaz(parent=None):
     entry_buscar = tk.Entry(left_tools, width=24, font=("Segoe UI", 10), relief="flat", highlightthickness=1, highlightbackground="#CAD4E0")
     entry_buscar.grid(row=1, column=0, sticky="ew", pady=(4, 0))
     entry_buscar.bind("<KeyRelease>", buscar_diferido)
+    entry_buscar.bind("<FocusIn>", lambda _event: entry_buscar.config(highlightbackground="#2F6FED", highlightcolor="#2F6FED"))
+    entry_buscar.bind("<FocusOut>", lambda _event: entry_buscar.config(highlightbackground="#CAD4E0"))
 
     tk.Button(left_tools, text="Limpiar", command=lambda: (entry_buscar.delete(0, tk.END), refrescar_tabla()), bg="#F4F7FB", fg="#27415D", relief="flat", padx=12, pady=6, cursor="hand2").grid(row=1, column=1, padx=8, pady=(4, 0))
     tk.Button(left_tools, text="Actualizar", command=refrescar_tabla, bg="#2F6FED", fg="white", relief="flat", padx=14, pady=6, cursor="hand2").grid(row=1, column=2, padx=2, pady=(4, 0))
@@ -3450,12 +3459,50 @@ def construir_interfaz(parent=None):
     for i, (txt, cmd, bg, fg) in enumerate(acciones):
         tk.Button(grid_actions, text=txt, command=cmd, bg=bg, fg=fg, relief="flat", width=15, pady=6, cursor="hand2").grid(row=i // 2, column=i % 2, padx=4, pady=4, sticky="we")
 
-    # Tabla principal
+    # Tabla principal: es la zona dominante de trabajo.
     table_card = tk.Frame(cont, bg="white", bd=1, relief="solid")
     table_card.grid(row=2, column=0, sticky="nsew", pady=(0, 3))
 
-    tk.Label(table_card, text="Inventario de almacén", bg="white", fg="#22364D", font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 2))
-    tk.Label(table_card, text="Doble clic sobre color, stock, código de barras, costo, precio o volumétrico para editar. Usa “Item cotización” para paquetes/combos que no deben contar como almacén.", bg="white", fg="#61738F", font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=(0, 8))
+    table_header = tk.Frame(table_card, bg="white")
+    table_header.pack(fill="x", padx=14, pady=(10, 2))
+    tk.Label(table_header, text="Inventario de almacén", bg="white", fg="#22364D", font=("Segoe UI", 14, "bold")).pack(side="left")
+    lbl_resultados = tk.Label(table_header, text="0 resultados", bg="#EAF1FF", fg="#2458B8", font=("Segoe UI", 9, "bold"), padx=10, pady=4)
+    lbl_resultados.pack(side="left", padx=(10, 0))
+
+    herramientas_visibles = tk.BooleanVar(value=False)
+    texto_herramientas = tk.StringVar(value="Mostrar herramientas")
+
+    def alternar_herramientas():
+        visible = not herramientas_visibles.get()
+        herramientas_visibles.set(visible)
+        if visible:
+            form_wrap.grid()
+            texto_herramientas.set("Ocultar herramientas")
+        else:
+            form_wrap.grid_remove()
+            texto_herramientas.set("Mostrar herramientas")
+
+    tk.Button(
+        table_header,
+        textvariable=texto_herramientas,
+        command=alternar_herramientas,
+        bg="#F1F5F9",
+        fg="#27415D",
+        activebackground="#E2E8F0",
+        activeforeground="#1F3A5F",
+        relief="flat",
+        padx=12,
+        pady=6,
+        cursor="hand2",
+    ).pack(side="right")
+    tk.Label(
+        table_card,
+        text="Busca arriba para localizar un tono. Doble clic sobre sus datos para editar.",
+        bg="white",
+        fg="#61738F",
+        font=("Segoe UI", 9),
+        anchor="w",
+    ).pack(fill="x", padx=14, pady=(0, 7))
 
     tabla_wrap = tk.Frame(table_card, bg="white")
     tabla_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 6))
@@ -3467,7 +3514,9 @@ def construir_interfaz(parent=None):
             "Costo", "Precio", "Volumetrico", "Tipo", "Estado",
             "Valor_Costo", "Valor_Venta", "Ganancia"
         ),
-        show="tree headings"
+        show="tree headings",
+        style="Almacen.Treeview",
+        height=16,
     )
 
     tabla.heading("#0", text="Marca")
@@ -3518,6 +3567,9 @@ def construir_interfaz(parent=None):
     tabla.tag_configure("bajo_impar", background="#FFF0F0")
     tabla.tag_configure("item_par", background="#F3F4F6")
     tabla.tag_configure("item_impar", background="#E9EDF3")
+
+    # Alta rápida y acciones siguen disponibles, pero no compiten con el inventario.
+    form_wrap.grid_remove()
 
     footer = tk.Frame(cont, bg="#EEF3F8")
     footer.grid(row=4, column=0, sticky="ew")

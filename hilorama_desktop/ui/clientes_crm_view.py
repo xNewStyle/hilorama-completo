@@ -449,6 +449,8 @@ class ClientesCrmWindow:
         firma = resultado.get("firma")
         if error:
             log_error("hilorama_desktop", "Error al cargar resumen y ranking CRM", error)
+            if self._manejar_sesion_expirada(error):
+                return
             self.estado_carga_var.set("No se pudo cargar. Revise su conexión o sesión.")
             self._mostrar_vacio_detalle("No se pudo cargar el CRM de clientas. Puede intentarlo nuevamente.")
             if self._recarga_pendiente:
@@ -486,6 +488,8 @@ class ClientesCrmWindow:
         error = resultado.get("error")
         if error:
             log_error("hilorama_desktop", f"Error al cargar ficha CRM de clienta {cliente_id}", error)
+            if self._manejar_sesion_expirada(error):
+                return
             if self._cliente_seleccionado_id() == cliente_id:
                 self._mostrar_vacio_detalle("No se pudo cargar la ficha de la clienta. Inténtelo nuevamente.")
             return
@@ -507,6 +511,8 @@ class ClientesCrmWindow:
         error = resultado.get("error")
         if error:
             log_error("hilorama_desktop", f"Error al cargar historial CRM de clienta {cliente_id}", error)
+            if self._manejar_sesion_expirada(error):
+                return
             for ventana in ventanas:
                 self._mostrar_error_historial(ventana, "No se pudo cargar el historial de compras.")
             return
@@ -523,6 +529,8 @@ class ClientesCrmWindow:
         error = resultado.get("error")
         if error:
             log_error("hilorama_desktop", "Error al cargar gráficas CRM", error)
+            if self._manejar_sesion_expirada(error):
+                return
             for ventana in ventanas:
                 ventana.mostrar_error("No se pudieron cargar las gráficas. Revise su conexión o sesión.")
             return
@@ -531,6 +539,21 @@ class ClientesCrmWindow:
         log_info("hilorama_desktop", f"CRM gráficas: {segundos:.3f}s")
         for ventana in ventanas:
             ventana.cargar_datos(graficas)
+
+    def _manejar_sesion_expirada(self, error):
+        if getattr(error, "status", None) != 401:
+            return False
+
+        current = self.win
+        seen = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            handler = getattr(current, "manejar_sesion_expirada", None)
+            if callable(handler):
+                handler("La sesión expiró. Cierra y vuelve a iniciar sesión.")
+                return True
+            current = getattr(current, "master", None)
+        return False
 
     def _mostrar_resumen(self, resumen):
         self.metricas_vars["total_clientas"].set(str(resumen.get("total_clientas", 0)))

@@ -43,6 +43,38 @@ def requiere_guia_envio(nota):
     return bool((nota or {}).get("requiere_guia", True))
 
 
+def estado_operativo_envio(nota):
+    """Devuelve una etiqueta visual sin crear estados comerciales nuevos."""
+    nota = nota or {}
+    estado = normalizar_estado_envio(nota.get("estado"))
+    if estado == "ENVIADO":
+        return "ENVIADO"
+    if estado == "COMPLETA":
+        if requiere_guia_envio(nota) and not guia_envio(nota):
+            return "PENDIENTE DE GUÍA"
+        return "LISTO PARA ENVIAR"
+    return estado or "SIN ESTADO"
+
+
+def resumir_panel_envios(notas):
+    resumen = {
+        "visibles": 0,
+        "pendientes_guia": 0,
+        "listas_enviar": 0,
+        "enviadas": 0,
+    }
+    for nota in list(notas or []):
+        resumen["visibles"] += 1
+        situacion = estado_operativo_envio(nota)
+        if situacion == "PENDIENTE DE GUÍA":
+            resumen["pendientes_guia"] += 1
+        elif situacion == "LISTO PARA ENVIAR":
+            resumen["listas_enviar"] += 1
+        elif situacion == "ENVIADO":
+            resumen["enviadas"] += 1
+    return resumen
+
+
 def coincide_filtro_envio(nota, filtro):
     estado = normalizar_estado_envio((nota or {}).get("estado"))
     tiene_guia = bool(guia_envio(nota or {}))

@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 
 os.environ.setdefault("HILORAMA_DATA_MODE", "api")
 
+import main_ventas as ventas
 import ver_cotizaciones as visor
 from hilorama_backend import app as backend
 
@@ -193,6 +194,77 @@ class StockAutorizacionDesktopTests(unittest.TestCase):
                     visor._pedir_autorizacion_stock_si_necesaria(None, [_linea(cantidad=11)]),
                     (False, None, afectado),
                 )
+
+
+class VentasCarritoProductoTests(unittest.TestCase):
+    def setUp(self):
+        self.productos_originales = ventas.productos_cache
+        self.carrito_original = ventas.carrito
+        ventas.productos_cache = [
+            {
+                "id": 701,
+                "codigo": "7",
+                "marca": "OTRO",
+                "hilo": "DUPLICADO",
+                "color": "NEGRO",
+                "precio": 99,
+                "stock": 1,
+            },
+            {
+                "id": 708,
+                "codigo": "7",
+                "marca": "OJO",
+                "hilo": "OJO 7",
+                "color": "BLANCO",
+                "precio": None,
+                "precio_venta": 37.5,
+                "stock": 0,
+            },
+            {
+                "id": 808,
+                "codigo": "8",
+                "marca": "OJO",
+                "hilo": "OJO 8",
+                "color": "BLANCO",
+                "precio": None,
+                "venta": 0,
+                "stock": 0,
+            },
+        ]
+        ventas.carrito = []
+
+    def tearDown(self):
+        ventas.productos_cache = self.productos_originales
+        ventas.carrito = self.carrito_original
+
+    def test_precio_none_usa_precio_venta_sin_tronar(self):
+        agregado = ventas.agregar_al_carrito({
+            "producto_id": 708,
+            "codigo": "7",
+            "cantidad": 1,
+        })
+        self.assertTrue(agregado)
+        self.assertEqual(ventas.carrito[0]["producto_id"], 708)
+        self.assertEqual(ventas.carrito[0]["precio"], 37.5)
+
+    def test_item_sin_precio_directo_admite_precio_cero_editable(self):
+        agregado = ventas.agregar_al_carrito({
+            "producto_id": 808,
+            "codigo": "8",
+            "cantidad": 1,
+        })
+        self.assertTrue(agregado)
+        self.assertEqual(ventas.carrito[0]["precio"], 0.0)
+
+    def test_producto_id_gana_ante_codigo_duplicado_en_carrito(self):
+        agregado = ventas.agregar_al_carrito({
+            "producto_id": 708,
+            "codigo": "7",
+            "cantidad": 1,
+        })
+        self.assertTrue(agregado)
+        self.assertEqual(ventas.carrito[0]["producto_id"], 708)
+        self.assertEqual(ventas.carrito[0]["marca"], "OJO")
 
 
 class StockAutorizacionBackendTests(unittest.TestCase):

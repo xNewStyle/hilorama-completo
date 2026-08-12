@@ -12,8 +12,10 @@ from hilorama_desktop.services import envios_api_service
 from hilorama_desktop.services.envios_presentacion import (
     buscar_envios,
     clasificar_seleccion_envios,
+    estado_operativo_envio,
     filtrar_envios,
     formatear_fecha_envio,
+    resumir_panel_envios,
     resumir_seleccion_envios,
 )
 
@@ -110,6 +112,20 @@ class EnviosPresentacionTests(unittest.TestCase):
             },
         )
 
+    def test_estado_visual_y_resumen_no_crean_estados_comerciales(self):
+        self.assertEqual(estado_operativo_envio(self.pendiente), "PENDIENTE DE GUÍA")
+        self.assertEqual(estado_operativo_envio(self.lista), "LISTO PARA ENVIAR")
+        self.assertEqual(estado_operativo_envio(self.enviada), "ENVIADO")
+        self.assertEqual(
+            resumir_panel_envios([self.pendiente, self.lista, self.local, self.enviada]),
+            {
+                "visibles": 4,
+                "pendientes_guia": 1,
+                "listas_enviar": 2,
+                "enviadas": 1,
+            },
+        )
+
     def test_busqueda_no_modifica_datos(self):
         original = [dict(nota) for nota in self.notas]
         self.assertEqual(
@@ -145,7 +161,8 @@ class EnviosPresentacionTests(unittest.TestCase):
     def test_panel_muestra_estado_fecha_y_detalle(self):
         source = _function_source("_abrir_panel_envios_api")
         for texto in (
-            '"Estado": "Estado"',
+            '"Estado": "Estado actual"',
+            '"Situacion": "Situación de envío"',
             '"FechaEnvio": "Fecha de envío"',
             "Fecha de guía:",
             "Tipo de entrega:",
@@ -154,6 +171,20 @@ class EnviosPresentacionTests(unittest.TestCase):
             "Observaciones:",
         ):
             self.assertIn(texto, source)
+
+    def test_panel_local_usa_la_misma_jerarquia_visual(self):
+        source = _function_source("_abrir_panel_envios_local")
+        for texto in (
+            'text="Gestión de Envíos"',
+            '"Estado": "Estado actual"',
+            '"Situacion": "Situación de envío"',
+            '"FechaEnvio": "Fecha de envío"',
+            '"Pendientes de guía"',
+            '"Listos para enviar"',
+            '"Enviados"',
+        ):
+            self.assertIn(texto, source)
+        self.assertNotIn("Ver estados avanzados", source)
 
     def test_asignar_guia_rechaza_seleccion_multiple(self):
         source = _function_source("_abrir_panel_envios_api")

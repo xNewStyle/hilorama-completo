@@ -1,5 +1,9 @@
+from dataclasses import dataclass
+from ipaddress import ip_address
+import os
 import socket
 import textwrap
+import time
 import unicodedata
 from PIL import Image, ImageDraw, ImageFont
 import barcode
@@ -9,6 +13,7 @@ import qrcode
 
 PRINTER_IP = "192.168.100.6"
 PRINTER_PORT = 9100
+PRINTER_TIMEOUT = 8.0
 
 # ==================================================
 # TAMAÑO HORIZONTAL REAL (150mm ancho x 100mm alto)
@@ -17,11 +22,114 @@ ANCHO = 1200
 ALTO = 800
 
 
+class ImpresionError(RuntimeError):
+    def __init__(self, mensaje, *, etapa="desconocida", tipo="error_impresion"):
+        super().__init__(mensaje)
+        self.etapa = etapa
+        self.tipo = tipo
+
+
+@dataclass(frozen=True)
+class ResultadoImpresion:
+    bytes_enviados: int
+    tiempo_conexion_ms: float
+    tiempo_envio_ms: float
+    sendall_completo: bool
+    socket_cerrado: bool
+
+
+def _configuracion_impresora():
+    host = os.environ.get("HILORAMA_PRINTER_IP", PRINTER_IP).strip() or PRINTER_IP
+    try:
+        direccion = ip_address(host)
+        if direccion.version != 4:
+            raise ValueError
+    except ValueError as exc:
+        raise ImpresionError(
+            "La IP configurada para la impresora no es valida.",
+            etapa="configuracion",
+            tipo="ip_invalida",
+        ) from exc
+
+    try:
+        port = int(os.environ.get("HILORAMA_PRINTER_PORT", PRINTER_PORT))
+        if not 1 <= port <= 65535:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise ImpresionError(
+            "El puerto configurado para la impresora no es valido.",
+            etapa="configuracion",
+            tipo="puerto_invalido",
+        )
+    try:
+        timeout = float(os.environ.get("HILORAMA_PRINTER_TIMEOUT", PRINTER_TIMEOUT))
+        if timeout <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise ImpresionError(
+            "El tiempo de espera configurado para la impresora no es valido.",
+            etapa="configuracion",
+            tipo="timeout_invalido",
+        )
+    return host, port, max(1.0, timeout)
+
+
 def enviar_a_impresora(data):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((PRINTER_IP, PRINTER_PORT))
-    s.send(data)
-    s.close()
+    if not isinstance(data, (bytes, bytearray)) or not data:
+        raise ImpresionError(
+            "No hay datos validos para enviar a la impresora.",
+            etapa="validacion",
+            tipo="documento_invalido",
+        )
+
+    host, port, timeout = _configuracion_impresora()
+    conexion = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conexion.settimeout(timeout)
+    inicio_conexion = time.perf_counter()
+    tiempo_conexion_ms = 0.0
+    tiempo_envio_ms = 0.0
+    etapa = "conexion"
+    try:
+        conexion.connect((host, port))
+        tiempo_conexion_ms = (time.perf_counter() - inicio_conexion) * 1000
+        etapa = "envio"
+        inicio_envio = time.perf_counter()
+        conexion.sendall(data)
+        tiempo_envio_ms = (time.perf_counter() - inicio_envio) * 1000
+    except ConnectionRefusedError as exc:
+        raise ImpresionError(
+            "La impresora rechazo la conexion. Verifica que este encendida y conectada a la red.",
+            etapa=etapa,
+            tipo="conexion_rechazada",
+        ) from exc
+    except socket.timeout as exc:
+        raise ImpresionError(
+            "La impresora no respondio a tiempo. Verifica su conexion antes de reintentar.",
+            etapa=etapa,
+            tipo="timeout",
+        ) from exc
+    except OSError as exc:
+        mensaje = (
+            "La conexion con la impresora se perdio durante el envio. "
+            "Verifica si la etiqueta salio antes de reintentar."
+            if etapa == "envio"
+            else "No se pudo comunicar con la impresora. Revisa la red y la configuracion local."
+        )
+        raise ImpresionError(
+            mensaje,
+            etapa=etapa,
+            tipo="conexion_perdida" if etapa == "envio" else "error_red",
+        ) from exc
+    finally:
+        conexion.close()
+
+    return ResultadoImpresion(
+        bytes_enviados=len(data),
+        tiempo_conexion_ms=round(tiempo_conexion_ms, 3),
+        tiempo_envio_ms=round(tiempo_envio_ms, 3),
+        sendall_completo=True,
+        socket_cerrado=True,
+    )
 
 
 # ==================================================

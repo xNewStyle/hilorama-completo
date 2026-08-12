@@ -19,7 +19,9 @@ except ImportError:
 
 
 class ProductosApiError(Exception):
-    pass
+    def __init__(self, mensaje, status=None):
+        super().__init__(mensaje)
+        self.status = status
 
 
 _CACHE_VISUAL_TTL_SEGUNDOS = 180
@@ -419,7 +421,7 @@ def _call_api(accion, endpoint, callback):
     except RenderApiError as exc:
         mensaje = _mensaje_controlado(exc)
         _registrar_diagnostico_api(accion, endpoint, api, session, exc, mensaje)
-        raise ProductosApiError(mensaje) from exc
+        raise ProductosApiError(mensaje, status=exc.status) from exc
     except Exception as exc:
         log_error(
             "hilorama_desktop",

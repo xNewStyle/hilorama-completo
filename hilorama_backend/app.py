@@ -361,12 +361,31 @@ def _cliente_permitido(row):
     if row.get("sesion_estado") == "bloqueada":
         return False, "bloqueado", "Sesion bloqueada."
     estado = row.get("cliente_estado") or row.get("estado")
-    if estado in ESTADOS_CLIENTE_BLOQUEO:
+    rol = str(row.get("rol") or "").strip().lower()
+    admin_con_licencia_vencida = rol == "super_admin" and estado == "vencido"
+    if estado in ESTADOS_CLIENTE_BLOQUEO and not admin_con_licencia_vencida:
         return False, estado, f"Licencia {estado}."
     fecha_vencimiento = row.get("fecha_vencimiento")
-    if fecha_vencimiento and fecha_vencimiento < date.today():
+    if rol != "super_admin" and fecha_vencimiento and fecha_vencimiento < date.today():
         return False, "vencido", "Licencia vencida."
     return True, "activo", "Acceso permitido."
+
+
+def _cerrar_sesiones_previas_login(conn, cliente_id, usuario_id, device_id_hash, ttl_hours):
+    conn.execute("""
+        UPDATE sesiones_activas
+        SET estado='cerrada', updated_at=NOW()
+        WHERE cliente_id=%s
+          AND estado IN ('activa','bloqueada')
+          AND created_at < NOW() - (%s * INTERVAL '1 hour')
+    """, (cliente_id, ttl_hours))
+    conn.execute("""
+        UPDATE sesiones_activas
+        SET estado='cerrada', updated_at=NOW()
+        WHERE usuario_id=%s
+          AND device_id_hash=%s
+          AND estado IN ('activa','bloqueada')
+    """, (usuario_id, device_id_hash))
 
 
 def _respuesta_sesion(row, token=None, permitido=True, estado="activo", mensaje="Acceso permitido."):
@@ -398,6 +417,7 @@ def api_auth_login():
     password = data.get("password") or ""
     device_id_hash = data.get("device_id_hash") or ""
     modulo_actual = data.get("modulo_actual") or "desktop"
+    ttl_hours = int(os.environ.get("HILORAMA_SESSION_TTL_HOURS", "8"))
 
     if not usuario or not password or not device_id_hash:
         return jsonify({"permitido": False, "estado": "rechazado", "mensaje": "Datos incompletos"}), 400
@@ -460,7 +480,12 @@ def api_auth_login():
                 WHERE cliente_id=%s AND estado='activo'
             """, (row["cliente_id"],)).fetchone()["total"]
             if total >= row["max_dispositivos"]:
-                return _respuesta_sesion(row, permitido=False, estado="bloqueado", mensaje="Limite de dispositivos alcanzado."), 403
+                return _respuesta_sesion(
+                    row,
+                    permitido=False,
+                    estado="bloqueado",
+                    mensaje="Limite de equipos autorizados alcanzado. No corresponde a sesiones abiertas.",
+                ), 403
             conn.execute("""
                 INSERT INTO dispositivos_autorizados (
                     cliente_id, usuario_id, device_id_hash, nombre_equipo,
@@ -491,6 +516,13 @@ def api_auth_login():
                 dispositivo["id"],
             ))
 
+        _cerrar_sesiones_previas_login(
+            conn,
+            row["cliente_id"],
+            row["usuario_id"],
+            device_id_hash,
+            ttl_hours,
+        )
         token = secrets.token_urlsafe(32)
         conn.execute("""
             INSERT INTO sesiones_activas (
@@ -4041,18 +4073,12 @@ def api_cliente_historial_compras(cliente_id):
 # ================= CAMPANA DE NOTIFICACIONES =================
 ESTADOS_NOTIFICACIONES_NOTAS = (
     "COTIZACION",
-    "COTIZACION_PENDIENTE",
-    "VENTA",
     "VENTA_PENDIENTE",
     "PAGADA",
     "EN_PROCESO",
     "INCOMPLETA",
     "COMPLETA",
     "ENVIADO",
-    "ANULADA",
-    "CANCELADA",
-    "ELIMINADA",
-    "ARCHIVADA",
 )
 CATEGORIAS_OPORTUNIDAD_NOTIFICACION = {
     "PROXIMA_COMPRA",
@@ -4254,7 +4280,7 @@ def _consultar_controles_notificaciones_api(conn):
 
 
 def _cliente_ids_con_pendiente_notificaciones(notas):
-    estados = {"COTIZACION", "COTIZACION_PENDIENTE", "VENTA", "VENTA_PENDIENTE"}
+    estados = {"COTIZACION", "VENTA_PENDIENTE"}
     return {
         nota.get("cliente_id")
         for nota in notas

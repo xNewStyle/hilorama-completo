@@ -1,0 +1,18 @@
+{
+  "app": "HiloramaCliente",
+  "latest_version": "0.2.7-fase3",
+  "min_required_version": "0.2.7-fase3",
+  "download_url": "https://github.com/xNewStyle/hilorama-completo/releases/latest/download/HiloramaCliente.exe",
+  "sha256": "923384a6ccdb89a3def482f7dc58cb0df1deb82bd89a2be1f3d3401561a8df49",
+  "size_bytes": 95054643,
+  "mandatory": false,
+  "notes": [
+    "• Nueva campana de notificaciones operativas.",
+    "• Alertas de ventas, empaque, guías, envíos, impresión e inventario.",
+    "• Nuevas oportunidades de venta basadas en el CRM.",
+    "• Acceso rápido a ventas, clientes y productos.",
+    "• Mejoras en el flujo de estados de pedidos.",
+    "• Correcciones de estabilidad y rendimiento."
+  ],
+  "published_at": "2026-07-14T03:01:04Z"
+}

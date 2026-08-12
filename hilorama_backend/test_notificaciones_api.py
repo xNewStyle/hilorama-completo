@@ -97,8 +97,24 @@ class NotificacionesApiTests(unittest.TestCase):
             {"cliente_id": 10, "estado": "COTIZACION"},
             {"cliente_id": 11, "estado": "VENTA_PENDIENTE"},
             {"cliente_id": 12, "estado": "PAGADA"},
+            {"cliente_id": 13, "estado": "COTIZACION_PENDIENTE"},
+            {"cliente_id": 14, "estado": "VENTA"},
         ])
         self.assertEqual(ids, {10, 11})
+
+    def test_consulta_de_notas_usa_solo_estados_actuales(self):
+        self.assertEqual(
+            backend.ESTADOS_NOTIFICACIONES_NOTAS,
+            (
+                "COTIZACION",
+                "VENTA_PENDIENTE",
+                "PAGADA",
+                "EN_PROCESO",
+                "INCOMPLETA",
+                "COMPLETA",
+                "ENVIADO",
+            ),
+        )
 
     def test_consulta_de_resumen_no_contiene_escrituras_ni_ddl(self):
         funciones = (
