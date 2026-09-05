@@ -25,7 +25,7 @@ from envios_config import (
     formatear_resumen_envio,
     requiere_precio_manual,
 )
-from pedidos import listar_pedidos
+from pedidos import listar_pedidos, obtener_pedido
 from ventas_logic import calcular_volumetrico_total
 from generar_pdf_venta_premium import generar_pdf_venta_premium
 import customtkinter as ctk
@@ -68,6 +68,38 @@ ACCION_NO_DISPONIBLE_API = "Esta acción todavía no está disponible en modo AP
 
 def _modo_api():
     return os.environ.get("HILORAMA_DATA_MODE", HILORAMA_DATA_MODE).strip().lower() == "api"
+
+
+def _nota_con_fechas_pedido_para_pdf(nota):
+    nota_pdf = dict(nota or {})
+    numero_pedido = str(nota_pdf.get("pedido") or "").strip()
+    if not numero_pedido:
+        return nota_pdf
+
+    pedido = obtener_pedido(numero_pedido)
+    if not pedido:
+        raise LookupError(f"No se encontraron las fechas del pedido #{numero_pedido}.")
+
+    desde = pedido.get("desde") or pedido.get("fecha_inicio")
+    hasta = pedido.get("hasta") or pedido.get("fecha_fin")
+    if not desde or not hasta:
+        raise ValueError(f"El pedido #{numero_pedido} no tiene un rango de fechas completo.")
+
+    nota_pdf["pedido_desde"] = desde
+    nota_pdf["pedido_hasta"] = hasta
+    return nota_pdf
+
+
+def _preparar_nota_pdf_o_mostrar_error(nota, parent=None):
+    try:
+        return _nota_con_fechas_pedido_para_pdf(nota)
+    except Exception as exc:
+        messagebox.showerror(
+            "Fecha del pedido",
+            f"No se pudo obtener la fecha actual del pedido.\n\n{exc}",
+            parent=parent,
+        )
+        return None
 
 
 def _bloquear_accion_api(parent=None):
@@ -1354,9 +1386,12 @@ def exportar_pdf_venta_premium(tree, win):
     os.makedirs(carpeta, exist_ok=True)
 
     ruta_pdf = os.path.join(carpeta, f"{id_nota}_premium.pdf")
+    nota_pdf = _preparar_nota_pdf_o_mostrar_error(nota, win)
+    if nota_pdf is None:
+        return
 
     generar_pdf_venta_premium(
-        nota,
+        nota_pdf,
         ruta_pdf,
         ruta_logo="logo_hilorama.png"
     )
@@ -1408,9 +1443,12 @@ def exportar_pdf_venta_premium_desde_lista(tree, win):
         carpeta,
         f"{nota['id']}_premium.pdf"
     )
+    nota_pdf = _preparar_nota_pdf_o_mostrar_error(nota, win)
+    if nota_pdf is None:
+        return
 
     generar_pdf_venta_premium(
-        nota,
+        nota_pdf,
         ruta_pdf,
         ruta_logo="logo_hilorama.png"
     )
@@ -1454,10 +1492,13 @@ def exportar_imagen_cotizacion_desde_lista(tree, win):
         carpeta,
         f"{id_nota}.pdf"
     )
+    nota_pdf = _preparar_nota_pdf_o_mostrar_error(nota, win)
+    if nota_pdf is None:
+        return
 
     # 🔴 SIEMPRE generar antes de abrir
     generar_pdf_cotizacion(
-        nota,
+        nota_pdf,
         ruta_pdf,
         ruta_logo="logo_hilorama.png"
     )
@@ -1484,9 +1525,12 @@ def exportar_pdf_cotizacion(id_nota):
     os.makedirs(carpeta, exist_ok=True)
 
     ruta_pdf = os.path.join(carpeta, f"{id_nota}.pdf")
+    nota_pdf = _preparar_nota_pdf_o_mostrar_error(nota)
+    if nota_pdf is None:
+        return
 
     generar_pdf_cotizacion(
-        nota,
+        nota_pdf,
         ruta_pdf,
         ruta_logo="logo_hilorama.png"  # si tienes logo
     )

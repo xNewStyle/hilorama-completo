@@ -13,7 +13,9 @@ import envios_config
 import generar_pdf_venta_premium
 import notas
 import pdf_cotizacion
+import ver_cotizaciones
 from hilorama_desktop.services import notas_api_service
+from reportlab.lib.units import cm
 
 
 class _CanvasSpy:
@@ -127,10 +129,45 @@ class PedidoEnvioPdfTests(unittest.TestCase):
         for modulo in (pdf_cotizacion, generar_pdf_venta_premium):
             with self.subTest(modulo=modulo.__name__):
                 canvas = _CanvasSpy()
-                modulo.draw_info_cliente_envio_fechas(canvas, "2026-09-04")
+                modulo.draw_info_cliente_envio_fechas(
+                    canvas,
+                    "2026-09-07",
+                    "2026-09-09",
+                    x_cm=13,
+                    ancho_cm=16,
+                )
                 self.assertEqual(len(canvas.cajas), 1)
                 self.assertIn("FECHA ESTIMADA DE ENVÍO", canvas.textos)
-                self.assertIn("04/09/2026 - 06/09/2026", canvas.textos)
+                self.assertIn("07/09/2026 - 09/09/2026", canvas.textos)
+                x, _y, ancho, _alto, *_ = canvas.cajas[0]
+                self.assertLessEqual(x + ancho, (19.15 * cm) + 0.01)
+
+    def test_pdf_consulta_las_fechas_actuales_del_pedido(self):
+        nota = {
+            "id": "COT-0582",
+            "pedido": 40,
+            "fecha": "2026-09-04",
+            "items": [],
+        }
+        pedido = {
+            "numero": 40,
+            "desde": "2026-09-07",
+            "hasta": "2026-09-09",
+        }
+        with patch.object(ver_cotizaciones, "obtener_pedido", return_value=pedido) as obtener:
+            preparada = ver_cotizaciones._nota_con_fechas_pedido_para_pdf(nota)
+
+        obtener.assert_called_once_with("40")
+        self.assertEqual(preparada["pedido_desde"], "2026-09-07")
+        self.assertEqual(preparada["pedido_hasta"], "2026-09-09")
+        self.assertEqual(preparada["fecha"], "2026-09-04")
+        self.assertNotIn("pedido_desde", nota)
+
+    def test_pdf_no_reutiliza_fecha_de_nota_si_falta_el_pedido(self):
+        nota = {"id": "COT-0582", "pedido": 40, "fecha": "2026-09-04"}
+        with patch.object(ver_cotizaciones, "obtener_pedido", return_value=None):
+            with self.assertRaisesRegex(LookupError, "pedido #40"):
+                ver_cotizaciones._nota_con_fechas_pedido_para_pdf(nota)
 
     def test_ambos_pdf_escriben_envio_gratis_sin_precio_cero(self):
         for modulo in (pdf_cotizacion, generar_pdf_venta_premium):

@@ -9,7 +9,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from reportlab.platypus import Spacer, Table, Flowable
-from envios_config import es_envio_gratis
+from envios_config import es_envio_gratis, formatear_rango_fecha_envio
 
 class FlowableVacio(Flowable):
     def draw(self):
@@ -781,42 +781,25 @@ def draw_info_cliente_envio(
     tabla.wrapOn(c, w, 2*cm)
     tabla.drawOn(c, x, y)
 
-from datetime import datetime, timedelta
 from reportlab.platypus import Table, TableStyle
 
 
 def draw_info_cliente_envio_fechas(
     c,
-    fecha_base,
+    fecha_desde,
+    fecha_hasta=None,
     x_cm=3,
     y_cm=19,
     ancho_cm=14
 ):
-
-    rango = ""
-
-    if fecha_base:
-        try:
-            fecha_base = str(fecha_base).split(" ")[0]
-
-            # 🔥 Detectar formato automáticamente
-            if "-" in fecha_base:
-                f = datetime.strptime(fecha_base, "%Y-%m-%d")
-            else:
-                f = datetime.strptime(fecha_base, "%d/%m/%Y")
-
-            entrega = f + timedelta(days=2)
-
-            rango = f"{f.strftime('%d/%m/%Y')} - {entrega.strftime('%d/%m/%Y')}"
-
-        except Exception as e:
-            print("Error fecha:", e)
-            rango = fecha_base
+    rango = formatear_rango_fecha_envio(fecha_desde, fecha_hasta)
 
     x = x_cm * cm
     y = y_cm * cm
-    margen_derecho = 1.4 * cm
-    w = min(ancho_cm * cm, max(LETTER[0] - x - margen_derecho, 5.8 * cm))
+    limite_interior_derecho = 19.15 * cm
+    w = min(ancho_cm * cm, max(limite_interior_derecho - x, 0))
+    if w <= 0:
+        return
     h = 1.55 * cm
 
     c.saveState()
@@ -830,8 +813,12 @@ def draw_info_cliente_envio_fechas(
     c.drawCentredString(x + (w / 2), y + 1.02 * cm, "FECHA ESTIMADA DE ENVÍO")
 
     c.setFillColor(colors.HexColor("#1F2937"))
-    c.setFont("Helvetica-Bold", 13)
-    c.drawCentredString(x + (w / 2), y + 0.38 * cm, rango or "Por confirmar")
+    tamano = 13.0
+    ancho_texto = max(w - (0.6 * cm), 1)
+    while tamano > 9.5 and pdfmetrics.stringWidth(rango, "Helvetica-Bold", tamano) > ancho_texto:
+        tamano -= 0.25
+    c.setFont("Helvetica-Bold", tamano)
+    c.drawCentredString(x + (w / 2), y + 0.38 * cm, rango)
     c.restoreState()
 
 
@@ -1074,7 +1061,17 @@ def generar_pdf_venta_premium(
         draw_info_nota(canvas, nota["id"], nota.get("cliente_id", ""), 11, 23.8, 5.8)
         draw_info_cliente_envio(canvas, nota.get("cliente_nombre",""),
                                  nota.get("envio",{}).get("paqueteria",""), 3, 17.9, 6.5)
-        draw_info_cliente_envio_fechas(canvas, nota.get("fecha",""), 13, 17.9, 16)
+        draw_info_cliente_envio_fechas(
+            canvas,
+            (
+                nota.get("pedido_desde")
+                or (nota.get("fecha", "") if not nota.get("pedido") else "")
+            ),
+            nota.get("pedido_hasta"),
+            13,
+            17.9,
+            16,
+        )
 
         draw_texto_elegante(canvas, "¡Gracias por elegirnos!", 16.4, 30)
         draw_marca_agua(canvas, width, height, "marca_agua.png", 1.1, 0, -3, 0.08)

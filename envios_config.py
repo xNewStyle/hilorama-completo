@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import date, datetime, timedelta
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ARCHIVO_ENVIOS = os.path.join(BASE_DIR, "envios_config.json")
@@ -65,6 +66,41 @@ def formatear_resumen_envio(envio, predeterminado="-"):
     paqueteria = str(envio.get("paqueteria") or envio.get("tipo") or "").strip()
     costo = formatear_costo_envio(envio)
     return f"{paqueteria} | {costo}" if paqueteria else costo
+
+
+def _fecha_calendario(valor):
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+
+    for formato in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(texto[:10], formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def formatear_rango_fecha_envio(fecha_desde, fecha_hasta=None):
+    """Presenta las fechas reales del pedido para cotizaciones y ventas."""
+    desde = _fecha_calendario(fecha_desde)
+    if desde is None:
+        return "Por confirmar"
+
+    if fecha_hasta not in (None, ""):
+        hasta = _fecha_calendario(fecha_hasta)
+        if hasta is None or hasta < desde:
+            return "Por confirmar"
+    else:
+        # Compatibilidad con notas historicas sin pedido asociado.
+        hasta = desde + timedelta(days=2)
+
+    return f"{desde.strftime('%d/%m/%Y')} - {hasta.strftime('%d/%m/%Y')}"
 
 
 def calcular_envio(paqueteria, volumetrico_total):
