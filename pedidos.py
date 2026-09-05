@@ -52,6 +52,9 @@ def crear_pedido(numero, desde, hasta):
     conn = _get_conn()
     desde_date = datetime.strptime(desde, "%d/%m/%Y").date()
     hasta_date = datetime.strptime(hasta, "%d/%m/%Y").date()
+    if hasta_date < desde_date:
+        conn.close()
+        raise ValueError("La fecha Hasta no puede ser anterior a Desde.")
 
     existente = conn.execute("""
         SELECT numero
@@ -71,6 +74,39 @@ def crear_pedido(numero, desde, hasta):
     conn.commit()
     conn.close()
 
+    return {
+        "numero": numero,
+        "desde": desde,
+        "hasta": hasta,
+        "fecha_inicio": desde,
+        "fecha_fin": hasta,
+    }
+
+
+def actualizar_pedido(numero, desde, hasta):
+    if _modo_api():
+        return _pedidos_api().actualizar_pedido(numero, desde, hasta)
+
+    desde_date = datetime.strptime(desde, "%d/%m/%Y").date()
+    hasta_date = datetime.strptime(hasta, "%d/%m/%Y").date()
+    if hasta_date < desde_date:
+        raise ValueError("La fecha Hasta no puede ser anterior a Desde.")
+
+    conn = _get_conn()
+    existente = conn.execute(
+        "SELECT numero FROM pedidos WHERE numero=%s",
+        (numero,),
+    ).fetchone()
+    if not existente:
+        conn.close()
+        raise LookupError("Pedido no encontrado.")
+
+    conn.execute(
+        "UPDATE pedidos SET desde=%s, hasta=%s WHERE numero=%s",
+        (desde_date, hasta_date, numero),
+    )
+    conn.commit()
+    conn.close()
     return {
         "numero": numero,
         "desde": desde,

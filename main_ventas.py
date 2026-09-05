@@ -31,7 +31,7 @@ import customtkinter as ctk
 from PIL import Image
 import os
 import threading
-from pedidos import crear_pedido, listar_pedidos
+from pedidos import actualizar_pedido, crear_pedido, listar_pedidos
 import calendar
 from datetime import datetime
 from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido, activar_pedido
@@ -2794,29 +2794,65 @@ def configurar_pedido():
 
     from pedido_estado import cargar_pedido
 
-    # =================================================
-    # 🔵 VALIDAR PEDIDO ACTIVO (ANTES DE ABRIR VENTANA)
-    # =================================================
     pedido_existente = cargar_pedido()
+    editar_existente = False
 
     if pedido_existente:
         if not pedir_password():
             return
 
-        if not messagebox.askyesno(
+        crear_nuevo = messagebox.askyesnocancel(
             "Pedido activo",
-            "⚠️ Ya existe un pedido en curso.\n\n¿Deseas crear uno nuevo?"
-        ):
+            (
+                f"Ya existe el pedido #{pedido_existente.get('numero')}.\n\n"
+                "Si: crear un pedido nuevo.\n"
+                "No: actualizar las fechas del pedido actual.\n"
+                "Cancelar: no hacer cambios."
+            ),
+        )
+        if crear_nuevo is None:
             return
+        editar_existente = not crear_nuevo
 
-    # =================================================
-    # 🔵 AHORA SÍ → CREAR VENTANA
-    # =================================================
     hoy = datetime.now()
     anio_actual = hoy.year
 
+    def normalizar_fecha(valor, predeterminada):
+        if valor is None:
+            return predeterminada
+        if hasattr(valor, "date") and not isinstance(valor, str):
+            try:
+                return valor.date()
+            except Exception:
+                pass
+        if hasattr(valor, "year") and hasattr(valor, "month") and hasattr(valor, "day"):
+            return valor
+        texto = str(valor).strip()
+        for formato in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(texto[:10], formato).date()
+            except ValueError:
+                pass
+        return predeterminada
+
+    fecha_inicial = hoy.date()
+    fecha_final = hoy.date()
+    if editar_existente:
+        fecha_inicial = normalizar_fecha(
+            pedido_existente.get("desde") or pedido_existente.get("fecha_inicio"),
+            fecha_inicial,
+        )
+        fecha_final = normalizar_fecha(
+            pedido_existente.get("hasta") or pedido_existente.get("fecha_fin"),
+            fecha_final,
+        )
+
+    primer_anio = min(anio_actual, fecha_inicial.year, fecha_final.year)
+    ultimo_anio = max(anio_actual + 3, fecha_inicial.year, fecha_final.year)
+    valores_anios = [str(a) for a in range(primer_anio, ultimo_anio + 1)]
+
     win = ctk.CTkToplevel(root)
-    win.title("Configurar pedido")
+    win.title("Editar fechas del pedido" if editar_existente else "Configurar pedido")
     win.geometry("340x330")
     win.grab_set()
 
@@ -2830,13 +2866,17 @@ def configurar_pedido():
         font=("Segoe UI", 14, "bold")
     ).pack(pady=(10, 0))
 
-    pedido_var = tk.StringVar(value=str(pedido_actual or ""))
+    numero_existente = pedido_existente.get("numero") if editar_existente else ""
+    pedido_var = tk.StringVar(value=str(numero_existente or ""))
 
-    ctk.CTkEntry(
+    pedido_entry = ctk.CTkEntry(
         frame,
         textvariable=pedido_var,
         width=120
-    ).pack(pady=6)
+    )
+    pedido_entry.pack(pady=6)
+    if editar_existente:
+        pedido_entry.configure(state="disabled")
 
     # ================= FECHAS =================
     def crear_selector_fecha(titulo):
@@ -2859,14 +2899,20 @@ def configurar_pedido():
             "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
         ])
 
-        anios.configure(values=[str(a) for a in range(anio_actual, anio_actual+4)])
+        anios.configure(values=valores_anios)
 
+        dias.configure(values=["1"])
+        dias.set("1")
         meses.set("Enero")
         anios.set(str(anio_actual))
 
         def actualizar_dias(*args):
             mes = meses.get()
             anio = int(anios.get())
+            try:
+                dia_actual = int(dias.get())
+            except (TypeError, ValueError):
+                dia_actual = 1
 
             mes_num = [
                 "Enero","Febrero","Marzo","Abril","Mayo","Junio",
@@ -2876,24 +2922,40 @@ def configurar_pedido():
             max_dia = calendar.monthrange(anio, mes_num)[1]
 
             dias.configure(values=[str(i) for i in range(1, max_dia+1)])
-            dias.set("1")
+            dias.set(str(min(dia_actual, max_dia)))
 
         meses.configure(command=actualizar_dias)
         anios.configure(command=actualizar_dias)
 
         actualizar_dias()
 
-        return dias, meses, anios
+        return dias, meses, anios, actualizar_dias
 
 
-    d1, m1, a1 = crear_selector_fecha("Desde")
-    d2, m2, a2 = crear_selector_fecha("Hasta")
+    d1, m1, a1, actualizar_dias_1 = crear_selector_fecha("Desde")
+    d2, m2, a2, actualizar_dias_2 = crear_selector_fecha("Hasta")
+
+    def establecer_fecha(dia, mes, anio, actualizar_dias, fecha):
+        anio.set(str(fecha.year))
+        mes.set([
+            "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+            "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
+        ][fecha.month - 1])
+        actualizar_dias()
+        dia.set(str(fecha.day))
+
+    establecer_fecha(d1, m1, a1, actualizar_dias_1, fecha_inicial)
+    establecer_fecha(d2, m2, a2, actualizar_dias_2, fecha_final)
 
     # ================= GUARDAR =================
     def guardar():
         global pedido_actual, fecha_desde, fecha_hasta
 
-        pedido_actual = int(pedido_var.get())
+        try:
+            numero_pedido = int(pedido_var.get().strip())
+        except (TypeError, ValueError):
+            messagebox.showwarning("Pedido", "Escribe un numero de pedido valido.")
+            return
 
         meses_lista = [
             "Enero","Febrero","Marzo","Abril","Mayo","Junio",
@@ -2903,26 +2965,60 @@ def configurar_pedido():
         mes1 = meses_lista.index(m1.get()) + 1
         mes2 = meses_lista.index(m2.get()) + 1
 
-        fecha_desde = f"{int(d1.get()):02d}/{mes1:02d}/{a1.get()}"
-        fecha_hasta = f"{int(d2.get()):02d}/{mes2:02d}/{a2.get()}"
+        try:
+            desde_date = datetime(int(a1.get()), mes1, int(d1.get())).date()
+            hasta_date = datetime(int(a2.get()), mes2, int(d2.get())).date()
+        except (TypeError, ValueError):
+            messagebox.showwarning("Pedido", "Selecciona fechas validas.")
+            return
+
+        if hasta_date < desde_date:
+            messagebox.showwarning(
+                "Rango de fechas",
+                "La fecha Hasta no puede ser anterior a Desde.",
+            )
+            return
+
+        nueva_fecha_desde = desde_date.strftime("%d/%m/%Y")
+        nueva_fecha_hasta = hasta_date.strftime("%d/%m/%Y")
 
 
         try:
-            crear_pedido(pedido_actual, fecha_desde, fecha_hasta)
-            activar_pedido(pedido_actual)
+            if editar_existente:
+                actualizar_pedido(numero_pedido, nueva_fecha_desde, nueva_fecha_hasta)
+            else:
+                crear_pedido(numero_pedido, nueva_fecha_desde, nueva_fecha_hasta)
+                activar_pedido(numero_pedido)
 
-        except ValueError:
-            messagebox.showerror(
-                 "Duplicado",
-                 "❌ Ese número de pedido ya existe.\nUsa otro número."
-            )
+        except ValueError as exc:
+            mensaje = str(exc)
+            if "duplicado" in mensaje.lower():
+                messagebox.showerror(
+                    "Duplicado",
+                    "Ese numero de pedido ya existe. Usa otro numero.",
+                )
+            else:
+                messagebox.showerror("Pedido", mensaje)
             return
         except Exception as exc:
+            if editar_existente and getattr(exc, "status", None) == 404:
+                messagebox.showerror(
+                    "Actualizacion no disponible",
+                    (
+                        "El backend todavia no tiene publicada la actualizacion "
+                        "de fechas de pedidos. No se guardo ningun cambio."
+                    ),
+                )
+                return
             messagebox.showerror(
                 "Pedido",
-                f"No se pudo guardar el pedido:\n{exc}"
+                f"No se pudieron guardar las fechas del pedido:\n{exc}"
             )
             return
+
+        pedido_actual = numero_pedido
+        fecha_desde = nueva_fecha_desde
+        fecha_hasta = nueva_fecha_hasta
 
         lbl_pedido_valor.configure(
             text=f"Pedido #{pedido_actual}\n{fecha_desde} → {fecha_hasta}"
@@ -2932,7 +3028,7 @@ def configurar_pedido():
 
     ctk.CTkButton(
         frame,
-        text="Guardar",
+        text="Actualizar fechas" if editar_existente else "Crear pedido",
         height=40,
         command=guardar
     ).pack(pady=15)

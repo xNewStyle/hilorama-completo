@@ -30,6 +30,20 @@ def crear_pedido(numero, desde, hasta):
     return data.get("pedido")
 
 
+def actualizar_pedido(numero, desde, hasta):
+    payload = {
+        "desde": desde,
+        "hasta": hasta,
+    }
+    endpoint = f"/api/pedidos/{numero}"
+    data = _call_api(
+        "actualizar pedido",
+        endpoint,
+        lambda api, token: api.actualizar_pedido(numero, payload, token=token),
+    )
+    return data.get("pedido")
+
+
 def obtener_pedido(numero):
     pedidos = listar_pedidos({"q": numero, "limit": 50})
     numero_txt = str(numero or "").strip()

@@ -6873,6 +6873,8 @@ def _crear_pedido_api(conn, data):
         valores["desde"] = _pedido_fecha_api(data.get("desde") or data.get("fecha_inicio"))
     if "hasta" in cols:
         valores["hasta"] = _pedido_fecha_api(data.get("hasta") or data.get("fecha_fin"))
+    if valores.get("desde") and valores.get("hasta") and valores["hasta"] < valores["desde"]:
+        raise ValueError("La fecha Hasta no puede ser anterior a Desde.")
     if "activo" in cols:
         valores["activo"] = bool(data.get("activo", False))
     if "nombre" in cols and data.get("nombre"):
@@ -6884,6 +6886,55 @@ def _crear_pedido_api(conn, data):
         f"INSERT INTO pedidos({','.join(campos)}) VALUES ({placeholders})",
         tuple(valores[campo] for campo in campos),
     )
+    return _obtener_pedido_api(conn, numero)
+
+
+def _actualizar_pedido_api(conn, numero, data):
+    cols = _columnas_tabla_api(conn, "pedidos")
+    if not cols:
+        raise LookupError("No existe la tabla pedidos.")
+    if "numero" not in cols:
+        raise ValueError("La tabla pedidos no tiene columna numero.")
+
+    pedido = _obtener_pedido_api(conn, numero)
+    if not pedido:
+        raise LookupError("Pedido no encontrado.")
+
+    cambios = {}
+    if "desde" in data or "fecha_inicio" in data:
+        if "desde" not in cols:
+            raise ValueError("La tabla pedidos no tiene columna desde.")
+        cambios["desde"] = _pedido_fecha_api(data.get("desde") or data.get("fecha_inicio"))
+    if "hasta" in data or "fecha_fin" in data:
+        if "hasta" not in cols:
+            raise ValueError("La tabla pedidos no tiene columna hasta.")
+        cambios["hasta"] = _pedido_fecha_api(data.get("hasta") or data.get("fecha_fin"))
+    if not cambios:
+        raise ValueError("Indique desde y/o hasta para actualizar el pedido.")
+    if any(valor is None for valor in cambios.values()):
+        raise ValueError("Las fechas del pedido no pueden quedar vacias.")
+
+    desde_final = cambios.get("desde") or _pedido_fecha_api(pedido.get("desde"))
+    hasta_final = cambios.get("hasta") or _pedido_fecha_api(pedido.get("hasta"))
+    if desde_final and hasta_final and hasta_final < desde_final:
+        raise ValueError("La fecha Hasta no puede ser anterior a Desde.")
+
+    campos = list(cambios)
+    asignaciones = ", ".join(f"{campo}=%s" for campo in campos)
+    conn.execute(
+        f"UPDATE pedidos SET {asignaciones} WHERE CAST(numero AS TEXT)=%s",
+        tuple(cambios[campo] for campo in campos) + (str(numero),),
+    )
+
+    estado_cols = _columnas_tabla_api(conn, "pedido_estado")
+    campos_estado = [campo for campo in campos if campo in estado_cols]
+    if campos_estado and "numero" in estado_cols:
+        asignaciones_estado = ", ".join(f"{campo}=%s" for campo in campos_estado)
+        conn.execute(
+            f"UPDATE pedido_estado SET {asignaciones_estado} WHERE CAST(numero AS TEXT)=%s",
+            tuple(cambios[campo] for campo in campos_estado) + (str(numero),),
+        )
+
     return _obtener_pedido_api(conn, numero)
 
 
@@ -6985,6 +7036,25 @@ def api_pedidos_crear():
     except Exception:
         app.logger.exception("Error al crear pedido")
         return jsonify({"ok": False, "error": "No se pudo crear el pedido."}), 500
+
+
+@app.route("/api/pedidos/<numero>", methods=["PATCH"])
+def api_pedidos_actualizar(numero):
+    _, error = _require_license_api()
+    if error:
+        return error
+    data = _body_json()
+    try:
+        with get_conn() as conn:
+            pedido = _actualizar_pedido_api(conn, numero, data)
+        return jsonify({"ok": True, "pedido": pedido})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except LookupError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception:
+        app.logger.exception("Error al actualizar pedido")
+        return jsonify({"ok": False, "error": "No se pudo actualizar el pedido."}), 500
 
 
 @app.route("/api/pedidos/activo", methods=["GET"])

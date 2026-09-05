@@ -297,6 +297,10 @@ class RenderApiClient:
     def crear_pedido(self, data, token=None):
         return self.post("/api/pedidos", data, token=token)
 
+    def actualizar_pedido(self, numero, data, token=None):
+        numero_url = quote(str(numero or ""), safe="")
+        return self.patch(f"/api/pedidos/{numero_url}", data, token=token)
+
     def obtener_pedido_activo(self, token=None):
         return self.get("/api/pedidos/activo", token=token)
 
