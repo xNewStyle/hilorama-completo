@@ -9,6 +9,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from reportlab.platypus import Spacer, Table, Flowable
+from envios_config import es_envio_gratis
 
 class FlowableVacio(Flowable):
     def draw(self):
@@ -814,26 +815,24 @@ def draw_info_cliente_envio_fechas(
 
     x = x_cm * cm
     y = y_cm * cm
-    w = ancho_cm * cm
+    margen_derecho = 1.4 * cm
+    w = min(ancho_cm * cm, max(LETTER[0] - x - margen_derecho, 5.8 * cm))
+    h = 1.55 * cm
 
-    data = [
-        ["Fecha Estimada de Envío:"],
-        [rango]
-    ]
+    c.saveState()
+    c.setFillColor(colors.HexColor("#FFF8DD"))
+    c.setStrokeColor(colors.HexColor("#C9A227"))
+    c.setLineWidth(1)
+    c.roundRect(x, y, w, h, 6, fill=1, stroke=1)
 
-    tabla = Table(data, colWidths=[w])
+    c.setFillColor(colors.HexColor("#75621F"))
+    c.setFont("Helvetica-Bold", 8.5)
+    c.drawCentredString(x + (w / 2), y + 1.02 * cm, "FECHA ESTIMADA DE ENVÍO")
 
-    tabla.setStyle(TableStyle([
-        ("FONT", (0,0), (-1,-1), "Times-Roman", 14),
-        ("ALIGN", (0,0), (-1,-1), "LEFT"),
-        ("TEXTCOLOR", (0,0), (-1,-1), colors.HexColor("#B49A04")),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-        ("TOPPADDING", (0,0), (-1,-1), 3),
-        ("GRID", (0,0), (-1,-1), 0, colors.transparent),
-    ]))
-
-    tabla.wrapOn(c, w, 2*cm)
-    tabla.drawOn(c, x, y)
+    c.setFillColor(colors.HexColor("#1F2937"))
+    c.setFont("Helvetica-Bold", 13)
+    c.drawCentredString(x + (w / 2), y + 0.38 * cm, rango or "Por confirmar")
+    c.restoreState()
 
 
 
@@ -878,7 +877,8 @@ def draw_totales_fuera_tabla(
     envio,
     total,
     x_cm=13,
-    y_cm=6
+    y_cm=6,
+    envio_gratis=False,
 ):
     """
     Totales elegantes SIN grilla
@@ -895,7 +895,12 @@ def draw_totales_fuera_tabla(
     c.drawRightString(x, y + 1.2*cm, f"Subtotal:   ${subtotal:.2f}")
 
     # Envío
-    c.drawRightString(x, y + 0.5*cm, f"Envío:      ${envio:.2f}")
+    if envio_gratis:
+        c.setFont("Helvetica-Bold", 12)
+        c.setFillColor(colors.HexColor("#1B7F4B"))
+        c.drawRightString(x, y + 0.5*cm, "Envío gratis")
+    else:
+        c.drawRightString(x, y + 0.5*cm, f"Envío:      ${envio:.2f}")
 
     # TOTAL grande
     c.setFont("Helvetica-Bold", 20)
@@ -1074,7 +1079,15 @@ def generar_pdf_venta_premium(
         draw_texto_elegante(canvas, "¡Gracias por elegirnos!", 16.4, 30)
         draw_marca_agua(canvas, width, height, "marca_agua.png", 1.1, 0, -3, 0.08)
 
-        draw_totales_fuera_tabla(canvas, total_productos, costo_envio, total_final, 17.8, 3.8)
+        draw_totales_fuera_tabla(
+            canvas,
+            total_productos,
+            costo_envio,
+            total_final,
+            17.8,
+            3.8,
+            envio_gratis=es_envio_gratis(envio),
+        )
         draw_imagen_inferior(
             canvas,
             ruta_img="mi_imagen.png",

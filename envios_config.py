@@ -13,6 +13,60 @@ def cargar_envios():
         return json.load(f)
 
 
+def _normalizar_envio(envio):
+    if isinstance(envio, dict):
+        return envio
+    if isinstance(envio, str):
+        try:
+            valor = json.loads(envio)
+            return valor if isinstance(valor, dict) else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+    return {}
+
+
+def _numero(valor, default=0.0):
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return default
+
+
+def requiere_precio_manual(paqueteria):
+    data = cargar_envios().get(str(paqueteria or "").strip()) or {}
+    return bool(data.get("precio_manual"))
+
+
+def es_envio_gratis(envio):
+    envio = _normalizar_envio(envio)
+    valor = envio.get("gratis", envio.get("envio_gratis", False))
+    if isinstance(valor, str):
+        valor = valor.strip().lower() in {"1", "true", "si", "sí", "yes"}
+    if valor:
+        return True
+
+    tipo = str(envio.get("tipo") or envio.get("paqueteria") or "").strip().upper()
+    return tipo in {"ENVIO GRATIS", "ENVÍO GRATIS"}
+
+
+def formatear_costo_envio(envio, con_etiqueta=False):
+    envio = _normalizar_envio(envio)
+    if es_envio_gratis(envio):
+        return "Envío gratis"
+    precio = _numero(envio.get("precio"))
+    texto = f"${precio:.2f}"
+    return f"Envío: {texto}" if con_etiqueta else texto
+
+
+def formatear_resumen_envio(envio, predeterminado="-"):
+    envio = _normalizar_envio(envio)
+    if not envio:
+        return predeterminado
+    paqueteria = str(envio.get("paqueteria") or envio.get("tipo") or "").strip()
+    costo = formatear_costo_envio(envio)
+    return f"{paqueteria} | {costo}" if paqueteria else costo
+
+
 def calcular_envio(paqueteria, volumetrico_total):
     envios = cargar_envios()
     data = envios.get(paqueteria)

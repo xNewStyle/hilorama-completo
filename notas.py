@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from clientes import obtener_cliente_por_id
 from tkinter import messagebox
+from envios_config import formatear_costo_envio
 
 BASE_DIR = Path(__file__).resolve().parent
 COMPROBANTES_DIR = BASE_DIR / "comprobantes"
@@ -619,7 +620,7 @@ def ver_detalles(tree, win):
     ).pack(anchor="e")
     tk.Label(
         frame_totales,
-        text=f"Envío: ${totales['envio_precio']:.2f}",
+        text=formatear_costo_envio(nota.get("envio"), con_etiqueta=True),
         anchor="e"
     ).pack(anchor="e")
     tk.Label(
@@ -935,4 +936,27 @@ def cambiar_cliente_nota(id_nota, cliente):
     conn.commit()
     conn.close()
 
+    return True
+
+
+def cambiar_pedido_nota(id_nota, pedido):
+    try:
+        pedido = int(str(pedido).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError("El pedido destino no es válido.") from exc
+    if pedido <= 0:
+        raise ValueError("El pedido destino no es válido.")
+
+    if _modo_api():
+        return _notas_api().cambiar_pedido_nota(id_nota, pedido)
+
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE notas SET pedido=%s WHERE id=%s",
+            (pedido, id_nota),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     return True

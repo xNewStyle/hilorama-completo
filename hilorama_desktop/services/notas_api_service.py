@@ -326,3 +326,24 @@ def cambiar_cliente_nota(nota_id, cliente):
     )
     _emitir_cambio_notificaciones(incluir_oportunidades=True)
     return data.get("nota")
+
+
+def cambiar_pedido_nota(nota_id, pedido):
+    nota_id = str(nota_id or "").strip()
+    if not nota_id:
+        raise ValueError("Falta id de nota.")
+    try:
+        pedido = int(str(pedido).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError("El pedido destino no es válido.") from exc
+    if pedido <= 0:
+        raise ValueError("El pedido destino no es válido.")
+
+    payload = {"pedido": pedido}
+    data = _call_api(
+        "cambiar pedido de nota",
+        f"/api/notas/{nota_id}",
+        lambda api, token: api.actualizar_nota(nota_id, payload, token=token),
+    )
+    _emitir_cambio_notificaciones()
+    return data.get("nota")

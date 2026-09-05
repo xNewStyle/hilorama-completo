@@ -6,7 +6,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from tkinter import ttk, simpledialog, messagebox, filedialog
-from notas import listar_cotizaciones, obtener_cotizacion, cambiar_cliente_nota, calcular_totales_nota
+from notas import listar_cotizaciones, obtener_cotizacion, cambiar_cliente_nota, cambiar_pedido_nota, calcular_totales_nota
 from notas import ajustar_items_nota_pagada_admin, actualizar_cotizacion, actualizar_nota_admin, convertir_cotizacion_a_venta, eliminar_cotizacion, eliminar_nota, guardar_nota_actualizada
 from core.almacen_api import STOCK_MINIMO, descontar_stock, obtener_producto_por_id
 from clientes import cliente_completo, obtener_cliente_por_id, listar_clientes
@@ -18,7 +18,14 @@ import platform
 import datetime
 from pdf_cotizacion import generar_pdf_cotizacion
 import subprocess
-from envios_config import calcular_envio, cargar_envios
+from envios_config import (
+    calcular_envio,
+    cargar_envios,
+    formatear_costo_envio,
+    formatear_resumen_envio,
+    requiere_precio_manual,
+)
+from pedidos import listar_pedidos
 from ventas_logic import calcular_volumetrico_total
 from generar_pdf_venta_premium import generar_pdf_venta_premium
 import customtkinter as ctk
@@ -1010,7 +1017,7 @@ def ver_detalles(tree, parent):
         envio_card,
         text=(
             f"🚚 {envio.get('paqueteria','-')} | "
-            f"${calcular_totales_nota(nota)['envio_precio']:.2f} | "
+            f"{formatear_costo_envio(envio)} | "
             f"{envio.get('volumetrico','-')} kg\n"
             f"📅 Fecha salida: {nota.get('fecha_envio','-')}"
         )
@@ -1026,7 +1033,7 @@ def ver_detalles(tree, parent):
         totales,
         text=(
             f"Subtotal productos: ${totales_nota['subtotal_productos']:.2f}\n"
-            f"Envío: ${totales_nota['envio_precio']:.2f}\n"
+            f"{formatear_costo_envio(envio, con_etiqueta=True)}\n"
             f"Total final: ${totales_nota['total_final']:.2f}"
         ),
         font=("Segoe UI", 16, "bold"),
@@ -1174,6 +1181,150 @@ def cambiar_cliente_nota_desde_lista(tree, win):
 
     win.destroy()
     abrir_visor(win.master)
+
+
+def cambiar_pedido_nota_desde_lista(tree, win, refrescar=None):
+    sel = tree.focus()
+    if not sel:
+        messagebox.showwarning(
+            "Selecciona una nota",
+            "Selecciona la nota que deseas mover de pedido.",
+            parent=win,
+        )
+        return
+
+    valores = tree.item(sel, "values")
+    id_nota = valores[0]
+    pedido_actual = str(valores[1] or "").strip()
+
+    try:
+        pedidos = listar_pedidos()
+    except Exception as exc:
+        messagebox.showerror(
+            "Cambiar pedido",
+            f"No se pudieron cargar los pedidos disponibles.\n\n{exc}",
+            parent=win,
+        )
+        return
+
+    numeros = []
+    for pedido in pedidos or []:
+        numero = str((pedido or {}).get("numero") or "").strip()
+        if numero and numero != pedido_actual and numero not in numeros:
+            numeros.append(numero)
+
+    def clave_orden(valor):
+        try:
+            return (0, -int(valor))
+        except (TypeError, ValueError):
+            return (1, str(valor))
+
+    numeros.sort(key=clave_orden)
+    if not numeros:
+        messagebox.showinfo(
+            "Cambiar pedido",
+            "No existe otro pedido disponible como destino.",
+            parent=win,
+        )
+        return
+
+    dialogo = ctk.CTkToplevel(win)
+    dialogo.title("Cambiar nota de pedido")
+    dialogo.geometry("430x300")
+    dialogo.resizable(False, False)
+    dialogo.transient(win)
+    dialogo.grab_set()
+
+    tarjeta = ctk.CTkFrame(dialogo, corner_radius=8, fg_color="#FFFFFF")
+    tarjeta.pack(fill="both", expand=True, padx=20, pady=20)
+
+    ctk.CTkLabel(
+        tarjeta,
+        text="Mover nota a otro pedido",
+        font=("Segoe UI", 19, "bold"),
+        text_color="#17365D",
+    ).pack(anchor="w", padx=20, pady=(20, 6))
+    ctk.CTkLabel(
+        tarjeta,
+        text=f"Nota {id_nota}\nPedido actual: #{pedido_actual or '-'}",
+        font=("Segoe UI", 13),
+        justify="left",
+        text_color="#4B5563",
+    ).pack(anchor="w", padx=20, pady=(0, 18))
+
+    pedido_destino_var = tk.StringVar(value=numeros[0])
+    ctk.CTkLabel(
+        tarjeta,
+        text="Pedido destino",
+        font=("Segoe UI", 12, "bold"),
+    ).pack(anchor="w", padx=20)
+    ctk.CTkComboBox(
+        tarjeta,
+        variable=pedido_destino_var,
+        values=numeros,
+        state="readonly",
+        height=38,
+        corner_radius=8,
+    ).pack(fill="x", padx=20, pady=(6, 18))
+
+    botones = ctk.CTkFrame(tarjeta, fg_color="transparent")
+    botones.pack(fill="x", padx=20, pady=(0, 18))
+
+    def guardar():
+        pedido_destino = pedido_destino_var.get().strip()
+        if not pedido_destino:
+            return
+        if not messagebox.askyesno(
+            "Confirmar cambio",
+            f"¿Mover la nota {id_nota} del pedido #{pedido_actual or '-'} al pedido #{pedido_destino}?",
+            parent=dialogo,
+        ):
+            return
+        try:
+            cambiar_pedido_nota(id_nota, pedido_destino)
+            if not _modo_api():
+                try:
+                    registrar_cambio(
+                        id_nota,
+                        "Cambio de pedido",
+                        f"Pedido #{pedido_actual or '-'} a pedido #{pedido_destino}",
+                    )
+                except Exception:
+                    pass
+        except Exception as exc:
+            messagebox.showerror(
+                "Cambiar pedido",
+                f"No se pudo cambiar la nota de pedido.\n\n{exc}",
+                parent=dialogo,
+            )
+            return
+
+        dialogo.destroy()
+        if callable(refrescar):
+            refrescar()
+        messagebox.showinfo(
+            "Pedido actualizado",
+            f"La nota {id_nota} ahora pertenece al pedido #{pedido_destino}.",
+            parent=win,
+        )
+
+    ctk.CTkButton(
+        botones,
+        text="Cancelar",
+        fg_color="#E5E7EB",
+        hover_color="#D1D5DB",
+        text_color="#374151",
+        command=dialogo.destroy,
+    ).pack(side="left", expand=True, fill="x", padx=(0, 5))
+    ctk.CTkButton(
+        botones,
+        text="Cambiar pedido",
+        fg_color="#2563EB",
+        hover_color="#1D4ED8",
+        command=guardar,
+    ).pack(side="left", expand=True, fill="x", padx=(5, 0))
+
+    dialogo.wait_window()
 
 def exportar_pdf_venta_premium(tree, win):
     sel = tree.focus()
@@ -1707,10 +1858,7 @@ def abrir_visor(root):
 
             totales_nota = calcular_totales_nota(n)
 
-            envio_txt = (
-                f"{envio.get('paqueteria','-')} ${totales_nota['envio_precio']:.2f}"
-                if envio else "-"
-            )
+            envio_txt = formatear_resumen_envio(envio)
 
 
             tree.insert(
@@ -1772,6 +1920,12 @@ def abrir_visor(root):
         side,
         text="👤 Cambiar cliente",
         command=lambda: cambiar_cliente_nota_desde_lista(tree, win)
+    ).pack(fill="x", pady=5)
+
+    ctk.CTkButton(
+        side,
+        text="Cambiar pedido",
+        command=lambda: cambiar_pedido_nota_desde_lista(tree, win, cargar_notas)
     ).pack(fill="x", pady=5)
 
     ctk.CTkButton(
@@ -2478,7 +2632,7 @@ def abrir_visor(root):
                 registrar_cambio(
                     nota["id"],
                     "Cambio de envío",
-                    f"{envio['paqueteria']} - ${envio['precio']}"
+                    formatear_resumen_envio(envio)
                 )
             except Exception:
                 pass
@@ -3535,7 +3689,7 @@ def editar_cotizacion(win, tree):
             cargar_envios()
             messagebox.showinfo(
                 "Venta creada",
-                f"Envío guardado y venta pendiente: {envio['paqueteria']} • ${envio['precio']:.2f}",
+                f"Envío guardado y venta pendiente: {formatear_resumen_envio(envio)}",
                 parent=ed
             )
             ed.destroy()
@@ -3548,7 +3702,7 @@ def editar_cotizacion(win, tree):
         cargar_envios()
         messagebox.showinfo(
             "Envío guardado",
-            f"{envio['paqueteria']} • ${envio['precio']:.2f} • {vol_total:.2f} kg",
+            f"{formatear_resumen_envio(envio)} | {vol_total:.2f} kg",
             parent=ed
         )
 
@@ -4198,7 +4352,7 @@ def mostrar_detalle_nota(nota, parent):
     ).pack(anchor="e")
     ttk.Label(
         frame_totales,
-        text=f"Envío: ${totales_nota['envio_precio']:.2f}"
+        text=formatear_costo_envio(nota.get("envio"), con_etiqueta=True)
     ).pack(anchor="e")
     ttk.Label(
         frame_totales,
@@ -4295,6 +4449,7 @@ def seleccionar_envio(root, volumetrico):
 
     # ===== PRECIO =====
     precio_var = tk.StringVar(value="$0.00")
+    precio_manual_var = tk.StringVar()
 
     lbl_precio = ctk.CTkLabel(
         frame,
@@ -4321,17 +4476,24 @@ def seleccionar_envio(root, volumetrico):
         variable=manual_var
     )
     manual_check.pack(pady=5)
+    manual_automatico = {"activo": False}
 
     # ===== CALCULAR =====
 
     def recalcular(*args):
 
         if gratis_var.get():
-            precio_var.set("$0.00")
+            precio_var.set("Envío gratis")
             return
 
-        if manual_var.get():
-           return
+        if manual_var.get() or requiere_precio_manual(paq_var.get()):
+            try:
+                precio = float(precio_manual_var.get())
+            except (TypeError, ValueError):
+                precio_var.set("Captura el precio")
+                return
+            precio_var.set(f"${precio:.2f}")
+            return
 
         precio = calcular_envio(
             paq_var.get(),
@@ -4339,6 +4501,20 @@ def seleccionar_envio(root, volumetrico):
         ) 
 
         precio_var.set(f"${precio:.2f}")
+
+    def cambiar_paqueteria(*args):
+        tarifa_variable = requiere_precio_manual(paq_var.get())
+        if tarifa_variable:
+            if not manual_var.get():
+                manual_automatico["activo"] = True
+                manual_var.set(True)
+            manual_check.configure(state="disabled")
+        else:
+            manual_check.configure(state="normal")
+            if manual_automatico["activo"]:
+                manual_automatico["activo"] = False
+                manual_var.set(False)
+        recalcular()
 
     # ======================================================
     #  🔴 ENVÍO MANUAL INTEGRADO (NUEVO)
@@ -4357,8 +4533,6 @@ def seleccionar_envio(root, volumetrico):
     manual_frame.pack(fill="x", padx=20, pady=(0, 8))
 
 
-    precio_manual_var = tk.StringVar()
-
     entry_manual = ctk.CTkEntry(
         manual_frame,
         textvariable=precio_manual_var,
@@ -4375,8 +4549,8 @@ def seleccionar_envio(root, volumetrico):
             return
 
         try:
-            precio = float(manual_var.get())
-        except:
+            precio = float(precio_manual_var.get())
+        except (TypeError, ValueError):
             messagebox.showwarning("Valor inválido", "Número incorrecto", parent=win)
             return
 
@@ -4384,7 +4558,8 @@ def seleccionar_envio(root, volumetrico):
             "paqueteria": paq_var.get(),   # ✅ mantener paquetería elegida
             "precio": round(precio, 2),    # ✅ solo cambiar precio
             "volumetrico": volumetrico,
-            "manual": True                 # opcional para control interno
+            "manual": True,                # opcional para control interno
+            "gratis": False,
         })
 
         win.destroy()
@@ -4407,7 +4582,7 @@ def seleccionar_envio(root, volumetrico):
         if gratis_var.get():
             precio = 0
  
-        elif manual_var.get():
+        elif manual_var.get() or requiere_precio_manual(paq_var.get()):
 
             try:
                 precio = float(precio_manual_var.get())
@@ -4429,7 +4604,9 @@ def seleccionar_envio(root, volumetrico):
         resultado.update({
             "paqueteria": paq_var.get(),
             "precio": precio,
-            "volumetrico": volumetrico
+            "volumetrico": volumetrico,
+            "manual": bool(manual_var.get() or requiere_precio_manual(paq_var.get())),
+            "gratis": bool(gratis_var.get()),
         })
 
         win.destroy()
@@ -4445,10 +4622,12 @@ def seleccionar_envio(root, volumetrico):
     ).pack(fill="x", padx=20, pady=(20, 10))
 
     # 🔥 ESTO ES LO QUE FALTA
-    paq_var.trace_add("write", recalcular)
+    paq_var.trace_add("write", cambiar_paqueteria)
     gratis_var.trace_add("write", recalcular)
+    manual_var.trace_add("write", recalcular)
+    precio_manual_var.trace_add("write", recalcular)
 
-    recalcular()
+    cambiar_paqueteria()
 
     win.wait_window()   # ← 🔴 CLAVE ABSOLUTA
 

@@ -32,6 +32,14 @@
   "Entrega Personal": {
     "base": 79
   },
+  "Uber": {
+    "base": 0,
+    "precio_manual": true
+  },
+  "Didi": {
+    "base": 0,
+    "precio_manual": true
+  },
   "Entrega en Tienda": {
     "base": 30
   }

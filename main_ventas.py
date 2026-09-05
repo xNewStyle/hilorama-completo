@@ -32,6 +32,7 @@ from PIL import Image
 import os
 import threading
 from pedidos import actualizar_pedido, crear_pedido, listar_pedidos
+from envios_config import formatear_costo_envio
 import calendar
 from datetime import datetime
 from pedido_estado import pedido_por_vencer, pedido_vencido, cargar_pedido, activar_pedido
@@ -3485,7 +3486,7 @@ def configurar_envio_carrito():
     envio_actual = envio
 
     lbl_envio.configure(
-        text=f"Envío: ${envio['precio']:.2f}"
+        text=formatear_costo_envio(envio, con_etiqueta=True)
     )
 
     actualizar_total_con_envio()
